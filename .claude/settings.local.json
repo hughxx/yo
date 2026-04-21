@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Program Files/Microsoft Visual Studio/**)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/**)",
+      "Bash(\"/c/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/vswhere.exe\" -latest -property installationPath)",
+      "Bash(dotnet --version)",
+      "Read(//c/Windows/Microsoft.NET/Framework64/**)",
+      "Read(//c/Program Files \\(x86\\)/Reference Assemblies/**)",
+      "Read(//c/Windows/assembly/**)",
+      "Bash(grep -i -E \"^/c/Windows/assembly/GAC_MSIL/office$|extensib\")",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" OutlookEmailForwarder/OutlookEmailForwarder.csproj /p:Configuration=Release /p:Platform=x64 /t:Build /v:minimal)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" \"OutlookEmailForwarder/OutlookEmailForwarder.csproj\" -p:Configuration=Release -p:Platform=x64 -t:Build -v:minimal)",
+      "Bash(dotnet build *)",
+      "Bash(pip --version)",
+      "Bash(pip install *)",
+      "Bash(python app.py)",
+      "Bash(curl -s http://localhost:5000/api/email/ping)",
+      "Bash(curl *)",
+      "Bash(python *)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(C:/Windows/Microsoft.NET/Framework64/v4.0.30319/RegAsm.exe *)",
+      "Bash(reg query *)",
+      "Bash(tasklist *)",
+      "Bash(\"/c/Program Files/Microsoft Office/root/Office16/OUTLOOK.EXE\")",
+      "Bash(taskkill //F //IM OUTLOOK.EXE)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" \"OutlookEmailForwarder/OutlookEmailForwarder.csproj\" -p:Configuration=Release -p:Platform=x64 -t:Rebuild -v:minimal)"
+    ]
+  }
+}
