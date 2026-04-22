@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using OutlookEmailForwarder.Models;
@@ -11,18 +13,23 @@ namespace OutlookEmailForwarder.Forms
     public class MainForm : Form
     {
         private Label lblStatus;
-        private Label lblLastScan;
-        private Label lblRuleCount;
-        private Label lblCacheCount;
         private Button btnScan;
         private Button btnConfig;
         private Button btnClearCache;
-        private TextBox txtLog;
+        private Button btnRefresh;
         private ProgressBar progressBar;
+        private DataGridView dgvEmails;
+        private Button btnFirst, btnPrev, btnNext, btnLast;
+        private Label lblPageInfo;
+        private Label lblTotal;
 
         private readonly Outlook.Application _outlookApp;
         private readonly Func<Action<string>, Task<ScanResult>> _scanFunc;
         private readonly ProcessedTracker _tracker;
+
+        private readonly List<EmailRow> _allEmails = new List<EmailRow>();
+        private int _currentPage = 1;
+        private const int PageSize = 30;
 
         public MainForm(Outlook.Application outlookApp,
             Func<Action<string>, Task<ScanResult>> scanFunc,
@@ -32,171 +39,267 @@ namespace OutlookEmailForwarder.Forms
             _scanFunc = scanFunc;
             _tracker = tracker;
             InitializeComponents();
-            RefreshStatus();
+            _ = LoadEmailsAsync();
         }
 
         private void InitializeComponents()
         {
             this.Text = "云见小助手";
-            this.Size = new Size(500, 500);
+            this.Size = new Size(900, 600);
+            this.MinimumSize = new Size(700, 480);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
             this.Font = new Font("Microsoft YaHei UI", 9F);
 
-            // ===== 状态区 =====
-            var grpStatus = new GroupBox
+            // ===== 顶部工具栏 =====
+            var toolbar = new Panel
             {
-                Text = "运行状态",
-                Location = new Point(15, 10),
-                Size = new Size(455, 85)
+                Dock = DockStyle.Top,
+                Height = 46,
+                BackColor = Color.FromArgb(248, 248, 248),
+                Padding = new Padding(8, 8, 8, 6)
             };
 
             lblStatus = new Label
             {
                 Text = "就绪",
-                Location = new Point(15, 22),
+                Location = new Point(10, 13),
                 AutoSize = true,
-                ForeColor = Color.Green,
-                Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold)
+                Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
+                ForeColor = Color.Green
             };
 
-            lblLastScan = new Label
-            {
-                Text = "上次扫描：--",
-                Location = new Point(15, 48),
-                AutoSize = true,
-                ForeColor = Color.Gray
-            };
+            btnScan      = MakeBtn("立即扫描", 130, Color.FromArgb(0, 120, 212));
+            btnConfig    = MakeBtn("配置规则", 238, Color.FromArgb(80, 80, 80));
+            btnClearCache = MakeBtn("清空缓存", 336, Color.FromArgb(180, 60, 60));
+            btnRefresh   = MakeBtn("刷新邮件", 444, Color.FromArgb(0, 140, 100));
 
-            lblRuleCount = new Label
-            {
-                Text = "已配置规则：0 条",
-                Location = new Point(200, 48),
-                AutoSize = true,
-                ForeColor = Color.Gray
-            };
+            btnScan.Location      = new Point(130, 9);
+            btnConfig.Location    = new Point(238, 9);
+            btnClearCache.Location = new Point(336, 9);
+            btnRefresh.Location   = new Point(444, 9);
 
-            lblCacheCount = new Label
-            {
-                Text = "已缓存：0 封",
-                Location = new Point(370, 48),
-                AutoSize = true,
-                ForeColor = Color.Gray
-            };
-
-            grpStatus.Controls.AddRange(new Control[] { lblStatus, lblLastScan, lblRuleCount, lblCacheCount });
-
-            // ===== 操作按钮 =====
-            btnScan = new Button
-            {
-                Text = "立即扫描",
-                Location = new Point(15, 105),
-                Size = new Size(145, 42),
-                Font = new Font("Microsoft YaHei UI", 11F),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0, 120, 212),
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand
-            };
-            btnScan.FlatAppearance.BorderSize = 0;
-            btnScan.Click += BtnScan_Click;
-
-            btnConfig = new Button
-            {
-                Text = "配置规则",
-                Location = new Point(170, 105),
-                Size = new Size(145, 42),
-                Font = new Font("Microsoft YaHei UI", 11F),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(100, 100, 100),
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand
-            };
-            btnConfig.FlatAppearance.BorderSize = 0;
-            btnConfig.Click += BtnConfig_Click;
-
-            btnClearCache = new Button
-            {
-                Text = "清空缓存",
-                Location = new Point(325, 105),
-                Size = new Size(145, 42),
-                Font = new Font("Microsoft YaHei UI", 11F),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(180, 60, 60),
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand
-            };
-            btnClearCache.FlatAppearance.BorderSize = 0;
+            btnScan.Click      += BtnScan_Click;
+            btnConfig.Click    += BtnConfig_Click;
             btnClearCache.Click += BtnClearCache_Click;
+            btnRefresh.Click   += async (s, e) => await LoadEmailsAsync();
+
+            toolbar.Controls.AddRange(new Control[] { lblStatus, btnScan, btnConfig, btnClearCache, btnRefresh });
 
             // ===== 进度条 =====
             progressBar = new ProgressBar
             {
-                Location = new Point(15, 158),
-                Size = new Size(455, 6),
+                Dock = DockStyle.Top,
+                Height = 4,
                 Style = ProgressBarStyle.Marquee,
                 MarqueeAnimationSpeed = 30,
                 Visible = false
             };
 
-            // ===== 日志区 =====
-            var lblLog = new Label
+            // ===== 分页栏 =====
+            var paginPanel = new Panel
             {
-                Text = "扫描日志",
-                Location = new Point(15, 172),
-                AutoSize = true,
-                ForeColor = Color.Gray
+                Dock = DockStyle.Bottom,
+                Height = 34,
+                BackColor = Color.FromArgb(248, 248, 248)
             };
 
-            txtLog = new TextBox
+            btnFirst = PagBtn("«", 8);
+            btnPrev  = PagBtn("‹", 42);
+            lblPageInfo = new Label { Size = new Size(110, 22), Location = new Point(78, 6), TextAlign = ContentAlignment.MiddleCenter, Text = "第 1 / 1 页" };
+            btnNext  = PagBtn("›", 192);
+            btnLast  = PagBtn("»", 226);
+            lblTotal = new Label { Size = new Size(120, 22), Location = new Point(268, 6), ForeColor = Color.Gray, Text = "共 0 封", TextAlign = ContentAlignment.MiddleLeft };
+
+            btnFirst.Click += (s, e) => { _currentPage = 1; RefreshTable(); };
+            btnPrev.Click  += (s, e) => { if (_currentPage > 1) { _currentPage--; RefreshTable(); } };
+            btnNext.Click  += (s, e) => { if (_currentPage < TotalPages()) { _currentPage++; RefreshTable(); } };
+            btnLast.Click  += (s, e) => { _currentPage = TotalPages(); RefreshTable(); };
+
+            paginPanel.Controls.AddRange(new Control[] { btnFirst, btnPrev, lblPageInfo, btnNext, btnLast, lblTotal });
+
+            // ===== 邮件表格 =====
+            dgvEmails = new DataGridView
             {
-                Location = new Point(15, 192),
-                Size = new Size(455, 260),
-                Multiline = true,
+                Dock = DockStyle.Fill,
                 ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical,
-                BackColor = Color.FromArgb(30, 30, 30),
-                ForeColor = Color.FromArgb(200, 200, 200),
-                Font = new Font("Consolas", 9F)
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                AllowUserToResizeRows = false,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false,
+                RowHeadersVisible = false,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+                ColumnHeadersHeight = 26,
+                RowTemplate = { Height = 24 },
+                BackgroundColor = Color.White,
+                BorderStyle = BorderStyle.None,
+                GridColor = Color.FromArgb(225, 225, 225),
+                Font = new Font("Microsoft YaHei UI", 9F),
+                DefaultCellStyle = { SelectionBackColor = Color.FromArgb(0, 120, 212), SelectionForeColor = Color.White }
             };
+            dgvEmails.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            dgvEmails.EnableHeadersVisualStyles = false;
+            dgvEmails.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
 
-            this.Controls.AddRange(new Control[] {
-                grpStatus, btnScan, btnConfig, btnClearCache, progressBar, lblLog, txtLog
-            });
+            dgvEmails.Columns.Add(new DataGridViewTextBoxColumn { Name = "colNum",    HeaderText = "#",    Width = 45, SortMode = DataGridViewColumnSortMode.NotSortable });
+            dgvEmails.Columns.Add(new DataGridViewTextBoxColumn { Name = "colTime",   HeaderText = "时间",  Width = 130, SortMode = DataGridViewColumnSortMode.NotSortable });
+            dgvEmails.Columns.Add(new DataGridViewTextBoxColumn { Name = "colSender", HeaderText = "发件人", Width = 160, SortMode = DataGridViewColumnSortMode.NotSortable });
+            dgvEmails.Columns.Add(new DataGridViewTextBoxColumn { Name = "colSubject",HeaderText = "主题",  AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, SortMode = DataGridViewColumnSortMode.NotSortable });
+            dgvEmails.Columns.Add(new DataGridViewTextBoxColumn { Name = "colFolder", HeaderText = "文件夹", Width = 130, SortMode = DataGridViewColumnSortMode.NotSortable });
+
+            // 控件添加顺序决定 Dock 布局（Fill 必须在 Top/Bottom 后加入）
+            this.Controls.Add(dgvEmails);
+            this.Controls.Add(paginPanel);
+            this.Controls.Add(progressBar);
+            this.Controls.Add(toolbar);
         }
 
-        private void RefreshStatus()
+        private static Button MakeBtn(string text, int x, Color color)
         {
-            var config = ConfigManager.Load();
-            int enabledCount = 0;
-            foreach (var r in config.Rules)
-                if (r.Enabled) enabledCount++;
-
-            lblRuleCount.Text = $"规则：{enabledCount}/{config.Rules.Count} 条";
-            lblCacheCount.Text = $"已缓存：{_tracker.Count} 封";
-
-            if (enabledCount == 0)
+            var b = new Button
             {
-                lblStatus.Text = "未配置规则";
-                lblStatus.ForeColor = Color.Orange;
+                Text = text,
+                Location = new Point(x, 9),
+                Size = new Size(94, 28),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = color,
+                ForeColor = Color.White,
+                Cursor = Cursors.Hand
+            };
+            b.FlatAppearance.BorderSize = 0;
+            return b;
+        }
+
+        private static Button PagBtn(string text, int x)
+        {
+            var b = new Button
+            {
+                Text = text,
+                Location = new Point(x, 5),
+                Size = new Size(30, 24),
+                FlatStyle = FlatStyle.Flat
+            };
+            b.FlatAppearance.BorderColor = Color.LightGray;
+            return b;
+        }
+
+        private int TotalPages() => Math.Max(1, (_allEmails.Count + PageSize - 1) / PageSize);
+
+        private void RefreshTable()
+        {
+            dgvEmails.Rows.Clear();
+            int start = (_currentPage - 1) * PageSize;
+            int end   = Math.Min(start + PageSize, _allEmails.Count);
+            for (int i = start; i < end; i++)
+            {
+                var r = _allEmails[i];
+                dgvEmails.Rows.Add(i + 1, r.ReceivedTime.ToString("yyyy-MM-dd HH:mm"), r.SenderName, r.Subject, r.Folder);
             }
+            int total = TotalPages();
+            lblPageInfo.Text = $"第 {_currentPage} / {total} 页";
+            lblTotal.Text    = $"共 {_allEmails.Count} 封";
+            btnFirst.Enabled = btnPrev.Enabled = _currentPage > 1;
+            btnNext.Enabled  = btnLast.Enabled  = _currentPage < total;
+        }
+
+        // 在 UI 线程上做 COM 调用，Brief Yield 让进度条先渲染
+        private async Task LoadEmailsAsync()
+        {
+            progressBar.Visible = true;
+            btnRefresh.Enabled = false;
+            SetStatus("加载中...", Color.Orange);
+
+            try
+            {
+                await Task.Delay(20); // 让进度条渲染
+                _allEmails.Clear();
+                CollectEmailsFromOutlook();
+                _currentPage = 1;
+                RefreshTable();
+                SetStatus("就绪", Color.Green);
+            }
+            catch (Exception ex)
+            {
+                SetStatus($"加载失败：{ex.Message}", Color.Red);
+            }
+            finally
+            {
+                progressBar.Visible = false;
+                btnRefresh.Enabled = true;
+            }
+        }
+
+        private void CollectEmailsFromOutlook()
+        {
+            Outlook.NameSpace ns = null;
+            Outlook.Stores stores = null;
+            try
+            {
+                ns = _outlookApp.GetNamespace("MAPI");
+                stores = ns.Stores;
+                for (int s = 1; s <= stores.Count; s++)
+                {
+                    Outlook.Store store = null;
+                    try { store = stores[s]; } catch { continue; }
+
+                    string storeLabel = $"账户{s}";
+                    try { storeLabel = store.DisplayName; } catch { }
+
+                    Outlook.MAPIFolder inbox = null;
+                    Outlook.Items items = null;
+                    try
+                    {
+                        inbox = store.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderInbox);
+                        items = inbox.Items;
+                        items.Sort("[ReceivedTime]", true); // 最新在前
+
+                        int limit = Math.Min(items.Count, 300);
+                        object cur = items.GetFirst();
+                        int count = 0;
+                        while (cur != null && count < limit)
+                        {
+                            var mail = cur as Outlook.MailItem;
+                            if (mail != null)
+                            {
+                                _allEmails.Add(new EmailRow
+                                {
+                                    Subject      = mail.Subject ?? "",
+                                    SenderName   = mail.SenderName ?? "",
+                                    ReceivedTime = mail.ReceivedTime,
+                                    Folder       = storeLabel
+                                });
+                                count++;
+                            }
+                            try { Marshal.ReleaseComObject(cur); } catch { }
+                            cur = items.GetNext();
+                        }
+                        if (cur != null) try { Marshal.ReleaseComObject(cur); } catch { }
+                    }
+                    catch { }
+                    finally
+                    {
+                        if (items != null) try { Marshal.ReleaseComObject(items); } catch { }
+                        if (inbox != null) try { Marshal.ReleaseComObject(inbox); } catch { }
+                        try { Marshal.ReleaseComObject(store); } catch { }
+                    }
+                }
+            }
+            catch { }
+            finally
+            {
+                if (stores != null) try { Marshal.ReleaseComObject(stores); } catch { }
+            }
+
+            // 多账户合并后按时间降序
+            _allEmails.Sort((a, b) => b.ReceivedTime.CompareTo(a.ReceivedTime));
+        }
+
+        private void SetStatus(string text, Color color)
+        {
+            if (lblStatus.InvokeRequired)
+                lblStatus.Invoke(new Action(() => { lblStatus.Text = text; lblStatus.ForeColor = color; }));
             else
-            {
-                lblStatus.Text = "运行中";
-                lblStatus.ForeColor = Color.Green;
-            }
-        }
-
-        private void AppendLog(string message)
-        {
-            if (txtLog.InvokeRequired)
-            {
-                txtLog.Invoke(new Action(() => AppendLog(message)));
-                return;
-            }
-            string time = DateTime.Now.ToString("HH:mm:ss");
-            txtLog.AppendText($"[{time}] {message}{Environment.NewLine}");
+            { lblStatus.Text = text; lblStatus.ForeColor = color; }
         }
 
         private async void BtnScan_Click(object sender, EventArgs e)
@@ -204,33 +307,22 @@ namespace OutlookEmailForwarder.Forms
             btnScan.Enabled = false;
             btnScan.Text = "扫描中...";
             progressBar.Visible = true;
-            AppendLog("开始扫描收件箱...");
+            SetStatus("扫描中...", Color.Orange);
 
             try
             {
-                var result = await _scanFunc(AppendLog);
+                var result = await _scanFunc(msg => SetStatus(msg, Color.DarkCyan));
+                string summary = result.MatchedCount == 0
+                    ? "扫描完成，无新邮件"
+                    : $"完成：匹配 {result.MatchedCount} 封，成功 {result.SuccessCount}，失败 {result.FailedCount}";
+                SetStatus(summary, result.FailedCount > 0 ? Color.Red : Color.Green);
 
-                lblLastScan.Text = $"上次扫描：{DateTime.Now:HH:mm:ss}";
-                RefreshStatus();
-
-                if (result.MatchedCount == 0)
-                {
-                    AppendLog("扫描完成，没有新的匹配邮件。");
-                }
-                else
-                {
-                    AppendLog($"扫描完成！匹配 {result.MatchedCount} 封，" +
-                              $"成功 {result.SuccessCount} 封，失败 {result.FailedCount} 封。");
-                }
-
-                if (result.FailedCount > 0)
-                {
-                    AppendLog($"有 {result.FailedCount} 封发送失败，将在下次扫描时重试。");
-                }
+                // 扫完刷新表格
+                await LoadEmailsAsync();
             }
             catch (Exception ex)
             {
-                AppendLog($"扫描出错：{ex.Message}");
+                SetStatus($"扫描出错：{ex.Message}", Color.Red);
             }
             finally
             {
@@ -242,28 +334,30 @@ namespace OutlookEmailForwarder.Forms
 
         private void BtnConfig_Click(object sender, EventArgs e)
         {
-            using (var form = new ConfigForm())
+            using (var form = new ConfigForm(_outlookApp))
             {
                 if (form.ShowDialog(this) == DialogResult.OK)
-                {
-                    ConfigManager.Reload();
-                    RefreshStatus();
-                    AppendLog("配置已更新。");
-                }
+                    SetStatus("配置已更新", Color.Green);
             }
         }
 
         private void BtnClearCache_Click(object sender, EventArgs e)
         {
             if (MessageBox.Show(
-                $"当前缓存了 {_tracker.Count} 封已处理邮件记录。\n\n" +
-                "清空后下次扫描会重新提交所有匹配邮件（后端会自动去重，不会产生重复数据）。\n\n确定清空？",
+                $"当前缓存了 {_tracker.Count} 封已处理邮件记录。\n\n清空后下次扫描会重新提交所有匹配邮件（后端会自动去重）。\n\n确定清空？",
                 "清空缓存", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
                 _tracker.ClearAll();
-                RefreshStatus();
-                AppendLog($"缓存已清空，下次扫描将重新提交所有匹配邮件。");
+                SetStatus("缓存已清空", Color.Green);
             }
+        }
+
+        private class EmailRow
+        {
+            public string Subject      { get; set; }
+            public string SenderName   { get; set; }
+            public DateTime ReceivedTime { get; set; }
+            public string Folder       { get; set; }
         }
     }
 
@@ -272,6 +366,6 @@ namespace OutlookEmailForwarder.Forms
         public int ScannedCount { get; set; }
         public int MatchedCount { get; set; }
         public int SuccessCount { get; set; }
-        public int FailedCount { get; set; }
+        public int FailedCount  { get; set; }
     }
 }

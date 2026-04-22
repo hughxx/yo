@@ -1,9 +1,12 @@
 using System;
 using System.Drawing;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Collections.Generic;
 using OutlookEmailForwarder.Models;
 using OutlookEmailForwarder.Services;
+using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace OutlookEmailForwarder.Forms
 {
@@ -14,10 +17,14 @@ namespace OutlookEmailForwarder.Forms
         private TextBox txtBackendUrl;
         private NumericUpDown numInterval;
         private Button btnTestConnection;
-        // 用户信息页
-        private TextBox txtEmployeeId;
-        private TextBox txtDepartment;
-        private TextBox txtProductCategory;
+        // 用户信息页 - 工号（单框：输入+搜索+回填）
+        private ComboBox cboEmployee;
+        private string _selectedSAMAccountName = "";
+        private List<EmployeeInfo> _employeeSearchResults = new List<EmployeeInfo>();
+        // 用户信息页 - 产品
+        private ComboBox cboProduct;
+        private Button btnLoadProducts;
+        // 用户信息页 - 扩展配置
         private TextBox txtCustomJson;
         // 规则页
         private ListView lvRules;
@@ -30,9 +37,11 @@ namespace OutlookEmailForwarder.Forms
         private Button btnCancel;
 
         private AppConfig _config;
+        private readonly Outlook.Application _outlookApp;
 
-        public ConfigForm()
+        public ConfigForm(Outlook.Application outlookApp = null)
         {
+            _outlookApp = outlookApp;
             _config = ConfigManager.Load();
             InitializeComponents();
             LoadConfigToUI();
@@ -74,34 +83,55 @@ namespace OutlookEmailForwarder.Forms
 
             // ===== Tab 2: 用户信息 =====
             var tabUser = new TabPage("用户信息");
-            var lblEmpId = new Label { Text = "工号：", Location = new Point(20, 30), AutoSize = true };
-            txtEmployeeId = new TextBox { Location = new Point(120, 27), Size = new Size(200, 25) };
+            var panelUser = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(0, 0, 4, 0) };
 
-            var lblDept = new Label { Text = "部门：", Location = new Point(20, 70), AutoSize = true };
-            txtDepartment = new TextBox { Location = new Point(120, 67), Size = new Size(200, 25) };
+            // 工号：单框，输入后回车搜索，结果下拉选择后回填
+            var lblEmpSearch = new Label { Text = "工号：", Location = new Point(20, 22), AutoSize = true };
+            cboEmployee = new ComboBox
+            {
+                Location = new Point(75, 19),
+                Size = new Size(485, 25),
+                DropDownStyle = ComboBoxStyle.DropDown,
+                AutoCompleteMode = AutoCompleteMode.None
+            };
+            cboEmployee.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; BtnSearchEmployee_Click(s, e); } };
+            cboEmployee.SelectedIndexChanged += CboEmpResults_SelectedIndexChanged;
 
-            var lblProduct = new Label { Text = "产品分类：", Location = new Point(20, 110), AutoSize = true };
-            txtProductCategory = new TextBox { Location = new Point(120, 107), Size = new Size(200, 25) };
+            // 产品分类
+            var lblProduct = new Label { Text = "产品分类：", Location = new Point(20, 60), AutoSize = true };
+            cboProduct = new ComboBox
+            {
+                Location = new Point(100, 57),
+                Size = new Size(370, 25),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            btnLoadProducts = new Button { Text = "刷新", Location = new Point(478, 57), Size = new Size(50, 27) };
+            btnLoadProducts.Click += BtnLoadProducts_Click;
 
-            var lblCustom = new Label { Text = "扩展配置(JSON)：", Location = new Point(20, 160), AutoSize = true };
+            // 扩展配置
+            var lblCustom = new Label { Text = "扩展配置(JSON)：", Location = new Point(20, 100), AutoSize = true };
             txtCustomJson = new TextBox
             {
-                Location = new Point(20, 185),
-                Size = new Size(540, 180),
+                Location = new Point(20, 120),
+                Size = new Size(540, 230),
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 Font = new Font("Consolas", 9F)
             };
             var lblCustomTip = new Label
             {
-                Text = "扩展配置用于向后端传递额外信息，无需重装插件即可调整。请输入合法的JSON格式。",
-                Location = new Point(20, 370),
+                Text = "扩展配置用于向后端传递额外信息，请输入合法的JSON格式。",
+                Location = new Point(20, 358),
                 Size = new Size(540, 20),
                 ForeColor = Color.Gray
             };
 
-            tabUser.Controls.AddRange(new Control[] { lblEmpId, txtEmployeeId, lblDept, txtDepartment,
-                lblProduct, txtProductCategory, lblCustom, txtCustomJson, lblCustomTip });
+            panelUser.Controls.AddRange(new Control[] {
+                lblEmpSearch, cboEmployee,
+                lblProduct, cboProduct, btnLoadProducts,
+                lblCustom, txtCustomJson, lblCustomTip
+            });
+            tabUser.Controls.Add(panelUser);
 
             // ===== Tab 3: 转发规则 =====
             var tabRules = new TabPage("转发规则");
@@ -148,12 +178,43 @@ namespace OutlookEmailForwarder.Forms
             txtBackendUrl.Text = _config.BackendUrl;
             numInterval.Value = Math.Max(1, Math.Min(1440, _config.ScanIntervalMinutes));
 
-            txtEmployeeId.Text = _config.ExtraInfo.EmployeeId;
-            txtDepartment.Text = _config.ExtraInfo.Department;
-            txtProductCategory.Text = _config.ExtraInfo.ProductCategory;
+            _selectedSAMAccountName = _config.ExtraInfo.EmployeeId;
+            cboEmployee.Text = _selectedSAMAccountName;
             txtCustomJson.Text = _config.CustomJsonConfig;
 
             RefreshRuleList();
+            _ = LoadProductsAsync(_config.ExtraInfo.ProductCategory);
+        }
+
+        private async System.Threading.Tasks.Task LoadProductsAsync(string selectedProduct)
+        {
+            btnLoadProducts.Enabled = false;
+            btnLoadProducts.Text = "加载中";
+            try
+            {
+                using (var client = new ApiClient(txtBackendUrl.Text.Trim()))
+                {
+                    var products = await client.GetProductsAsync();
+                    if (cboProduct.IsDisposed) return;
+                    cboProduct.Invoke(new Action(() =>
+                    {
+                        cboProduct.Items.Clear();
+                        foreach (var p in products)
+                            cboProduct.Items.Add(p);
+                        if (!string.IsNullOrEmpty(selectedProduct))
+                        {
+                            int idx = cboProduct.Items.IndexOf(selectedProduct);
+                            if (idx >= 0) cboProduct.SelectedIndex = idx;
+                        }
+                    }));
+                }
+            }
+            catch { }
+            finally
+            {
+                if (!btnLoadProducts.IsDisposed)
+                    btnLoadProducts.Invoke(new Action(() => { btnLoadProducts.Enabled = true; btnLoadProducts.Text = "刷新"; }));
+            }
         }
 
         private void RefreshRuleList()
@@ -170,6 +231,56 @@ namespace OutlookEmailForwarder.Forms
                 item.ForeColor = rule.Enabled ? Color.Black : Color.Gray;
                 lvRules.Items.Add(item);
             }
+        }
+
+        private async void BtnSearchEmployee_Click(object sender, EventArgs e)
+        {
+            string keyword = cboEmployee.Text.Trim();
+            if (string.IsNullOrEmpty(keyword)) return;
+
+            cboEmployee.Enabled = false;
+            _employeeSearchResults.Clear();
+
+            try
+            {
+                using (var client = new ApiClient(txtBackendUrl.Text.Trim()))
+                {
+                    var results = await client.SearchEmployeesAsync(keyword);
+                    _employeeSearchResults = results;
+                    cboEmployee.Items.Clear();
+                    foreach (var emp in results)
+                        cboEmployee.Items.Add($"{emp.Name}  ({emp.SAMAccountName})");
+                    if (results.Count > 0)
+                        cboEmployee.DroppedDown = true;
+                    else
+                        cboEmployee.Items.Add("（无匹配结果）");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"搜索失败：{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                cboEmployee.Enabled = true;
+                cboEmployee.Focus();
+            }
+        }
+
+        private void CboEmpResults_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            int idx = cboEmployee.SelectedIndex;
+            if (idx < 0 || idx >= _employeeSearchResults.Count) return;
+            var emp = _employeeSearchResults[idx];
+            _selectedSAMAccountName = emp.SAMAccountName;
+            // 回填显示名
+            cboEmployee.Text = emp.Name;
+        }
+
+        private void BtnLoadProducts_Click(object sender, EventArgs e)
+        {
+            string current = cboProduct.SelectedItem?.ToString() ?? "";
+            _ = LoadProductsAsync(current);
         }
 
         private async void BtnTestConnection_Click(object sender, EventArgs e)
@@ -276,11 +387,11 @@ namespace OutlookEmailForwarder.Forms
 
             _config.BackendUrl = txtBackendUrl.Text.Trim();
             _config.ScanIntervalMinutes = (int)numInterval.Value;
-            _config.ExtraInfo.EmployeeId = txtEmployeeId.Text.Trim();
-            _config.ExtraInfo.Department = txtDepartment.Text.Trim();
-            _config.ExtraInfo.ProductCategory = txtProductCategory.Text.Trim();
+            _config.ExtraInfo.EmployeeId = _selectedSAMAccountName;
+            _config.ExtraInfo.ProductCategory = cboProduct.SelectedItem?.ToString() ?? "";
             _config.CustomJsonConfig = string.IsNullOrWhiteSpace(txtCustomJson.Text) ? "{}" : txtCustomJson.Text.Trim();
 
+            // ScanFolders 已在 Tab 操作中实时写入 _config，无需额外赋值
             ConfigManager.Save(_config);
 
             MessageBox.Show("配置已保存！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);

@@ -153,6 +153,7 @@ namespace OutlookEmailForwarder
             try
             {
                 var config = ConfigManager.Load();
+
                 if (config.Rules.Count == 0)
                 {
                     log?.Invoke("未配置任何转发规则。");
@@ -160,7 +161,8 @@ namespace OutlookEmailForwarder
                 }
 
                 log?.Invoke("正在扫描收件箱...");
-                var matchedEmails = _scanner.ScanInbox(_outlookApp, config.Rules, _tracker, log);
+                var matchedEmails = _scanner.ScanInbox(_outlookApp, config.Rules, _tracker, log,
+                    config.ScanFolders);
                 result.MatchedCount = matchedEmails.Count;
 
                 if (matchedEmails.Count == 0)
@@ -194,7 +196,7 @@ namespace OutlookEmailForwarder
                             await _apiClient.ReportErrorAsync(new ErrorReport
                             {
                                 ErrorMessage = apiResult.Message,
-                                OccurredAt = DateTime.Now,
+                                OccurredAt = DateTime.Now.ToString("o"),
                                 EmailId = matched.Mail.EntryID,
                                 ExtraInfo = config.ExtraInfo
                             });
@@ -208,7 +210,7 @@ namespace OutlookEmailForwarder
                         {
                             ErrorMessage = ex.Message,
                             StackTrace = ex.StackTrace,
-                            OccurredAt = DateTime.Now,
+                            OccurredAt = DateTime.Now.ToString("o"),
                             EmailId = matched.Mail?.EntryID,
                             ExtraInfo = config.ExtraInfo
                         });
@@ -222,6 +224,8 @@ namespace OutlookEmailForwarder
 
                 _tracker.Cleanup();
                 _tracker.SaveToDisk();
+                // 单次文件夹扫完后 Enabled 已被置 false，持久化配置
+                ConfigManager.Save(config);
             }
             catch (Exception ex)
             {

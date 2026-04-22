@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -96,9 +97,64 @@ namespace OutlookEmailForwarder.Services
             }
         }
 
+        /// <summary>
+        /// 工号模糊查询，返回匹配的员工列表
+        /// </summary>
+        public async Task<List<EmployeeInfo>> SearchEmployeesAsync(string keyword)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"{_baseUrl}/api/user/search?keyword={Uri.EscapeDataString(keyword)}");
+                var body = await response.Content.ReadAsStringAsync();
+                var result = _serializer.Deserialize<EmployeeSearchResponse>(body);
+                return result?.Data ?? new List<EmployeeInfo>();
+            }
+            catch
+            {
+                return new List<EmployeeInfo>();
+            }
+        }
+
+        /// <summary>
+        /// 获取产品列表
+        /// </summary>
+        public async Task<List<string>> GetProductsAsync()
+        {
+            try
+            {
+                var response = await _http.GetAsync($"{_baseUrl}/api/products");
+                var body = await response.Content.ReadAsStringAsync();
+                var result = _serializer.Deserialize<ProductListResponse>(body);
+                return result?.Data ?? new List<string>();
+            }
+            catch
+            {
+                return new List<string>();
+            }
+        }
+
         public void Dispose()
         {
             _http?.Dispose();
         }
+    }
+
+    public class EmployeeInfo
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string SAMAccountName { get; set; }
+    }
+
+    public class EmployeeSearchResponse
+    {
+        public int Code { get; set; }
+        public List<EmployeeInfo> Data { get; set; }
+    }
+
+    public class ProductListResponse
+    {
+        public int Code { get; set; }
+        public List<string> Data { get; set; }
     }
 }

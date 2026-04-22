@@ -10,9 +10,14 @@ namespace OutlookEmailForwarder.Models
     public class EmailPayload
     {
         /// <summary>
-        /// 邮件唯一标识（Outlook EntryID）
+        /// 邮件唯一标识（Outlook EntryID，用于插件端去重）
         /// </summary>
         public string EmailId { get; set; }
+
+        /// <summary>
+        /// 会话主题（ConversationTopic），后端以此为唯一键聚合同一话题的邮件
+        /// </summary>
+        public string ConversationTopic { get; set; }
 
         /// <summary>
         /// 邮件主题
@@ -30,9 +35,9 @@ namespace OutlookEmailForwarder.Models
         public string SenderName { get; set; }
 
         /// <summary>
-        /// 收件时间
+        /// 收件时间（ISO 8601 字符串，避免 JavaScriptSerializer 输出 /Date(xxx)/ 格式）
         /// </summary>
-        public DateTime ReceivedTime { get; set; }
+        public string ReceivedTime { get; set; }
 
         /// <summary>
         /// HTML正文（内嵌图片已转为base64 data URI）
@@ -92,7 +97,8 @@ namespace OutlookEmailForwarder.Models
     {
         public string ErrorMessage { get; set; }
         public string StackTrace { get; set; }
-        public DateTime OccurredAt { get; set; }
+        /// <summary>ISO 8601 字符串</summary>
+        public string OccurredAt { get; set; }
         public string EmailId { get; set; }
         public UserExtraInfo ExtraInfo { get; set; }
     }

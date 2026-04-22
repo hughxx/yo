@@ -10,10 +10,13 @@ namespace OutlookEmailForwarder.Services
     public class EmailScanner
     {
         /// <summary>
-        /// 扫描所有账户的收件箱
+        /// 扫描文件夹。
+        /// scanFolders 为空时退回扫所有账户的默认收件箱（兼容未配置状态）。
+        /// 扫完后，非 Recurring 的文件夹会被自动置为 Enabled=false（调用方负责保存配置）。
         /// </summary>
         public List<MatchedEmail> ScanInbox(Outlook.Application app, List<ForwardRule> rules,
-            ProcessedTracker tracker, Action<string> log = null)
+            ProcessedTracker tracker, Action<string> log = null,
+            List<ScanFolderConfig> scanFolders = null)
         {
             var results = new List<MatchedEmail>();
             if (rules == null || rules.Count == 0) return results;
@@ -24,45 +27,65 @@ namespace OutlookEmailForwarder.Services
             var ns = app.GetNamespace("MAPI");
             Outlook.Stores stores = null;
 
+            // (folder对象, 显示标签, 对应配置项 or null)
+            var foldersToScan = new List<(Outlook.MAPIFolder Folder, string Label, ScanFolderConfig Config)>();
+
             try
             {
                 stores = ns.Stores;
-                int storeCount = stores.Count;
-                log?.Invoke($"发现 {storeCount} 个邮件账户/存储");
 
-                for (int s = 1; s <= storeCount; s++)
+                var configured = scanFolders?.Where(f => f.Enabled).ToList();
+
+                if (configured == null || configured.Count == 0)
                 {
-                    Outlook.Store store = null;
-                    Outlook.MAPIFolder inbox = null;
-                    Outlook.Items items = null;
-
-                    try
+                    // 未配置 → 扫所有账户默认收件箱
+                    log?.Invoke($"发现 {stores.Count} 个邮件账户/存储");
+                    for (int s = 1; s <= stores.Count; s++)
                     {
-                        store = stores[s];
-                        string storeName = store.DisplayName ?? $"Store#{s}";
-
+                        Outlook.Store store = null;
                         try
                         {
-                            inbox = store.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderInbox);
+                            store = stores[s];
+                            string storeName = store.DisplayName ?? $"Store#{s}";
+                            try
+                            {
+                                var inbox = store.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderInbox);
+                                foldersToScan.Add((inbox, $"{storeName} · 收件箱", null));
+                            }
+                            catch { log?.Invoke($"[{storeName}] 无默认收件箱，跳过"); }
                         }
-                        catch
-                        {
-                            log?.Invoke($"[{storeName}] 跳过（无收件箱）");
-                            continue;
-                        }
+                        finally { if (store != null) try { Marshal.ReleaseComObject(store); } catch { } }
+                    }
+                }
+                else
+                {
+                    // 按配置扫描
+                    foreach (var cfg in configured)
+                    {
+                        var folder = TryGetFolderByPath(ns, cfg.Path);
+                        if (folder != null)
+                            foldersToScan.Add((folder, cfg.DisplayName, cfg));
+                        else
+                            log?.Invoke($"[配置文件夹] 找不到路径：{cfg.Path}，跳过");
+                    }
+                }
 
-                        items = inbox.Items;
+                foreach (var (folder, label, cfg) in foldersToScan)
+                {
+                    if (folder == null) continue;
+                    Outlook.Items items = null;
+                    try
+                    {
+                        items = folder.Items;
                         items.Sort("[ReceivedTime]", true);
 
                         int totalCount = items.Count;
-                        log?.Invoke($"[{storeName}] 收件箱共 {totalCount} 封邮件，开始遍历...");
+                        bool recurring = cfg?.Recurring ?? true;
+                        log?.Invoke($"[{label}] 共 {totalCount} 封，{(recurring ? "定时扫描" : "单次扫描")}");
 
-                        int scanned = 0;
-                        int skippedProcessed = 0;
-                        int skippedNotMail = 0;
-                        int skippedError = 0;
-                        int matched = 0;
-                        int maxScan = 2000;
+                        int scanned = 0, skippedProcessed = 0, skippedNotMail = 0,
+                            skippedError = 0, matched = 0;
+                        const int maxScan = 2000;
 
                         object curItem = items.GetFirst();
                         while (curItem != null && scanned + skippedNotMail + skippedError < maxScan)
@@ -80,8 +103,6 @@ namespace OutlookEmailForwarder.Services
                             {
                                 scanned++;
 
-                                // 插件端只做轻量标记避免同一次运行期间重复扫描
-                                // 真正的去重交给后端（按 用户工号+邮件ID）
                                 if (tracker.IsProcessed(mail.EntryID))
                                 {
                                     skippedProcessed++;
@@ -89,11 +110,12 @@ namespace OutlookEmailForwarder.Services
                                     continue;
                                 }
 
-                                // 时间截断优化（非首次扫描时）
-                                if (tracker.LastProcessedTime > DateTime.MinValue &&
+                                // 定时收件箱才做时间截断；单次文件夹全量扫
+                                if (recurring &&
+                                    tracker.LastProcessedTime > DateTime.MinValue &&
                                     mail.ReceivedTime < tracker.LastProcessedTime.AddDays(-1))
                                 {
-                                    log?.Invoke($"[{storeName}] 到达历史边界，停止（{mail.ReceivedTime:g}）");
+                                    log?.Invoke($"[{label}] 到达历史边界，停止（{mail.ReceivedTime:g}）");
                                     break;
                                 }
 
@@ -103,11 +125,7 @@ namespace OutlookEmailForwarder.Services
                                     {
                                         matched++;
                                         log?.Invoke($"  命中[{rule.Name}]：{mail.Subject}");
-                                        results.Add(new MatchedEmail
-                                        {
-                                            Mail = mail,
-                                            RuleName = rule.Name
-                                        });
+                                        results.Add(new MatchedEmail { Mail = mail, RuleName = rule.Name });
                                         break;
                                     }
                                 }
@@ -118,28 +136,20 @@ namespace OutlookEmailForwarder.Services
                                 log?.Invoke($"  第{scanned}封处理异常：{ex.Message}");
                             }
 
-                            // GetNext 放在最外层，确保任何情况都往前走
-                            try
-                            {
-                                curItem = items.GetNext();
-                            }
-                            catch
-                            {
-                                // GetNext 失败则终止本 store 的遍历
-                                log?.Invoke($"[{storeName}] 遍历中断（GetNext异常）");
-                                break;
-                            }
+                            try { curItem = items.GetNext(); }
+                            catch { log?.Invoke($"[{label}] 遍历中断"); break; }
                         }
 
-                        log?.Invoke($"[{storeName}] 完成：遍历 {scanned}/{totalCount} 封，" +
-                                    $"已处理 {skippedProcessed}，非邮件 {skippedNotMail}，" +
-                                    $"异常 {skippedError}，命中 {matched} 封");
+                        log?.Invoke($"[{label}] 完成：遍历 {scanned}/{totalCount}，命中 {matched}");
+
+                        // 单次文件夹扫完后自动禁用
+                        if (cfg != null && !cfg.Recurring)
+                            cfg.Enabled = false;
                     }
                     finally
                     {
                         if (items != null) try { Marshal.ReleaseComObject(items); } catch { }
-                        if (inbox != null) try { Marshal.ReleaseComObject(inbox); } catch { }
-                        if (store != null) try { Marshal.ReleaseComObject(store); } catch { }
+                        try { Marshal.ReleaseComObject(folder); } catch { }
                     }
                 }
             }
@@ -149,6 +159,74 @@ namespace OutlookEmailForwarder.Services
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// 按 Outlook 完整路径（如 \\账户名\收件箱\归档）定位文件夹，找不到返回 null
+        /// </summary>
+        private Outlook.MAPIFolder TryGetFolderByPath(Outlook.NameSpace ns, string fullPath)
+        {
+            // 路径格式：\\StoreName\Folder\SubFolder（或 /StoreName/Folder/SubFolder）
+            string normalized = fullPath.Replace('/', '\\').TrimStart('\\');
+            string[] parts = normalized.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 1) return null;
+
+            string storeName = parts[0];
+            Outlook.Stores stores = null;
+            Outlook.Store targetStore = null;
+            try
+            {
+                stores = ns.Stores;
+                for (int i = 1; i <= stores.Count; i++)
+                {
+                    var s = stores[i];
+                    if (string.Equals(s.DisplayName, storeName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetStore = s;
+                        break;
+                    }
+                    Marshal.ReleaseComObject(s);
+                }
+            }
+            finally
+            {
+                if (stores != null) Marshal.ReleaseComObject(stores);
+            }
+
+            if (targetStore == null) return null;
+
+            Outlook.MAPIFolder current = null;
+            try
+            {
+                current = targetStore.GetRootFolder();
+                for (int i = 1; i < parts.Length; i++)
+                {
+                    Outlook.Folders subFolders = null;
+                    Outlook.MAPIFolder next = null;
+                    try
+                    {
+                        subFolders = current.Folders;
+                        try { next = subFolders[parts[i]]; } catch { }
+                    }
+                    finally
+                    {
+                        if (subFolders != null) Marshal.ReleaseComObject(subFolders);
+                    }
+                    Marshal.ReleaseComObject(current);
+                    current = next;
+                    if (current == null) return null;
+                }
+                return current;
+            }
+            catch
+            {
+                if (current != null) try { Marshal.ReleaseComObject(current); } catch { }
+                return null;
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(targetStore);
+            }
         }
 
         private bool MatchesRule(Outlook.MailItem mail, ForwardRule rule)
@@ -213,10 +291,11 @@ namespace OutlookEmailForwarder.Services
             var payload = new EmailPayload
             {
                 EmailId = mail.EntryID,
+                ConversationTopic = mail.ConversationTopic ?? "",
                 Subject = mail.Subject ?? "",
                 SenderEmail = mail.SenderEmailAddress ?? "",
                 SenderName = mail.SenderName ?? "",
-                ReceivedTime = mail.ReceivedTime,
+                ReceivedTime = mail.ReceivedTime.ToString("o"),  // ISO 8601，避免 /Date(xxx)/ 序列化问题
                 TextBody = mail.Body ?? "",
                 MatchedRuleName = ruleName,
                 ExtraInfo = config.ExtraInfo,
