@@ -66,7 +66,7 @@ class RuleDialog(QDialog):
 class SettingsDialog(QDialog):
     def __init__(self, settings: dict, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('邮件设置')
+        self.setWindowTitle('设置')
         self.setMinimumSize(700, 480)
         self._s       = dict(settings)
         self._workers = []
@@ -89,13 +89,20 @@ class SettingsDialog(QDialog):
 
     # ── 基本 tab ─────────────────────────────────────────
     def _make_basic(self):
-        w = QWidget()
-        lay = QFormLayout(w)
+        # 外层 VBox：表单顶对齐，底部 stretch 撑开
+        outer = QWidget()
+        vlay = QVBoxLayout(outer)
+        vlay.setContentsMargins(0, 0, 0, 0)
+        vlay.setSpacing(0)
+
+        form_w = QWidget()
+        lay = QFormLayout(form_w)
         lay.setVerticalSpacing(4)
         lay.setHorizontalSpacing(8)
-        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setContentsMargins(8, 8, 8, 8)
 
         row1 = QHBoxLayout()
+        row1.setSpacing(6)
         self._backend_url = QLineEdit(self._s.get('backendUrl', ''))
         self._backend_url.setPlaceholderText('http://localhost:8023')
         btn_test = QPushButton('测试连接')
@@ -107,7 +114,7 @@ class SettingsDialog(QDialog):
 
         self._user_id = QLineEdit(self._s.get('userId', ''))
         self._user_id.setPlaceholderText('输入姓名或工号搜索')
-        self._userinfo_map   = {}   # display → sAMAccountName
+        self._userinfo_map   = {}
         self._selecting_user = False
         self._user_completer = QCompleter([], self)
         self._user_completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -122,10 +129,10 @@ class SettingsDialog(QDialog):
         lay.addRow('工号：', self._user_id)
 
         row3 = QHBoxLayout()
+        row3.setSpacing(6)
         self._ns_combo = QComboBox()
         btn_ns = QPushButton('刷新')
-        btn_ns.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        btn_ns.setMinimumWidth(50)
+        btn_ns.setFixedWidth(50)
         btn_ns.clicked.connect(self._load_namespaces)
         row3.addWidget(self._ns_combo)
         row3.addWidget(btn_ns)
@@ -143,8 +150,11 @@ class SettingsDialog(QDialog):
         self._custom_json.setFont(QFont('Consolas', 10))
         lay.addRow('额外配置：', self._custom_json)
 
+        vlay.addWidget(form_w)
+        vlay.addStretch()
+
         self._load_namespaces()
-        return w
+        return outer
 
     def _search_userinfo(self):
         if self._selecting_user:
