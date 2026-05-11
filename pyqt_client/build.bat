@@ -9,7 +9,6 @@ echo ===== PyInstaller 打包 =====
 pyinstaller --onefile --windowed ^
     --name 智能助手 ^
     --hidden-import win32com.client ^
-    --hidden-import win32com.shell ^
     --hidden-import pythoncom ^
     --hidden-import pywintypes ^
     main.py
