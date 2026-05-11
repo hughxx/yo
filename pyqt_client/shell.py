@@ -4,6 +4,8 @@ from PyQt5.QtWidgets import (
     QPushButton, QStackedWidget, QSizePolicy
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
+import os as _os
 
 from modules.email.panel import EmailPanel
 from modules.welink.panel import WelinkPanel
@@ -164,6 +166,9 @@ class MainShell(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('研发知识助手-Extension')
+        _ico = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'assets', 'icon.ico')
+        if _os.path.exists(_ico):
+            self.setWindowIcon(QIcon(_ico))
         self.resize(1020, 640)
         self.setMinimumSize(820, 500)
 

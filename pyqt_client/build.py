@@ -14,6 +14,7 @@ subprocess.run(
         sys.executable, "-m", "PyInstaller",
         "--onefile", "--windowed",
         "--name", "研发知识助手-Extension",
+        "--icon", "assets/icon.ico",
         "--hidden-import", "win32com.client",
         "--hidden-import", "pythoncom",
         "--hidden-import", "pywintypes",
