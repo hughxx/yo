@@ -127,25 +127,33 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
         try:
             items = folder.Items
             folder_count = items.Count
-            result.append({'_diag': f'{folder.Name} ({folder_count}封)'})
             try:
                 items.Sort('[ReceivedTime]', True)
             except Exception:
                 pass
             n = min(count, folder_count)
+            ok = 0
+            first_err = None
             for i in range(n):
                 try:
                     m = items[i + 1]
+                    rt = getattr(m, 'ReceivedTime', None)
                     result.append({
                         'item_id':            m.EntryID,
-                        'subject':            m.Subject or '',
-                        'sender_name':        m.SenderName or '',
-                        'sender_email':       m.SenderEmailAddress or '',
-                        'received_time':      m.ReceivedTime.strftime('%Y-%m-%dT%H:%M:%S'),
-                        'conversation_topic': m.ConversationTopic or '',
+                        'subject':            getattr(m, 'Subject', '') or '',
+                        'sender_name':        getattr(m, 'SenderName', '') or '',
+                        'sender_email':       getattr(m, 'SenderEmailAddress', '') or '',
+                        'received_time':      rt.strftime('%Y-%m-%dT%H:%M:%S') if rt else '1970-01-01T00:00:00',
+                        'conversation_topic': getattr(m, 'ConversationTopic', '') or '',
                     })
-                except Exception:
-                    pass
+                    ok += 1
+                except Exception as e:
+                    if first_err is None:
+                        first_err = repr(e)
+            diag = f'{folder.Name} ({folder_count}封，读取{ok}封)'
+            if first_err:
+                diag += f'  错误: {first_err}'
+            result.append({'_diag': diag})
         except Exception as e:
             result.append({'_folder_error': str(e)})
 
