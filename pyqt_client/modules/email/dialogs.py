@@ -91,9 +91,9 @@ class SettingsDialog(QDialog):
     def _make_basic(self):
         w = QWidget()
         lay = QFormLayout(w)
-        lay.setSpacing(6)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setVerticalSpacing(6)
+        lay.setVerticalSpacing(4)
+        lay.setHorizontalSpacing(8)
+        lay.setContentsMargins(8, 6, 8, 6)
 
         row1 = QHBoxLayout()
         self._backend_url = QLineEdit(self._s.get('backendUrl', ''))
