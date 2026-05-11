@@ -137,7 +137,7 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
             first_err = None
             for i in range(n):
                 try:
-                    m = items[i + 1]
+                    m = items[i]
                     rt = getattr(m, 'ReceivedTime', None)
                     result.append({
                         'item_id':            m.EntryID,
