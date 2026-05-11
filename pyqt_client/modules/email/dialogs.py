@@ -176,7 +176,8 @@ class SettingsDialog(QDialog):
         self._workers.append(w)
 
     def _on_userinfo_selected(self, display_text: str):
-        self._user_id.setText(self._userinfo_map.get(display_text, display_text))
+        value = self._userinfo_map.get(display_text, display_text)
+        QTimer.singleShot(0, lambda: self._user_id.setText(value))
 
     def _test_conn(self):
         url = self._backend_url.text().strip()
