@@ -148,6 +148,8 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
                         'conversation_topic': getattr(m, 'ConversationTopic', '') or '',
                     })
                     ok += 1
+                except IndexError:
+                    break  # items.Count 与实际可访问数量偏差，到头了
                 except Exception as e:
                     if first_err is None:
                         first_err = repr(e)
