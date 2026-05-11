@@ -3,6 +3,7 @@ import os
 import tempfile
 import pythoncom
 import win32com.client
+import win32timezone  # noqa: F401 — PyInstaller must bundle this for win32com timezone handling
 
 _INBOX = 6  # olFolderInbox
 
