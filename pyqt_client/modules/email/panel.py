@@ -472,7 +472,7 @@ class EmailPanel(QWidget):
             return backend.get_parse_status(topics, ns)
 
         def _done(status_map):
-            for e in page_emails:
+            for e in self._emails:
                 raw = status_map.get(e.get('conversation_topic', '').strip(), '')
                 if raw:
                     e['parseStatus'] = _parse_status(raw)
