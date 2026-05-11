@@ -210,11 +210,15 @@ class EmailPanel(QWidget):
 
     def _on_refresh_done(self, emails):
         errors = [e for e in emails if '_folder_error' in e]
-        self._emails = [e for e in emails if '_folder_error' not in e]
+        diags  = [e for e in emails if '_diag' in e]
+        self._emails = [e for e in emails if '_folder_error' not in e and '_diag' not in e]
         self._render_table()
         if errors:
             msgs = '；'.join(e['_folder_error'] for e in errors)
             self._set_status(f'文件夹错误：{msgs}', 'red')
+        elif diags:
+            diag_str = '  '.join(e['_diag'] for e in diags)
+            self._set_status(f'就绪 [{diag_str}] 读取 {len(self._emails)} 封', 'green')
         else:
             self._set_status(f'就绪，读取 {len(self._emails)} 封', 'green')
         self._set_busy()

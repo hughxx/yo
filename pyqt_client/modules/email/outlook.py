@@ -126,11 +126,13 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
     for folder in folders:
         try:
             items = folder.Items
+            folder_count = items.Count
+            result.append({'_diag': f'{folder.Name} ({folder_count}封)'})
             try:
                 items.Sort('[ReceivedTime]', True)
             except Exception:
-                pass  # Sort 失败时仍按默认顺序遍历
-            n = min(count, items.Count)
+                pass
+            n = min(count, folder_count)
             for i in range(n):
                 try:
                     m = items[i + 1]
@@ -145,7 +147,7 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
                 except Exception:
                     pass
         except Exception as e:
-            result.append({'_folder_error': str(e)})  # 临时诊断
+            result.append({'_folder_error': str(e)})
 
     result.sort(key=lambda x: x['received_time'], reverse=True)
     return result[:count]

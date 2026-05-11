@@ -22,6 +22,10 @@ backend/
 client/
 ews_cli/
 
+# 根目录脚本（非分发物）
+/build.bat
+/build_client.bat
+
 # 杂项
 *.zip
 *.db
