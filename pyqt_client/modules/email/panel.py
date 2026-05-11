@@ -432,8 +432,14 @@ class EmailPanel(QWidget):
 
             self._table.setItem(r, 2, QTableWidgetItem(e['received_time'].replace('T', ' ')))
             self._table.setItem(r, 3, QTableWidgetItem(e['sender_name']))
-            self._table.setItem(r, 4, QTableWidgetItem(e['subject']))
-            self._table.setItem(r, 5, QTableWidgetItem(e['conversation_topic']))
+
+            subj_item = QTableWidgetItem(e['subject'])
+            subj_item.setToolTip(e['subject'])
+            self._table.setItem(r, 4, subj_item)
+
+            topic_item = QTableWidgetItem(e['conversation_topic'])
+            topic_item.setToolTip(e['conversation_topic'])
+            self._table.setItem(r, 5, topic_item)
 
         self._total_label.setText(f'共 {len(rows_data)} 封')
         self._page_label.setText(f'第 {self._page} / {total} 页')

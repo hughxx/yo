@@ -102,6 +102,7 @@ def upsert_email(db, data: dict, force: bool = False):
         email.sender_name   = data.get("SenderName", "")
         email.received_time = received_time
         email.html_body     = html_body
+        email.upload_by     = user_id
         email.updated_at    = _now()
         content_updated     = True
         should_process      = True
