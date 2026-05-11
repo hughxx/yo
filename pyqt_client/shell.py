@@ -163,7 +163,7 @@ _MODULES = [
 class MainShell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('智能助手')
+        self.setWindowTitle('研发知识助手-Extension')
         self.resize(1020, 640)
         self.setMinimumSize(820, 500)
 
@@ -221,4 +221,4 @@ class MainShell(QMainWindow):
 
         if 0 <= idx < len(self._panels):
             self._panels[idx].activate()
-            self.setWindowTitle(f'智能助手 — {_MODULES[idx][1]}')
+            self.setWindowTitle(f'研发知识助手-Extension — {_MODULES[idx][0]}')

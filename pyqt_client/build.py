@@ -13,7 +13,7 @@ subprocess.run(
     [
         sys.executable, "-m", "PyInstaller",
         "--onefile", "--windowed",
-        "--name", "智能助手",
+        "--name", "研发知识助手-Extension",
         "--hidden-import", "win32com.client",
         "--hidden-import", "pythoncom",
         "--hidden-import", "pywintypes",
