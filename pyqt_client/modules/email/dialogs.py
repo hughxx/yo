@@ -212,10 +212,11 @@ class SettingsDialog(QDialog):
         lay.addWidget(hint)
 
         top = QHBoxLayout()
-        btn_load = QPushButton('从 Outlook 加载文件夹')
+        self._btn_folder_refresh = QPushButton('刷新')
+        self._btn_folder_refresh.setFixedWidth(60)
         self._folder_hint = QLabel('')
         self._folder_hint.setStyleSheet('color: #888; font-size: 11px;')
-        top.addWidget(btn_load)
+        top.addWidget(self._btn_folder_refresh)
         top.addWidget(self._folder_hint)
         top.addStretch()
         lay.addLayout(top)
@@ -224,19 +225,41 @@ class SettingsDialog(QDialog):
         self._folder_list.setAlternatingRowColors(True)
         lay.addWidget(self._folder_list)
 
-        btn_load.clicked.connect(self._load_outlook_folders)
+        self._btn_folder_refresh.clicked.connect(self._load_outlook_folders)
+        self._folder_loading = False
 
-        # 预填已选
         self._scan_folders = set(self._s.get('scanFolders', []))
+        self._prefill_folders()
         return w
 
+    def _prefill_folders(self):
+        """先把已保存的勾选项显示出来，等刷新后合并全量列表。"""
+        if not self._scan_folders:
+            return
+        self._folder_list.blockSignals(True)
+        self._folder_list.clear()
+        for path in sorted(self._scan_folders):
+            item = QListWidgetItem(path)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            self._folder_list.addItem(item)
+        self._folder_list.blockSignals(False)
+        self._folder_list.itemChanged.connect(self._on_folder_changed)
+        self._folder_hint.setText(f'已选 {len(self._scan_folders)} 个（点击刷新加载全部）')
+
     def _load_outlook_folders(self):
+        if self._folder_loading:
+            return
+        self._folder_loading = True
+        self._btn_folder_refresh.setEnabled(False)
         self._folder_hint.setText('加载中...')
 
         def _work():
             return outlook.folder_list()
 
         def _done(folders):
+            self._folder_loading = False
+            self._btn_folder_refresh.setEnabled(True)
             self._folder_hint.setText(f'共 {len(folders)} 个文件夹')
             self._folder_list.blockSignals(True)
             self._folder_list.clear()
@@ -249,6 +272,8 @@ class SettingsDialog(QDialog):
             self._folder_list.itemChanged.connect(self._on_folder_changed)
 
         def _fail(msg):
+            self._folder_loading = False
+            self._btn_folder_refresh.setEnabled(True)
             self._folder_hint.setText(f'加载失败: {msg}')
 
         w = Worker(_work)
@@ -343,9 +368,12 @@ class SettingsDialog(QDialog):
         return t
 
     def _on_tab_changed(self, idx):
-        if self._tabs.tabText(idx) == '规则':
+        tab = self._tabs.tabText(idx)
+        if tab == '规则':
             self._load_cloud_rules()
             self._load_rules()
+        elif tab == '文件夹':
+            self._load_outlook_folders()
 
     # ── 云端规则操作 ──────────────────────────────────
     def _load_cloud_rules(self):
