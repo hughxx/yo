@@ -75,3 +75,12 @@ class EmailRule(Base):
             "logic":         self.logic,
             "enabled":       bool(self.enabled),
         }
+
+
+class ImageCache(Base):
+    __tablename__ = "t_collection_image_cache"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    hash       = Column(String(64), nullable=False, unique=True, index=True)  # SHA-256 hex
+    url        = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=_now)

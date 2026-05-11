@@ -164,11 +164,12 @@ def search_userinfo(info: str = ""):
 async def upload_image(
     file: UploadFile = File(...),
     filename: str = Form(None),
+    db: Session = Depends(get_db),
 ):
     file_name = (filename or file.filename or "image.png").strip()
     logger.info("upload_image: %s", file_name)
     try:
-        url = img_to_url(await file.read(), file_name)
+        url = img_to_url(await file.read(), file_name, db=db)
         logger.info("upload_image ok: %s", url)
         return {"Success": True, "Url": url}
     except Exception as e:
