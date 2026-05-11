@@ -43,11 +43,9 @@ python -m server
 ```bash
 cd pyqt_client
 
-# 安装依赖
-pip install -r requirements.txt
-
-# 打包
-build.bat
+# 打包（自动安装依赖）
+python build.py
+# 或双击 build.bat
 ```
 
 产物输出至 `pyqt_client/dist/智能助手.exe`，双击即可运行，无需 Python 环境。
