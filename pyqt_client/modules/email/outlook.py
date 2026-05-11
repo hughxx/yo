@@ -149,8 +149,10 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
         except Exception as e:
             result.append({'_folder_error': str(e)})
 
-    result.sort(key=lambda x: x['received_time'], reverse=True)
-    return result[:count]
+    diag_entries = [x for x in result if '_diag' in x or '_folder_error' in x]
+    email_entries = [x for x in result if '_diag' not in x and '_folder_error' not in x]
+    email_entries.sort(key=lambda x: x['received_time'], reverse=True)
+    return diag_entries + email_entries[:count]
 
 
 # ── 邮件详情 ──────────────────────────────────────────────
