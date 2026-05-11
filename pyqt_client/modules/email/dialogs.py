@@ -539,7 +539,8 @@ class SettingsDialog(QDialog):
             self._tabs.setCurrentIndex(0)
             return
         self._s['backendUrl']          = url
-        self._s['userId']              = self._user_id.text().strip()
+        uid = self._user_id.text().strip()
+        self._s['userId']              = self._userinfo_map.get(uid, uid)
         self._s['namespace']           = self._ns_combo.currentData() or ''
         self._s['scanIntervalMinutes'] = self._interval.value()
         self._s['customJsonConfig']    = self._custom_json.toPlainText()
