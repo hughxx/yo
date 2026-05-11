@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt5.QtWidgets import QApplication
 from shell import MainShell, QSS
 
-_LOG = Path.home() / 'email_assistant_error.log'
+_LOG = (Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent) / 'error.log'
 
 
 def _hook(exc_type, exc_value, exc_tb):
