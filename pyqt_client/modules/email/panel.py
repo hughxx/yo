@@ -1,8 +1,8 @@
 """邮件模块主面板（基于 win32com Outlook）"""
 import json
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor
+from PyQt5.QtCore import Qt, QTimer, QPoint
+from PyQt5.QtGui import QColor, QFont
 
 from modules.email import outlook, rules as rules_mod
 from modules.email.dialogs import SettingsDialog
@@ -11,6 +11,72 @@ import store  # 仅用于 settings 读写
 from utils import Worker
 
 PAGE_SIZE = 30
+
+
+class _StatusPopup(QFrame):
+    """悬浮弹窗，显示完整状态文字，支持文字选中和复制。"""
+    def __init__(self):
+        super().__init__(None, Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setStyleSheet(
+            'QFrame { background:#2b2b2b; border:1px solid #555; border-radius:4px; }'
+            'QTextEdit { background:transparent; color:#eee; border:none; }'
+        )
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+        self._edit = QTextEdit()
+        self._edit.setReadOnly(True)
+        self._edit.setFont(QFont('Consolas', 9))
+        self._edit.setMinimumWidth(420)
+        self._edit.setMaximumWidth(700)
+        lay.addWidget(self._edit)
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.timeout.connect(self.hide)
+
+    def show_at(self, text: str, global_pos: QPoint):
+        self._edit.setPlainText(text)
+        self._edit.document().setTextWidth(420)
+        lines = text.count('\n') + 1
+        h = min(240, max(60, lines * 18 + 24))
+        self._edit.setFixedHeight(h)
+        self.adjustSize()
+        self.move(global_pos)
+        self._hide_timer.stop()
+        self.show()
+
+    def schedule_hide(self):
+        self._hide_timer.start(300)
+
+    def enterEvent(self, e):
+        self._hide_timer.stop()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self.schedule_hide()
+        super().leaveEvent(e)
+
+
+class _StatusLabel(QLabel):
+    """状态标签，悬停时弹出完整内容窗口。"""
+    def __init__(self, popup: '_StatusPopup', parent=None):
+        super().__init__(parent)
+        self._popup = popup
+        self._full  = ''
+
+    def set_status(self, text: str, color: str):
+        self._full = text
+        self.setText(text.split('\n')[0])
+        self.setStyleSheet(f'color:{color}; font-weight:bold;')
+
+    def enterEvent(self, e):
+        if self._full:
+            gpos = self.mapToGlobal(QPoint(0, self.height() + 2))
+            self._popup.show_at(self._full, gpos)
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._popup.schedule_hide()
+        super().leaveEvent(e)
 
 
 def _badge(text: str, bg: str, fg: str = '#fff') -> QTableWidgetItem:
@@ -79,8 +145,9 @@ class EmailPanel(QWidget):
 
         lay.addStretch()
 
-        self._status_label = QLabel('就绪')
-        self._status_label.setStyleSheet('color: green; font-weight: bold;')
+        self._status_popup = _StatusPopup()
+        self._status_label = _StatusLabel(self._status_popup)
+        self._status_label.set_status('就绪', 'green')
         self._status_label.setAlignment(Qt.AlignCenter)
         lay.addWidget(self._status_label)
 
@@ -169,8 +236,7 @@ class EmailPanel(QWidget):
 
     # ── 状态控制 ──────────────────────────────────────────
     def _set_status(self, text: str, color: str = 'green'):
-        self._status_label.setText(text)
-        self._status_label.setStyleSheet(f'color: {color}; font-weight: bold;')
+        self._status_label.set_status(text, color)
 
     def _set_busy(self, loading=False, syncing=False):
         self._loading = loading
