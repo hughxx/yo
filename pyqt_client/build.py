@@ -2,7 +2,7 @@ import subprocess, sys, os
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-EXE_NAME = "RD-Extension"   # ASCII only — window title set separately in shell.py
+EXE_NAME = "extension"
 
 print("===== 安装依赖 =====")
 subprocess.run(
