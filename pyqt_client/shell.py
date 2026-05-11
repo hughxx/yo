@@ -221,4 +221,4 @@ class MainShell(QMainWindow):
 
         if 0 <= idx < len(self._panels):
             self._panels[idx].activate()
-            self.setWindowTitle(f'研发知识助手-Extension — {_MODULES[idx][0]}')
+            self.setWindowTitle('研发知识助手-Extension')
