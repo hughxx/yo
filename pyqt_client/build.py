@@ -17,6 +17,7 @@ subprocess.run(
         "--hidden-import", "win32com.client",
         "--hidden-import", "pythoncom",
         "--hidden-import", "pywintypes",
+        "--hidden-import", "win32timezone",
         "main.py",
     ],
     check=True,
