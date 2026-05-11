@@ -1,6 +1,0 @@
-D:\claude_max\0413email\OutlookEmailForwarder\obj\x64\Release\OutlookEmailForwarder.csproj.AssemblyReference.cache
-D:\claude_max\0413email\OutlookEmailForwarder\obj\x64\Release\OutlookEmailForwarder.csproj.CoreCompileInputs.cache
-D:\claude_max\0413email\OutlookEmailForwarder\bin\Release\OutlookEmailForwarder.dll
-D:\claude_max\0413email\OutlookEmailForwarder\bin\Release\OutlookEmailForwarder.pdb
-D:\claude_max\0413email\OutlookEmailForwarder\obj\x64\Release\OutlookEmailForwarder.dll
-D:\claude_max\0413email\OutlookEmailForwarder\obj\x64\Release\OutlookEmailForwarder.pdb

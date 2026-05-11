@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# PyInstaller 产物
+pyqt_client/build/
+pyqt_client/dist/
+pyqt_client/*.spec
+
+# 服务端敏感配置（clone 后自行复制 settings.example.py 并填写）
+server/utils/settings.py
+server/utils/kms_utils.py
+
+# 可执行文件
+pyqt_client/ews_cli.exe
+
+# 旧项目 / 无关目录
+OutlookEmailForwarder/
+backend/
+client/
+ews_cli/
+
+# 杂项
+*.zip
+*.db
+email_record.txt
+welink_usage*.txt
+.claude/

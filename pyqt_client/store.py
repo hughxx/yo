@@ -1,0 +1,45 @@
+"""设置 + 已处理邮件 ID 持久化"""
+import json
+from pathlib import Path
+
+_SETTINGS  = Path.home() / '.email_assistant.json'
+_PROCESSED = Path.home() / '.email_assistant_processed.json'
+
+DEFAULT = {
+    'backendUrl':          'http://localhost:8023',
+    'userId':              '',
+    'namespace':           '',
+    'scanIntervalMinutes': 60,
+    'customJsonConfig':    '{}',
+    'scanFolders':         [],
+}
+
+def load_settings() -> dict:
+    if _SETTINGS.exists():
+        try:
+            return {**DEFAULT, **json.loads(_SETTINGS.read_text('utf-8'))}
+        except Exception:
+            pass
+    return dict(DEFAULT)
+
+def save_settings(s: dict):
+    _SETTINGS.write_text(json.dumps(s, ensure_ascii=False, indent=2), 'utf-8')
+
+def load_processed() -> set:
+    if _PROCESSED.exists():
+        try:
+            return set(json.loads(_PROCESSED.read_text('utf-8')))
+        except Exception:
+            pass
+    return set()
+
+def add_processed(ids: list):
+    existing = load_processed()
+    existing.update(ids)
+    _PROCESSED.write_text(json.dumps(list(existing), ensure_ascii=False), 'utf-8')
+
+def clear_processed():
+    _PROCESSED.write_text('[]', 'utf-8')
+
+def processed_count() -> int:
+    return len(load_processed())
