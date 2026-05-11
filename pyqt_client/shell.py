@@ -5,7 +5,22 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
-import os as _os
+import os as _os, sys as _sys
+
+
+def _asset(name: str) -> str:
+    """返回 assets 文件路径，兼容 PyInstaller frozen 模式。"""
+    base = getattr(_sys, '_MEIPASS', _os.path.dirname(_os.path.abspath(__file__)))
+    return _os.path.join(base, 'assets', name)
+
+
+def _app_icon() -> QIcon:
+    """优先使用 icon.png，其次 icon.ico；文件不存在则返回空图标。"""
+    for name in ('icon.png', 'icon.ico'):
+        path = _asset(name)
+        if _os.path.exists(path):
+            return QIcon(path)
+    return QIcon()
 
 from modules.email.panel import EmailPanel
 from modules.welink.panel import WelinkPanel
@@ -166,9 +181,7 @@ class MainShell(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('研发知识助手-Extension')
-        _ico = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'assets', 'icon.ico')
-        if _os.path.exists(_ico):
-            self.setWindowIcon(QIcon(_ico))
+        self.setWindowIcon(_app_icon())
         self.resize(1020, 640)
         self.setMinimumSize(820, 500)
 
