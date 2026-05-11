@@ -14,4 +14,5 @@ class Worker(QThread):
         try:
             self.ok.emit(self._fn(*self._a, **self._kw))
         except Exception as e:
-            self.err.emit(str(e))
+            import traceback
+            self.err.emit(f'{e}\n{traceback.format_exc()}')
