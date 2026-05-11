@@ -115,7 +115,6 @@ class SettingsDialog(QDialog):
         self._user_id = QLineEdit(self._s.get('userId', ''))
         self._user_id.setPlaceholderText('输入姓名或工号搜索')
         self._userinfo_map   = {}
-        self._selecting_user = False
         self._user_completer = QCompleter([], self)
         self._user_completer.setCaseSensitivity(Qt.CaseInsensitive)
         self._user_completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
@@ -157,8 +156,6 @@ class SettingsDialog(QDialog):
         return outer
 
     def _search_userinfo(self):
-        if self._selecting_user:
-            return
         query = self._user_id.text().strip()
         if not query:
             return
@@ -179,10 +176,7 @@ class SettingsDialog(QDialog):
         self._workers.append(w)
 
     def _on_userinfo_selected(self, display_text: str):
-        value = self._userinfo_map.get(display_text, display_text)
-        self._selecting_user = True
-        self._user_id.setText(value)
-        self._selecting_user = False
+        self._user_id.setText(self._userinfo_map.get(display_text, display_text))
 
     def _test_conn(self):
         url = self._backend_url.text().strip()
