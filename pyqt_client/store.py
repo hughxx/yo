@@ -1,12 +1,19 @@
 """设置 + 已处理邮件 ID 持久化"""
 import json
+import sys
 from pathlib import Path
 
-_SETTINGS  = Path.home() / '.email_assistant.json'
-_PROCESSED = Path.home() / '.email_assistant_processed.json'
+def _app_dir() -> Path:
+    """exe 同目录（frozen）或脚本目录（开发模式）"""
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+_SETTINGS  = _app_dir() / '.email_assistant.json'
+_PROCESSED = _app_dir() / '.email_assistant_processed.json'
 
 DEFAULT = {
-    'backendUrl':          'http://localhost:8023',
+    'backendUrl':          'https://coreinsight-beta.rnd.huawei.com/collection',
     'userId':              '',
     'namespace':           '',
     'scanIntervalMinutes': 60,

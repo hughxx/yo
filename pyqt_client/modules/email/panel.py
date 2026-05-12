@@ -102,6 +102,7 @@ class EmailPanel(QWidget):
         self._workers = []
         self._loading = False
         self._syncing = False
+        self._shown_by_user = False   # 首次启动自动激活不弹设置窗
 
         self._build_ui()
         self._start_auto_sync()
@@ -231,8 +232,9 @@ class EmailPanel(QWidget):
     def activate(self):
         self._settings = store.load_settings()
         backend.set_base(self._settings.get('backendUrl', ''))
-        if not self._is_configured():
+        if self._shown_by_user and not self._is_configured():
             self._prompt_setup()
+        self._shown_by_user = True
 
     def _is_configured(self) -> bool:
         s = self._settings
