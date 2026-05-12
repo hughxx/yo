@@ -1,5 +1,7 @@
 """后端 HTTP 封装"""
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _base = 'http://localhost:8023'
 
@@ -9,13 +11,13 @@ def set_base(url: str):
 
 def ping() -> bool:
     try:
-        return requests.get(f'{_base}/api/email/ping', timeout=5).ok
+        return requests.get(f'{_base}/api/email/ping', timeout=5, verify=False).ok
     except Exception:
         return False
 
 def get_namespaces() -> list:
     try:
-        r = requests.get(f'{_base}/api/email/namespaces', timeout=10)
+        r = requests.get(f'{_base}/api/email/namespaces', timeout=10, verify=False)
         r.raise_for_status()
         return r.json()
     except Exception:
@@ -24,14 +26,14 @@ def get_namespaces() -> list:
 def get_parse_status(topics: list, namespace: str) -> dict:
     try:
         r = requests.post(f'{_base}/api/email/parse_status',
-                          json={'topics': topics, 'namespace': namespace}, timeout=30)
+                          json={'topics': topics, 'namespace': namespace}, timeout=30, verify=False)
         r.raise_for_status()
         return r.json()
     except Exception:
         return {}
 
 def receive_email(payload: dict) -> dict:
-    r = requests.post(f'{_base}/api/email/receive', json=payload, timeout=300)
+    r = requests.post(f'{_base}/api/email/receive', json=payload, timeout=300, verify=False)
     r.raise_for_status()
     return r.json()
 
