@@ -1,7 +1,8 @@
 """主壳：侧边栏导航 + 模块切换"""
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QPushButton, QStackedWidget, QSizePolicy
+    QPushButton, QStackedWidget, QSizePolicy,
+    QSystemTrayIcon, QMenu, QAction, QApplication
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
@@ -190,6 +191,7 @@ class MainShell(QMainWindow):
         self._stack    = QStackedWidget()
 
         self._build_ui()
+        self._build_tray()
         self._switch(0)
 
     def _build_ui(self):
@@ -227,6 +229,43 @@ class MainShell(QMainWindow):
 
         lay.addStretch()
         return sidebar
+
+    def _build_tray(self):
+        self._tray = QSystemTrayIcon(self)
+        self._tray.setIcon(_app_icon())
+        self._tray.setToolTip('研发知识助手-Extension')
+
+        menu = QMenu()
+        act_show = QAction('显示', self)
+        act_quit = QAction('退出', self)
+        act_show.triggered.connect(self._restore)
+        act_quit.triggered.connect(QApplication.quit)
+        menu.addAction(act_show)
+        menu.addSeparator()
+        menu.addAction(act_quit)
+        self._tray.setContextMenu(menu)
+
+        self._tray.activated.connect(self._on_tray_activated)
+        self._tray.show()
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.Trigger:   # 单击
+            self._restore()
+
+    def _restore(self):
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+
+    def closeEvent(self, event):
+        event.ignore()
+        self.hide()
+        self._tray.showMessage(
+            '研发知识助手-Extension',
+            '程序已缩小到系统托盘，定时同步继续运行。',
+            QSystemTrayIcon.Information,
+            2000,
+        )
 
     def _switch(self, idx: int):
         current = self._stack.currentIndex()
