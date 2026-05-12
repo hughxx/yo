@@ -9,11 +9,56 @@ import backend
 from utils import Worker
 
 _SERVER_PRESETS = {
-    '云核': 'https://coreinsight-beta.rnd.huawei.com/collection',
+    '云核心网': 'https://coreinsight-beta.rnd.huawei.com/collection',
 }
+_MANUAL_INPUT = '手动输入URL'
+
+_API_DOC = """\
+自定义服务器须实现以下 HTTP 接口（基础路径 /api/email/）：
+
+━━ 必需接口 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GET  /api/email/ping
+  响应: {"Success": true, "Message": "pong"}
+
+GET  /api/email/namespaces
+  响应: [{"id": int, "name": str, "description": str}, ...]
+
+POST /api/email/receive
+  请求体 (JSON 字段):
+    EmailId           string   邮件唯一 ID
+    ConversationTopic string   会话主题
+    Subject           string   邮件主题
+    SenderName        string   发件人姓名
+    SenderEmail       string   发件人邮箱
+    ReceivedTime      string   接收时间（ISO 格式）
+    HtmlBody          string   邮件正文（HTML）
+    MatchedRuleName   string   命中规则名称
+    UserId            string   操作用户 ID
+    Namespace         string   命名空间名称
+    ExtraInfo         object   扩展字段（JSON 对象）
+    Force             bool     是否强制重推
+  响应: {"Success": bool, "Message": str}
+
+POST /api/email/parse_status
+  请求体: {"topics": ["会话主题A", ...], "namespace": "xxx"}
+  响应:   {"会话主题A": "done|pending|failed", ...}
+
+━━ 可选接口（云端规则管理）━━━━━━━━━━━━━━━━━━
+GET    /api/email/rules?namespace=xxx
+POST   /api/email/rules
+PUT    /api/email/rules/{id}
+DELETE /api/email/rules/{id}
+
+━━ 可选接口（用户搜索）━━━━━━━━━━━━━━━━━━━━━━
+GET /api/email/userinfo?info=xxx
+  响应: [{"label": "姓名", "value": "账号"}, ...]
+"""
 
 def _resolve_server_url(text: str) -> str:
-    return _SERVER_PRESETS.get(text.strip(), text.strip())
+    text = text.strip()
+    if text == _MANUAL_INPUT:
+        return ''
+    return _SERVER_PRESETS.get(text, text)
 
 def _url_to_display(url: str) -> str:
     url = (url or '').rstrip('/')
@@ -21,6 +66,25 @@ def _url_to_display(url: str) -> str:
         if u.rstrip('/') == url:
             return name
     return url
+
+def _show_api_doc(parent):
+    dlg = QDialog(parent)
+    dlg.setWindowTitle('接口实现说明')
+    dlg.setMinimumSize(520, 480)
+    lay = QVBoxLayout(dlg)
+    te = QTextEdit()
+    te.setReadOnly(True)
+    te.setFont(QFont('Consolas', 9))
+    te.setPlainText(_API_DOC)
+    lay.addWidget(te)
+    btn_close = QPushButton('关闭')
+    btn_close.setFixedWidth(80)
+    btn_close.clicked.connect(dlg.accept)
+    blay = QHBoxLayout()
+    blay.addStretch()
+    blay.addWidget(btn_close)
+    lay.addLayout(blay)
+    dlg.exec_()
 
 
 # ── 规则编辑对话框 ────────────────────────────────────────
@@ -121,14 +185,23 @@ class SettingsDialog(QDialog):
         self._server_combo.setEditable(True)
         for _name in _SERVER_PRESETS:
             self._server_combo.addItem(_name)
+        self._server_combo.addItem(_MANUAL_INPUT)
         self._server_combo.lineEdit().setPlaceholderText('选择预设或输入服务器地址')
-        self._server_combo.setCurrentText(_url_to_display(self._s.get('backendUrl', '')) or '云核')
+        self._server_combo.setCurrentText(_url_to_display(self._s.get('backendUrl', '')) or '云核心网')
+        self._server_combo.activated.connect(self._on_server_activated)
         btn_test = QPushButton('测试连接')
         btn_test.setFixedWidth(80)
         btn_test.clicked.connect(self._test_conn)
         row1.addWidget(self._server_combo, stretch=1)
         row1.addWidget(btn_test)
         lay.addRow('服务器：', row1)
+
+        btn_api_doc = QPushButton('接口实现说明 ↗')
+        btn_api_doc.setFlat(True)
+        btn_api_doc.setStyleSheet('color: #0078D4; text-align: left; border: none; padding: 0 2px;')
+        btn_api_doc.setCursor(Qt.PointingHandCursor)
+        btn_api_doc.clicked.connect(lambda: _show_api_doc(self))
+        lay.addRow('', btn_api_doc)
 
         self._user_id = QLineEdit(self._s.get('userId', ''))
         self._user_id.setPlaceholderText('输入姓名或工号搜索')
@@ -196,6 +269,13 @@ class SettingsDialog(QDialog):
     def _on_userinfo_selected(self, display_text: str):
         value = self._userinfo_map.get(display_text, display_text)
         QTimer.singleShot(0, lambda: self._user_id.setText(value))
+
+    def _on_server_activated(self, index: int):
+        if self._server_combo.itemText(index) == _MANUAL_INPUT:
+            self._server_combo.setCurrentText('')
+            self._server_combo.lineEdit().setFocus()
+        else:
+            self._load_namespaces()
 
     def _test_conn(self):
         url = _resolve_server_url(self._server_combo.currentText())
@@ -594,15 +674,23 @@ class SetupDialog(QDialog):
         self._server_combo.setEditable(True)
         for _name in _SERVER_PRESETS:
             self._server_combo.addItem(_name)
+        self._server_combo.addItem(_MANUAL_INPUT)
         self._server_combo.lineEdit().setPlaceholderText('选择预设或输入服务器地址')
-        self._server_combo.setCurrentText(_url_to_display(self._s.get('backendUrl', '')) or '云核')
-        self._server_combo.activated.connect(lambda _: self._load_namespaces())
+        self._server_combo.setCurrentText(_url_to_display(self._s.get('backendUrl', '')) or '云核心网')
+        self._server_combo.activated.connect(self._on_server_activated)
         btn_test = QPushButton('测试')
         btn_test.setFixedWidth(50)
         btn_test.clicked.connect(self._test_conn)
         srv_row.addWidget(self._server_combo, stretch=1)
         srv_row.addWidget(btn_test)
         form.addRow('服务器：', srv_row)
+
+        btn_api_doc = QPushButton('接口实现说明 ↗')
+        btn_api_doc.setFlat(True)
+        btn_api_doc.setStyleSheet('color: #0078D4; text-align: left; border: none; padding: 0 2px;')
+        btn_api_doc.setCursor(Qt.PointingHandCursor)
+        btn_api_doc.clicked.connect(lambda: _show_api_doc(self))
+        form.addRow('', btn_api_doc)
 
         # 工号
         self._user_id = QLineEdit(self._s.get('userId', ''))
@@ -639,6 +727,13 @@ class SetupDialog(QDialog):
         lay.addWidget(btn_ok)
 
         self._load_namespaces()
+
+    def _on_server_activated(self, index: int):
+        if self._server_combo.itemText(index) == _MANUAL_INPUT:
+            self._server_combo.setCurrentText('')
+            self._server_combo.lineEdit().setFocus()
+        else:
+            self._load_namespaces()
 
     def _get_url(self) -> str:
         return _resolve_server_url(self._server_combo.currentText())
