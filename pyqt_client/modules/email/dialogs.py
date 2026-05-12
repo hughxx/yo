@@ -49,9 +49,10 @@ POST   /api/email/rules
 PUT    /api/email/rules/{id}
 DELETE /api/email/rules/{id}
 
-━━ 可选接口（用户搜索）━━━━━━━━━━━━━━━━━━━━━━
+━━ 必需接口（用户搜索）━━━━━━━━━━━━━━━━━━━━━━
 GET /api/email/userinfo?info=xxx
   响应: [{"label": "姓名", "value": "账号"}, ...]
+  说明: 工号必须从此接口返回值中选择，不支持自由输入
 """
 
 def _resolve_server_url(text: str) -> str:
@@ -204,8 +205,9 @@ class SettingsDialog(QDialog):
         lay.addRow('', btn_api_doc)
 
         self._user_id = QLineEdit(self._s.get('userId', ''))
-        self._user_id.setPlaceholderText('输入姓名或工号搜索')
+        self._user_id.setPlaceholderText('输入姓名或工号搜索，从下拉结果中选择')
         self._userinfo_map   = {}
+        self._confirmed_uid  = self._s.get('userId', '')   # 必须来自接口选择
         self._user_completer = QCompleter([], self)
         self._user_completer.setCaseSensitivity(Qt.CaseInsensitive)
         self._user_completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
@@ -215,7 +217,7 @@ class SettingsDialog(QDialog):
         self._user_search_timer = QTimer(self)
         self._user_search_timer.setSingleShot(True)
         self._user_search_timer.timeout.connect(self._search_userinfo)
-        self._user_id.textEdited.connect(lambda: self._user_search_timer.start(400))
+        self._user_id.textEdited.connect(self._on_uid_edited)
         lay.addRow('工号：', self._user_id)
 
         row3 = QHBoxLayout()
@@ -266,9 +268,14 @@ class SettingsDialog(QDialog):
         w.start()
         self._workers.append(w)
 
+    def _on_uid_edited(self):
+        self._confirmed_uid = ''
+        self._user_search_timer.start(400)
+
     def _on_userinfo_selected(self, display_text: str):
         value = self._userinfo_map.get(display_text, display_text)
-        QTimer.singleShot(0, lambda: self._user_id.setText(value))
+        self._confirmed_uid = value
+        QTimer.singleShot(0, lambda: self._user_id.setText(display_text))
 
     def _on_server_activated(self, index: int):
         if self._server_combo.itemText(index) == _MANUAL_INPUT:
@@ -632,8 +639,11 @@ class SettingsDialog(QDialog):
             self._tabs.setCurrentIndex(0)
             return
         self._s['backendUrl']          = url
-        uid = self._user_id.text().strip()
-        self._s['userId']              = self._userinfo_map.get(uid, uid)
+        if not self._confirmed_uid:
+            QMessageBox.warning(self, '错误', '请在工号栏搜索并从下拉结果中选择用户')
+            self._tabs.setCurrentIndex(0)
+            return
+        self._s['userId']              = self._confirmed_uid
         self._s['namespace']           = self._ns_combo.currentData() or ''
         self._s['scanIntervalMinutes'] = self._interval.value()
         self._s['customJsonConfig']    = self._custom_json.toPlainText()
@@ -655,6 +665,7 @@ class SetupDialog(QDialog):
         self._s = dict(settings)
         self._workers = []
         self._userinfo_map = {}
+        self._confirmed_uid = settings.get('userId', '')
 
         lay = QVBoxLayout(self)
         lay.setSpacing(10)
@@ -694,7 +705,7 @@ class SetupDialog(QDialog):
 
         # 工号
         self._user_id = QLineEdit(self._s.get('userId', ''))
-        self._user_id.setPlaceholderText('输入姓名或工号搜索')
+        self._user_id.setPlaceholderText('输入姓名或工号搜索，从下拉结果中选择')
         self._user_completer = QCompleter([], self)
         self._user_completer.setCaseSensitivity(Qt.CaseInsensitive)
         self._user_completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
@@ -704,7 +715,7 @@ class SetupDialog(QDialog):
         self._user_search_timer = QTimer(self)
         self._user_search_timer.setSingleShot(True)
         self._user_search_timer.timeout.connect(self._search_userinfo)
-        self._user_id.textEdited.connect(lambda: self._user_search_timer.start(400))
+        self._user_id.textEdited.connect(self._on_uid_edited)
         form.addRow('工号：', self._user_id)
 
         # Namespace
@@ -786,28 +797,31 @@ class SetupDialog(QDialog):
         w.start()
         self._workers.append(w)
 
+    def _on_uid_edited(self):
+        self._confirmed_uid = ''
+        self._user_search_timer.start(400)
+
     def _on_userinfo_selected(self, text: str):
         value = self._userinfo_map.get(text, text)
-        QTimer.singleShot(0, lambda: self._user_id.setText(value))
+        self._confirmed_uid = value
+        QTimer.singleShot(0, lambda: self._user_id.setText(text))
 
     def _confirm(self):
         url = self._get_url()
-        uid_raw = self._user_id.text().strip()
-        uid = self._userinfo_map.get(uid_raw, uid_raw)
         ns = self._ns_combo.currentData() or ''
 
         if not url:
             QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
             return
-        if not uid:
-            QMessageBox.warning(self, '错误', '请输入工号')
+        if not self._confirmed_uid:
+            QMessageBox.warning(self, '错误', '请搜索并从下拉结果中选择工号')
             return
         if not ns:
             QMessageBox.warning(self, '错误', '请选择命名空间')
             return
 
         self._s['backendUrl'] = url
-        self._s['userId'] = uid
+        self._s['userId'] = self._confirmed_uid
         self._s['namespace'] = ns
         self.accept()
 
