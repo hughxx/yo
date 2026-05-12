@@ -5,7 +5,7 @@ from PyQt5.QtCore import Qt, QTimer, QPoint
 from PyQt5.QtGui import QColor, QFont
 
 from modules.email import outlook, rules as rules_mod
-from modules.email.dialogs import SettingsDialog
+from modules.email.dialogs import SettingsDialog, SetupDialog
 import backend
 import store  # 仅用于 settings 读写
 from utils import Worker
@@ -229,7 +229,22 @@ class EmailPanel(QWidget):
         self._sync_timer.start(ms)
 
     def activate(self):
-        pass
+        self._settings = store.load_settings()
+        backend.set_base(self._settings.get('backendUrl', ''))
+        if not self._is_configured():
+            self._prompt_setup()
+
+    def _is_configured(self) -> bool:
+        s = self._settings
+        return bool(s.get('backendUrl') and s.get('userId') and s.get('namespace'))
+
+    def _prompt_setup(self):
+        dlg = SetupDialog(self._settings, parent=self)
+        if dlg.exec_() == QDialog.Accepted:
+            self._settings = dlg.get_settings()
+            store.save_settings(self._settings)
+            backend.set_base(self._settings['backendUrl'])
+            self._start_auto_sync()
 
     def deactivate(self):
         pass

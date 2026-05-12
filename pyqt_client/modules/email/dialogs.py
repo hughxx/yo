@@ -8,6 +8,20 @@ from modules.email import rules as rules_mod
 import backend
 from utils import Worker
 
+_SERVER_PRESETS = {
+    '云核': 'https://coreinsight-beta.rnd.huawei.com/collection',
+}
+
+def _resolve_server_url(text: str) -> str:
+    return _SERVER_PRESETS.get(text.strip(), text.strip())
+
+def _url_to_display(url: str) -> str:
+    url = (url or '').rstrip('/')
+    for name, u in _SERVER_PRESETS.items():
+        if u.rstrip('/') == url:
+            return name
+    return url
+
 
 # ── 规则编辑对话框 ────────────────────────────────────────
 class RuleDialog(QDialog):
@@ -103,14 +117,18 @@ class SettingsDialog(QDialog):
 
         row1 = QHBoxLayout()
         row1.setSpacing(6)
-        self._backend_url = QLineEdit(self._s.get('backendUrl', ''))
-        self._backend_url.setPlaceholderText('http://localhost:8023')
+        self._server_combo = QComboBox()
+        self._server_combo.setEditable(True)
+        for _name in _SERVER_PRESETS:
+            self._server_combo.addItem(_name)
+        self._server_combo.lineEdit().setPlaceholderText('选择预设或输入服务器地址')
+        self._server_combo.setCurrentText(_url_to_display(self._s.get('backendUrl', '')) or '云核')
         btn_test = QPushButton('测试连接')
         btn_test.setFixedWidth(80)
         btn_test.clicked.connect(self._test_conn)
-        row1.addWidget(self._backend_url)
+        row1.addWidget(self._server_combo, stretch=1)
         row1.addWidget(btn_test)
-        lay.addRow('后端地址：', row1)
+        lay.addRow('服务器：', row1)
 
         self._user_id = QLineEdit(self._s.get('userId', ''))
         self._user_id.setPlaceholderText('输入姓名或工号搜索')
@@ -159,7 +177,7 @@ class SettingsDialog(QDialog):
         query = self._user_id.text().strip()
         if not query:
             return
-        url = self._backend_url.text().strip() or self._s.get('backendUrl', '')
+        url = _resolve_server_url(self._server_combo.currentText()) or _resolve_server_url(self._s.get('backendUrl', ''))
         if not url:
             return
         backend.set_base(url)
@@ -180,16 +198,16 @@ class SettingsDialog(QDialog):
         QTimer.singleShot(0, lambda: self._user_id.setText(value))
 
     def _test_conn(self):
-        url = self._backend_url.text().strip()
+        url = _resolve_server_url(self._server_combo.currentText())
         if not url:
-            QMessageBox.warning(self, '错误', '请先输入后端地址')
+            QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
             return
         backend.set_base(url)
         ok = backend.ping()
-        QMessageBox.information(self, '连接测试', '连接成功 ✓' if ok else '连接失败，请检查后端地址')
+        QMessageBox.information(self, '连接测试', '连接成功 ✓' if ok else '连接失败，请检查服务器地址')
 
     def _load_namespaces(self):
-        url = self._backend_url.text().strip() or self._s.get('backendUrl', '')
+        url = _resolve_server_url(self._server_combo.currentText()) or _resolve_server_url(self._s.get('backendUrl', ''))
         backend.set_base(url)
         cur = self._s.get('namespace', '')
 
@@ -528,9 +546,9 @@ class SettingsDialog(QDialog):
 
     # ── 保存 ─────────────────────────────────────────────
     def _on_save(self):
-        url = self._backend_url.text().strip()
+        url = _resolve_server_url(self._server_combo.currentText())
         if not url:
-            QMessageBox.warning(self, '错误', '请输入后端地址')
+            QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
             self._tabs.setCurrentIndex(0)
             return
         self._s['backendUrl']          = url
@@ -540,6 +558,162 @@ class SettingsDialog(QDialog):
         self._s['scanIntervalMinutes'] = self._interval.value()
         self._s['customJsonConfig']    = self._custom_json.toPlainText()
         self._s['scanFolders']         = sorted(self._scan_folders)
+        self.accept()
+
+    def get_settings(self) -> dict:
+        return self._s
+
+
+# ── 首次配置向导 ──────────────────────────────────────────
+class SetupDialog(QDialog):
+    """首次打开邮件标签时的强制配置：服务器 + 工号 + 命名空间"""
+    def __init__(self, settings: dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('初始配置 — 研发知识助手')
+        self.setFixedWidth(420)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self._s = dict(settings)
+        self._workers = []
+        self._userinfo_map = {}
+
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+
+        hint = QLabel('首次使用前，请完成以下基本配置：')
+        hint.setStyleSheet('font-weight: bold; padding: 4px 0;')
+        lay.addWidget(hint)
+
+        form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setHorizontalSpacing(8)
+
+        # 服务器
+        srv_row = QHBoxLayout()
+        srv_row.setSpacing(6)
+        self._server_combo = QComboBox()
+        self._server_combo.setEditable(True)
+        for _name in _SERVER_PRESETS:
+            self._server_combo.addItem(_name)
+        self._server_combo.lineEdit().setPlaceholderText('选择预设或输入服务器地址')
+        self._server_combo.setCurrentText(_url_to_display(self._s.get('backendUrl', '')) or '云核')
+        self._server_combo.activated.connect(lambda _: self._load_namespaces())
+        btn_test = QPushButton('测试')
+        btn_test.setFixedWidth(50)
+        btn_test.clicked.connect(self._test_conn)
+        srv_row.addWidget(self._server_combo, stretch=1)
+        srv_row.addWidget(btn_test)
+        form.addRow('服务器：', srv_row)
+
+        # 工号
+        self._user_id = QLineEdit(self._s.get('userId', ''))
+        self._user_id.setPlaceholderText('输入姓名或工号搜索')
+        self._user_completer = QCompleter([], self)
+        self._user_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self._user_completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
+        self._user_completer.setMaxVisibleItems(8)
+        self._user_id.setCompleter(self._user_completer)
+        self._user_completer.activated.connect(self._on_userinfo_selected)
+        self._user_search_timer = QTimer(self)
+        self._user_search_timer.setSingleShot(True)
+        self._user_search_timer.timeout.connect(self._search_userinfo)
+        self._user_id.textEdited.connect(lambda: self._user_search_timer.start(400))
+        form.addRow('工号：', self._user_id)
+
+        # Namespace
+        ns_row = QHBoxLayout()
+        ns_row.setSpacing(6)
+        self._ns_combo = QComboBox()
+        btn_ns = QPushButton('刷新')
+        btn_ns.setFixedWidth(50)
+        btn_ns.clicked.connect(self._load_namespaces)
+        ns_row.addWidget(self._ns_combo, stretch=1)
+        ns_row.addWidget(btn_ns)
+        form.addRow('Namespace：', ns_row)
+
+        lay.addLayout(form)
+
+        btn_ok = QPushButton('完成设置')
+        btn_ok.setObjectName('btnPrimary')
+        btn_ok.setMinimumHeight(30)
+        btn_ok.clicked.connect(self._confirm)
+        lay.addWidget(btn_ok)
+
+        self._load_namespaces()
+
+    def _get_url(self) -> str:
+        return _resolve_server_url(self._server_combo.currentText())
+
+    def _test_conn(self):
+        url = self._get_url()
+        if not url:
+            QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
+            return
+        backend.set_base(url)
+        ok = backend.ping()
+        QMessageBox.information(self, '连接测试', '连接成功 ✓' if ok else '连接失败，请检查服务器地址')
+
+    def _load_namespaces(self):
+        url = self._get_url()
+        if not url:
+            return
+        backend.set_base(url)
+        cur = self._s.get('namespace', '')
+
+        def _done(items):
+            self._ns_combo.clear()
+            self._ns_combo.addItem('-- 请选择 --', '')
+            for it in items:
+                self._ns_combo.addItem(it['name'], it['name'])
+            idx = self._ns_combo.findData(cur)
+            if idx >= 0:
+                self._ns_combo.setCurrentIndex(idx)
+
+        w = Worker(backend.get_namespaces)
+        w.ok.connect(_done)
+        w.start()
+        self._workers.append(w)
+
+    def _search_userinfo(self):
+        query = self._user_id.text().strip()
+        url = self._get_url()
+        if not query or not url:
+            return
+        backend.set_base(url)
+
+        def _done(items):
+            self._userinfo_map = {f'{r["label"]} ({r["value"]})': r['value'] for r in items}
+            self._user_completer.setModel(QStringListModel(list(self._userinfo_map)))
+            if self._userinfo_map:
+                self._user_completer.complete()
+
+        w = Worker(backend.get_userinfo, query)
+        w.ok.connect(_done)
+        w.start()
+        self._workers.append(w)
+
+    def _on_userinfo_selected(self, text: str):
+        value = self._userinfo_map.get(text, text)
+        QTimer.singleShot(0, lambda: self._user_id.setText(value))
+
+    def _confirm(self):
+        url = self._get_url()
+        uid_raw = self._user_id.text().strip()
+        uid = self._userinfo_map.get(uid_raw, uid_raw)
+        ns = self._ns_combo.currentData() or ''
+
+        if not url:
+            QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
+            return
+        if not uid:
+            QMessageBox.warning(self, '错误', '请输入工号')
+            return
+        if not ns:
+            QMessageBox.warning(self, '错误', '请选择命名空间')
+            return
+
+        self._s['backendUrl'] = url
+        self._s['userId'] = uid
+        self._s['namespace'] = ns
         self.accept()
 
     def get_settings(self) -> dict:
