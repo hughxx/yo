@@ -144,15 +144,12 @@ class EmailPanel(QWidget):
         self._btn_more.setPopupMode(QToolButton.InstantPopup)
         lay.addWidget(self._btn_more)
 
-        lay.addStretch()
-
         self._status_popup = _StatusPopup()
         self._status_label = _StatusLabel(self._status_popup)
         self._status_label.set_status('就绪', 'green')
         self._status_label.setAlignment(Qt.AlignCenter)
+        self._status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         lay.addWidget(self._status_label)
-
-        lay.addStretch()
 
         self._filter_check = QCheckBox('仅显示规则匹配的邮件')
         self._filter_check.setChecked(True)
