@@ -102,6 +102,7 @@ class EmailPanel(QWidget):
         self._workers = []
         self._loading = False
         self._syncing = False
+        self._last_sync_time = ''
 
         self._build_ui()
         self._start_auto_sync()
@@ -296,11 +297,13 @@ class EmailPanel(QWidget):
         if errors:
             msgs = '；'.join(e['_folder_error'] for e in errors)
             self._set_status(f'文件夹错误：{msgs}', 'red')
-        elif diags:
-            diag_str = '  '.join(e['_diag'] for e in diags)
-            self._set_status(f'就绪 [{diag_str}] 读取 {len(self._emails)} 封', 'green')
         else:
-            self._set_status(f'就绪，读取 {len(self._emails)} 封', 'green')
+            t = f'  上次同步: {self._last_sync_time}' if self._last_sync_time else ''
+            if diags:
+                diag_str = '  '.join(e['_diag'] for e in diags)
+                self._set_status(f'就绪 [{diag_str}{t}]  读取 {len(self._emails)} 封', 'green')
+            else:
+                self._set_status(f'就绪 [{t.strip() or "从未同步"}]  读取 {len(self._emails)} 封', 'green')
         self._set_busy()
         self._fetch_page_status()
 
@@ -354,6 +357,8 @@ class EmailPanel(QWidget):
     def _sync_batch(self, matched, offset, success, failed, force):
         BATCH = 10
         if offset >= len(matched):
+            from datetime import datetime
+            self._last_sync_time = datetime.now().strftime('%H:%M:%S')
             verb = '重推' if force else '同步'
             summary = f'{verb}完成：{len(matched)} 封，成功 {success}，失败 {failed}'
             self._set_status(summary, 'red' if failed else 'green')
