@@ -203,8 +203,13 @@ class WelinkMonitor(QThread):
                     if err:
                         self._log(f'[{group_name}] 拉取消息失败: {err}')
                         continue
+                    if not msgs:
+                        self._log(f'[{group_name}] CLI 返回 0 条消息')
+                        continue
 
                     last_seen = last_ids.get(group_id)
+                    new_count = sum(1 for m in msgs if m.get('msgId') and int(m['msgId']) > (last_seen or 0))
+                    self._log(f'[{group_name}] 拉取 {len(msgs)} 条，last_seen={last_seen}，新消息 {new_count} 条')
 
                     for msg in reversed(msgs):  # oldest first
                         msg_id = msg.get('msgId')
