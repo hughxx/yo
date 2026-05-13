@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QPushButton, QStackedWidget, QSizePolicy,
     QSystemTrayIcon, QMenu, QAction, QApplication
 )
-from PyQt5.Qt问题定位助手e import Qt
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QPixmap, QPainter
 from PyQt5.QtSvg import QSvgRenderer
 import os as _os, sys as _sys
