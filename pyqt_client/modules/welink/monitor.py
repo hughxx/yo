@@ -90,24 +90,28 @@ def _normalize(text: str) -> str:
 
 
 def _parse_summary_cmd(prefix: str, norm: str):
-    """解析 '<prefix> 名1 工号1 YYYY-MM-DD HH:MM 名2 工号2 YYYY-MM-DD HH:MM'
-    自动容错：若两个时间顺序写反则自动对调。
-    返回 (name1, id1, dt1, name2, id2, dt2) dt1<=dt2，或 None。"""
+    """解析总结命令参数：
+      4 params: 名1 工号1 YYYY-MM-DD HH:MM          → 结束点为总结命令本身
+      8 params: 名1 工号1 date time 名2 工号2 date time → 自动容错顺序写反
+    返回 (name1, id1, dt1, name2_or_None, id2_or_None, dt2_or_None) 或 None。"""
     if prefix not in norm:
         return None
     rest = norm[norm.index(prefix) + len(prefix):].strip()
     parts = rest.split()
-    if len(parts) < 8:
-        return None
     try:
-        dt_a = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
-        dt_b = datetime.strptime(f'{parts[6]} {parts[7]}', '%Y-%m-%d %H:%M')
-        if dt_a <= dt_b:
-            return parts[0], parts[1], dt_a, parts[4], parts[5], dt_b
-        else:
-            return parts[4], parts[5], dt_b, parts[0], parts[1], dt_a
+        if len(parts) >= 8:
+            dt_a = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
+            dt_b = datetime.strptime(f'{parts[6]} {parts[7]}', '%Y-%m-%d %H:%M')
+            if dt_a <= dt_b:
+                return parts[0], parts[1], dt_a, parts[4], parts[5], dt_b
+            else:
+                return parts[4], parts[5], dt_b, parts[0], parts[1], dt_a
+        elif len(parts) >= 4:
+            dt_a = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
+            return parts[0], parts[1], dt_a, None, None, None
     except ValueError:
-        return None
+        pass
+    return None
 
 
 def _parse_um_content(content: str):
@@ -355,9 +359,12 @@ class WelinkMonitor(QThread):
             self._log(f'[{group_name}] 未找到起始消息: {start_name}/{start_id} {start_dt.strftime("%H:%M")}')
             return
 
-        end_msg = find_msg(end_name, end_id, end_dt)
-        if end_msg is None:
-            self._log(f'[{group_name}] 未找到结束消息: {end_name}/{end_id} {end_dt.strftime("%H:%M")}，将截取至总结命令前')
+        if end_name and end_dt:
+            end_msg = find_msg(end_name, end_id, end_dt)
+            if end_msg is None:
+                self._log(f'[{group_name}] 未找到结束消息: {end_name}/{end_id} {end_dt.strftime("%H:%M")}，将截取至总结命令前')
+        else:
+            end_msg = None
 
         start_msg_id    = int(start_msg.get('msgId', 0))
         end_msg_id      = int(end_msg.get('msgId', 0)) if end_msg else summary_msg_id - 1

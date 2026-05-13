@@ -103,8 +103,9 @@ class WelinkPanel(QWidget):
         _usage = QLabel(
             '用法: &lt;总结命令&gt; '
             '<span style="color:#1558d6">张三&nbsp;z001&nbsp;2026-01-01&nbsp;00:00</span>'
-            ' &nbsp; '
+            ' &nbsp;['
             '<span style="color:#b71c1c">李四&nbsp;z002&nbsp;2026-01-01&nbsp;01:00</span>'
+            ']'
         )
         _usage.setTextFormat(2)  # Qt.RichText
         _usage.setStyleSheet('font-size:10px')
