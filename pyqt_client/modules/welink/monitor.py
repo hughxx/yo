@@ -140,56 +140,16 @@ def _one_box_download(download_url: str, extraction_code: str):
     return None
 
 
-# 发言人配色：(字体色, 气泡背景色)
-_SENDER_PALETTE = [
-    ('#1558d6', '#e8f0fe'),
-    ('#b71c1c', '#ffebee'),
-    ('#1b5e20', '#e8f5e9'),
-    ('#e65100', '#fff3e0'),
-    ('#4a148c', '#f3e5f5'),
-    ('#006064', '#e0f7fa'),
-    ('#827717', '#f9fbe7'),
-    ('#37474f', '#eceff1'),
-]
-_sender_cache = {}
-
-def _sender_style(sender: str):
-    if sender not in _sender_cache:
-        _sender_cache[sender] = _SENDER_PALETTE[len(_sender_cache) % len(_SENDER_PALETTE)]
-    return _sender_cache[sender]
-
-
 def _msgs_to_html(msgs: list) -> str:
-    _sender_cache.clear()
-
     def fmt(ms):
         return datetime.fromtimestamp(ms / 1000).strftime('%Y-%m-%d %H:%M:%S') if ms else ''
 
     rows = []
-    prev_sender  = None
-    prev_time_ms = 0
-    _GAP_MS = 5 * 60 * 1000  # 5 分钟间隔加分割线
-
     for m in msgs:
-        sender    = m.get('sender', '')
-        ct        = m.get('contentType', '')
-        raw       = m.get('content', '')
-        send_time = m.get('serverSendTime', 0)
-        t         = fmt(send_time)
-
-        # 超过 5 分钟加时间分割线
-        if prev_time_ms and send_time - prev_time_ms > _GAP_MS:
-            rows.append(
-                f'<div style="text-align:center;margin:12px 0;font-size:11px;color:#aaa;">'
-                f'<span style="border-top:1px dashed #ddd;display:inline-block;'
-                f'width:40%;vertical-align:middle"></span>'
-                f'&nbsp;{fmt(send_time)}&nbsp;'
-                f'<span style="border-top:1px dashed #ddd;display:inline-block;'
-                f'width:40%;vertical-align:middle"></span></div>'
-            )
-
-        fc, bg = _sender_style(sender)
-        new_block = (sender != prev_sender)
+        sender = escape(m.get('sender', ''))
+        ct     = m.get('contentType', '')
+        raw    = m.get('content', '')
+        t      = fmt(m.get('serverSendTime', 0))
 
         if ct in ('PICTURE_MSG', 'FILE_MSG'):
             img_url  = m.get('_img_url')
@@ -204,33 +164,21 @@ def _msgs_to_html(msgs: list) -> str:
         elif ct == 'CARD_MSG':
             body = '<em>[卡片消息]</em>'
         elif ct == 'NOTICE_MSG':
-            body = f'<em style="color:#888">[系统通知] {escape(raw)}</em>'
+            body = f'<em>[系统通知] {escape(raw)}</em>'
         else:
             body = raw if raw.strip().startswith('<') else escape(raw).replace('\n', '<br>')
 
-        mt = '10px' if new_block else '2px'
-        header = (
-            f'<div style="margin-bottom:3px">'
-            f'<span style="font-weight:bold;color:{fc}">{escape(sender)}</span>'
-            f'<span style="font-size:10px;color:#bbb;margin-left:8px">{t}</span>'
-            f'</div>'
-        ) if new_block else ''
-
         rows.append(
-            f'<div style="margin:{mt} 0 0 0;padding:6px 10px;background:{bg};'
-            f'border-radius:{"6px 6px" if new_block else "4px"} 4px 4px;">'
-            f'{header}'
-            f'<div style="color:#222">{body}</div></div>'
+            f'<div style="margin:6px 0;padding:6px 10px;background:#f5f5f5;border-radius:4px;">'
+            f'<span style="font-weight:bold;color:#1a73e8">{sender}</span>'
+            f'<span style="font-size:11px;color:#aaa;margin-left:8px">{t}</span>'
+            f'<div style="margin-top:4px">{body}</div></div>'
         )
 
-        prev_sender  = sender
-        prev_time_ms = send_time
-
     return (
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
-        'body{font-family:Arial,sans-serif;font-size:13px;color:#222;'
-        'max-width:860px;margin:20px auto;padding:0 16px}'
-        '</style></head><body>'
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        '<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;'
+        'max-width:860px;margin:20px auto;padding:0 16px}</style></head><body>'
         + ''.join(rows)
         + '</body></html>'
     )

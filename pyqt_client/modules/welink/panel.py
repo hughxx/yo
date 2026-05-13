@@ -100,7 +100,13 @@ class WelinkPanel(QWidget):
         self._start_cmd_edit   = QLineEdit()
         self._end_cmd_edit     = QLineEdit()
         self._summary_cmd_edit = QLineEdit()
-        _usage = QLabel('用法: <总结命令> 张三 z001 2026-01-01 00:00 李四 z002 2026-01-01 01:00')
+        _usage = QLabel(
+            '用法: &lt;总结命令&gt; '
+            '<span style="color:#1558d6">张三&nbsp;z001&nbsp;2026-01-01&nbsp;00:00</span>'
+            ' &nbsp; '
+            '<span style="color:#b71c1c">李四&nbsp;z002&nbsp;2026-01-01&nbsp;01:00</span>'
+        )
+        _usage.setTextFormat(2)  # Qt.RichText
         _usage.setStyleSheet('font-size:10px')
         form.addRow('开始命令:', self._start_cmd_edit)
         form.addRow('结束命令:', self._end_cmd_edit)
@@ -121,9 +127,7 @@ class WelinkPanel(QWidget):
         rule_lay = QVBoxLayout(rule_box)
         rule_lay.setContentsMargins(0, 0, 0, 0)
         rule_lay.setSpacing(4)
-        _lbl_rules = QLabel('监听的群聊')
-        _lbl_rules.setStyleSheet('font-weight:bold;color:#444;font-size:11px;padding-bottom:2px;border-bottom:1px solid #ddd')
-        rule_lay.addWidget(_lbl_rules)
+        rule_lay.addWidget(QLabel('监听的群聊'))
 
         self._table = QTableWidget(0, 3)
         self._table.setHorizontalHeaderLabels(['群组 ID', '群组名称', ''])
@@ -161,9 +165,7 @@ class WelinkPanel(QWidget):
         log_lay = QVBoxLayout(log_box)
         log_lay.setContentsMargins(0, 0, 0, 0)
         log_lay.setSpacing(4)
-        _lbl_log = QLabel('运行日志')
-        _lbl_log.setStyleSheet('font-weight:bold;color:#444;font-size:11px;padding-bottom:2px;border-bottom:1px solid #ddd')
-        log_lay.addWidget(_lbl_log)
+        log_lay.addWidget(QLabel('运行日志'))
         self._log_edit = QPlainTextEdit()
         self._log_edit.setReadOnly(True)
         self._log_edit.setMaximumBlockCount(300)
