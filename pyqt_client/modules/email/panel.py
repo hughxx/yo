@@ -5,7 +5,6 @@ from PyQt5.QtCore import Qt, QTimer, QPoint
 from PyQt5.QtGui import QColor, QFont
 
 from modules.email import outlook, rules as rules_mod
-from modules.email.dialogs import SettingsDialog, SetupDialog
 import backend
 import store  # 仅用于 settings 读写
 from utils import Worker
@@ -102,7 +101,6 @@ class EmailPanel(QWidget):
         self._workers = []
         self._loading = False
         self._syncing = False
-        self._setup_dlg = None
 
         self._build_ui()
         self._start_auto_sync()
@@ -126,11 +124,9 @@ class EmailPanel(QWidget):
 
         self._btn_refresh  = QPushButton('刷新邮件')
         self._btn_sync     = QPushButton('立即同步')
-        self._btn_settings = QPushButton('设置')
         self._btn_refresh.setObjectName('btnRefresh')
         self._btn_sync.setObjectName('btnSync')
-        self._btn_settings.setObjectName('btnSettings')
-        for b in (self._btn_refresh, self._btn_sync, self._btn_settings):
+        for b in (self._btn_refresh, self._btn_sync):
             lay.addWidget(b)
 
         self._btn_more = QToolButton()
@@ -161,7 +157,6 @@ class EmailPanel(QWidget):
 
         self._btn_refresh.clicked.connect(self._do_refresh)
         self._btn_sync.clicked.connect(self._do_sync)
-        self._btn_settings.clicked.connect(self._open_settings)
         return bar
 
     def _make_progress(self):
@@ -232,32 +227,14 @@ class EmailPanel(QWidget):
     def activate(self):
         self._settings = store.load_settings()
         backend.set_base(self._settings.get('backendUrl', ''))
-        if not self._is_configured():
-            self._prompt_setup()
-
-    def _is_configured(self) -> bool:
-        s = self._settings
-        return bool(s.get('backendUrl') and s.get('userId') and s.get('namespace'))
-
-    def _prompt_setup(self):
-        if self._setup_dlg and self._setup_dlg.isVisible():
-            self._setup_dlg.raise_()
-            return
-        dlg = SetupDialog(self._settings, parent=self.window())
-        dlg.accepted.connect(lambda: self._on_setup_accepted(dlg))
-        dlg.show()
-        self._setup_dlg = dlg
-
-    def _on_setup_accepted(self, dlg):
-        self._settings = dlg.get_settings()
-        store.save_settings(self._settings)
-        backend.set_base(self._settings['backendUrl'])
-        self._start_auto_sync()
 
     def deactivate(self):
-        if self._setup_dlg:
-            self._setup_dlg.close()
-            self._setup_dlg = None
+        pass
+
+    def on_settings_changed(self, s: dict):
+        self._settings = s
+        backend.set_base(s.get('backendUrl', ''))
+        self._start_auto_sync()
 
     # ── 状态控制 ──────────────────────────────────────────
     def _set_status(self, text: str, color: str = 'green'):
@@ -509,13 +486,3 @@ class EmailPanel(QWidget):
         w.start()
         self._workers.append(w)
 
-    # ── 设置 ──────────────────────────────────────────────
-    def _open_settings(self):
-        dlg = SettingsDialog(self._settings, parent=self)
-        if dlg.exec_() == SettingsDialog.Accepted:
-            self._settings = dlg.get_settings()
-            store.save_settings(self._settings)
-            backend.set_base(self._settings['backendUrl'])
-            self._start_auto_sync()
-            self._set_status('设置已更新', 'green')
-            self._do_refresh()

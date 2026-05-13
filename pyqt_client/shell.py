@@ -25,6 +25,9 @@ def _app_icon() -> QIcon:
 
 from modules.email.panel import EmailPanel
 from modules.welink.panel import WelinkPanel
+from modules.email.dialogs import SettingsDialog, SetupDialog
+import store
+import backend
 
 # ── 样式表 ────────────────────────────────────────────────
 QSS = """
@@ -190,9 +193,12 @@ class MainShell(QMainWindow):
         self._nav_btns = []
         self._stack    = QStackedWidget()
 
+        self._setup_dlg = None
+
         self._build_ui()
         self._build_tray()
         self._switch(0)
+        self._check_setup()
 
     def _build_ui(self):
         root = QWidget()
@@ -228,6 +234,14 @@ class MainShell(QMainWindow):
             lay.addWidget(btn)
 
         lay.addStretch()
+
+        btn_gear = QPushButton('⚙')
+        btn_gear.setObjectName('sideBtn')
+        btn_gear.setFixedHeight(40)
+        btn_gear.setToolTip('设置')
+        btn_gear.clicked.connect(self._open_settings)
+        lay.addWidget(btn_gear)
+
         return sidebar
 
     def _build_tray(self):
@@ -266,6 +280,40 @@ class MainShell(QMainWindow):
             QSystemTrayIcon.Information,
             2000,
         )
+
+    def _check_setup(self):
+        s = store.load_settings()
+        if not (s.get('backendUrl') and s.get('userId') and s.get('namespace')):
+            self._show_setup(s)
+
+    def _show_setup(self, s):
+        if self._setup_dlg and self._setup_dlg.isVisible():
+            self._setup_dlg.raise_()
+            return
+        dlg = SetupDialog(s, parent=self)
+        dlg.accepted.connect(lambda: self._on_setup_accepted(dlg))
+        dlg.show()
+        self._setup_dlg = dlg
+
+    def _on_setup_accepted(self, dlg):
+        s = dlg.get_settings()
+        store.save_settings(s)
+        backend.set_base(s['backendUrl'])
+        self._notify_settings_changed(s)
+
+    def _open_settings(self):
+        s = store.load_settings()
+        dlg = SettingsDialog(s, parent=self)
+        if dlg.exec_() == SettingsDialog.Accepted:
+            s = dlg.get_settings()
+            store.save_settings(s)
+            backend.set_base(s['backendUrl'])
+            self._notify_settings_changed(s)
+
+    def _notify_settings_changed(self, s: dict):
+        for panel in self._panels:
+            if hasattr(panel, 'on_settings_changed'):
+                panel.on_settings_changed(s)
 
     def _switch(self, idx: int):
         current = self._stack.currentIndex()
