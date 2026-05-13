@@ -76,3 +76,29 @@ def receive_welink_chatlog(payload: dict) -> dict:
     r = requests.post(f'{_base}/api/welink/receive', json=payload, timeout=60, verify=False)
     r.raise_for_status()
     return r.json()
+
+def get_welink_rules() -> list:
+    try:
+        r = requests.get(f'{_base}/api/welink/rules', timeout=10, verify=False)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return []
+
+def add_welink_rule(group_id: str, group_name: str) -> dict:
+    r = requests.post(f'{_base}/api/welink/rules',
+                      json={'group_id': group_id, 'group_name': group_name},
+                      timeout=10, verify=False)
+    r.raise_for_status()
+    return r.json()
+
+def delete_welink_rule(rule_id: int) -> dict:
+    r = requests.delete(f'{_base}/api/welink/rules/{rule_id}', timeout=10, verify=False)
+    r.raise_for_status()
+    return r.json()
+
+def toggle_welink_rule(rule_id: int, enabled: bool) -> dict:
+    r = requests.put(f'{_base}/api/welink/rules/{rule_id}',
+                     json={'enabled': enabled}, timeout=10, verify=False)
+    r.raise_for_status()
+    return r.json()

@@ -3,6 +3,24 @@ from sqlalchemy import Column, DateTime, Integer, String, Text
 from server.db.models import Base, _now
 
 
+class WelinkRule(Base):
+    __tablename__ = "t_welink_rules"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    group_id   = Column(String(100), nullable=False, unique=True, index=True)
+    group_name = Column(String(200), default="")
+    enabled    = Column(Integer, default=1)
+    created_at = Column(DateTime, default=_now)
+
+    def to_dict(self):
+        return {
+            "id":         self.id,
+            "group_id":   self.group_id,
+            "group_name": self.group_name,
+            "enabled":    bool(self.enabled),
+        }
+
+
 class WelinkChatlog(Base):
     __tablename__ = "t_welink_chatlogs"
 

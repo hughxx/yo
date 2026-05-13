@@ -1,182 +1,187 @@
-"""WeLink 聊天录制面板"""
+"""WeLink 群聊录制 — 监听群聊规则管理"""
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QSpinBox, QPlainTextEdit, QGroupBox, QFormLayout,
-    QScrollArea, QFrame,
+    QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
+    QAbstractItemView, QMessageBox,
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt
 
-import store
 import backend
-from modules.welink.monitor import WelinkMonitor
+from utils import Worker
 
 
 class WelinkPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._monitor = None  # type: WelinkMonitor | None
+        self._rules = []
         self._build_ui()
 
     # ── UI ────────────────────────────────────────────────────────
 
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(16, 16, 16, 8)
+        root.setSpacing(10)
 
-        # title
-        title = QLabel('WeLink 聊天录制')
-        title.setStyleSheet('font-size:18px;font-weight:bold;color:#252526')
-        root.addWidget(title)
+        # header row
+        hdr = QHBoxLayout()
+        title = QLabel('WeLink 群聊录制')
+        title.setStyleSheet('font-size:16px;font-weight:bold;color:#252526')
+        hdr.addWidget(title)
+        hdr.addStretch()
+        self._status_dot = QLabel('●')
+        self._status_dot.setStyleSheet('color:#ccc;font-size:14px')
+        self._status_lbl = QLabel('未连接')
+        self._status_lbl.setStyleSheet('color:#888;font-size:11px')
+        btn_refresh = QPushButton('刷新')
+        btn_refresh.setFixedWidth(54)
+        btn_refresh.clicked.connect(self._load_rules)
+        hdr.addWidget(self._status_dot)
+        hdr.addWidget(self._status_lbl)
+        hdr.addSpacing(6)
+        hdr.addWidget(btn_refresh)
+        root.addLayout(hdr)
 
-        # config box
-        cfg_box = QGroupBox('配置')
-        cfg_lay = QFormLayout(cfg_box)
-        cfg_lay.setSpacing(8)
-
-        self._bot_name_edit = QLineEdit()
-        self._bot_name_edit.setPlaceholderText('例如：云见')
-        cfg_lay.addRow('机器人名称 (@):', self._bot_name_edit)
-
-        self._user_id_edit = QLineEdit()
-        self._user_id_edit.setPlaceholderText('例如：w00899061')
-        cfg_lay.addRow('上传者工号 (upload_by):', self._user_id_edit)
-
-        self._interval_spin = QSpinBox()
-        self._interval_spin.setRange(1, 60)
-        self._interval_spin.setSuffix(' 秒')
-        cfg_lay.addRow('轮询间隔:', self._interval_spin)
-
-        root.addWidget(cfg_box)
-
-        # control row
-        ctrl = QHBoxLayout()
-
-        self._btn_start = QPushButton('开始监听')
-        self._btn_start.setObjectName('btnSync')
-        self._btn_start.setFixedHeight(32)
-        self._btn_start.clicked.connect(self._start_monitor)
-
-        self._btn_stop = QPushButton('停止监听')
-        self._btn_stop.setObjectName('btnDanger')
-        self._btn_stop.setFixedHeight(32)
-        self._btn_stop.setEnabled(False)
-        self._btn_stop.clicked.connect(self._stop_monitor)
-
-        self._status_label = QLabel('未运行')
-        self._status_label.setStyleSheet('color:#888')
-
-        ctrl.addWidget(self._btn_start)
-        ctrl.addWidget(self._btn_stop)
-        ctrl.addSpacing(16)
-        ctrl.addWidget(self._status_label)
-        ctrl.addStretch()
-        root.addLayout(ctrl)
-
-        # usage hint
+        # hint
         hint = QLabel(
-            '触发方式：群聊中发送 <b>@{机器人名称} 开始问题记录</b> 和 '
-            '<b>@{机器人名称} 结束问题记录</b>，中间的聊天内容将自动上传。'
+            '录制触发：群聊中 <b>@机器人名 开始问题记录</b> / <b>@机器人名 结束问题记录</b>。'
+            '后台运行 <code>welink_monitor.py</code> 即可自动监听并上传。'
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet('color:#555;font-size:11px;background:#fffbe6;'
-                           'padding:6px 10px;border-radius:4px;border:1px solid #ffe58f')
+        hint.setStyleSheet(
+            'color:#555;font-size:11px;background:#fffbe6;'
+            'padding:5px 10px;border-radius:4px;border:1px solid #ffe58f'
+        )
         root.addWidget(hint)
 
-        # log area
-        log_label = QLabel('运行日志')
-        log_label.setStyleSheet('font-weight:bold')
-        root.addWidget(log_label)
+        # rules table
+        lbl = QLabel('监听的群聊')
+        lbl.setStyleSheet('font-weight:bold;font-size:12px')
+        root.addWidget(lbl)
 
-        self._log_edit = QPlainTextEdit()
-        self._log_edit.setReadOnly(True)
-        self._log_edit.setMaximumBlockCount(500)
-        self._log_edit.setStyleSheet(
-            'background:#1e1e1e;color:#d4d4d4;font-family:Consolas,monospace;font-size:11px'
-        )
-        root.addWidget(self._log_edit, stretch=1)
+        self._table = QTableWidget(0, 3)
+        self._table.setHorizontalHeaderLabels(['群组 ID', '群组名称', ''])
+        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self._table.setColumnWidth(2, 52)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setAlternatingRowColors(True)
+        root.addWidget(self._table, stretch=1)
 
-        self._load_settings()
+        # add row
+        add_row = QHBoxLayout()
+        self._gid_edit  = QLineEdit()
+        self._gid_edit.setPlaceholderText('群组 ID（必填）')
+        self._gname_edit = QLineEdit()
+        self._gname_edit.setPlaceholderText('群组名称（可选）')
+        btn_add = QPushButton('+ 添加')
+        btn_add.setObjectName('btnSync')
+        btn_add.setFixedWidth(64)
+        btn_add.clicked.connect(self._add_rule)
+        add_row.addWidget(self._gid_edit, 2)
+        add_row.addWidget(self._gname_edit, 2)
+        add_row.addWidget(btn_add)
+        root.addLayout(add_row)
 
-    # ── settings ──────────────────────────────────────────────────
+    # ── data ──────────────────────────────────────────────────────
 
-    def _load_settings(self):
-        s = store.load_settings()
-        self._bot_name_edit.setText(s.get('welinkBotName', '云见'))
-        self._user_id_edit.setText(s.get('welinkUserId', '') or s.get('userId', ''))
-        self._interval_spin.setValue(s.get('welinkPollInterval', 3))
+    def _load_rules(self):
+        self._set_status(None)
 
-    def _save_settings(self):
-        s = store.load_settings()
-        s['welinkBotName']      = self._bot_name_edit.text().strip() or '云见'
-        s['welinkUserId']       = self._user_id_edit.text().strip()
-        s['welinkPollInterval'] = self._interval_spin.value()
-        store.save_settings(s)
+        def _fetch():
+            rules = backend.get_welink_rules()
+            # also ping
+            try:
+                import requests, urllib3
+                urllib3.disable_warnings()
+                requests.get(
+                    backend._base + '/api/welink/ping', timeout=4, verify=False
+                ).raise_for_status()
+                ok = True
+            except Exception:
+                ok = False
+            return rules, ok
 
-    # ── monitor control ───────────────────────────────────────────
+        w = Worker(_fetch)
+        w.ok.connect(lambda res: self._on_rules_loaded(*res))
+        w.err.connect(lambda e: self._set_status(False))
+        w.start()
+        self._worker = w
 
-    def _start_monitor(self):
-        self._save_settings()
-        s = store.load_settings()
+    def _on_rules_loaded(self, rules, connected):
+        self._rules = rules
+        self._set_status(connected)
+        self._table.setRowCount(0)
+        for r in rules:
+            self._append_row(r)
 
-        bot_name  = s.get('welinkBotName', '云见')
-        user_id   = s.get('welinkUserId', '') or s.get('userId', '')
-        interval  = s.get('welinkPollInterval', 3)
-        base_url  = s.get('backendUrl', 'http://localhost:8023').rstrip('/')
+    def _append_row(self, rule: dict):
+        row = self._table.rowCount()
+        self._table.insertRow(row)
+        self._table.setItem(row, 0, QTableWidgetItem(rule['group_id']))
+        self._table.setItem(row, 1, QTableWidgetItem(rule.get('group_name', '')))
 
-        self._monitor = WelinkMonitor(
-            bot_name      = bot_name,
-            user_id       = user_id,
-            poll_interval = interval,
-            backend_base  = base_url,
-        )
-        self._monitor.log_signal.connect(self._append_log)
-        self._monitor.uploaded_signal.connect(self._on_uploaded)
-        self._monitor.start()
+        btn_del = QPushButton('删除')
+        btn_del.setObjectName('btnDanger')
+        btn_del.setFixedSize(48, 22)
+        btn_del.clicked.connect(lambda _, rid=rule['id']: self._delete_rule(rid))
+        self._table.setCellWidget(row, 2, btn_del)
+        self._table.setRowHeight(row, 28)
 
-        self._btn_start.setEnabled(False)
-        self._btn_stop.setEnabled(True)
-        self._bot_name_edit.setEnabled(False)
-        self._user_id_edit.setEnabled(False)
-        self._interval_spin.setEnabled(False)
-        self._status_label.setText('运行中…')
-        self._status_label.setStyleSheet('color:#008C64;font-weight:bold')
+    def _add_rule(self):
+        gid   = self._gid_edit.text().strip()
+        gname = self._gname_edit.text().strip()
+        if not gid:
+            QMessageBox.warning(self, '提示', '群组 ID 不能为空')
+            return
 
-    def _stop_monitor(self):
-        if self._monitor:
-            self._monitor.stop()
-            self._monitor.wait(3000)
-            self._monitor = None
+        def _do():
+            return backend.add_welink_rule(gid, gname)
 
-        self._btn_start.setEnabled(True)
-        self._btn_stop.setEnabled(False)
-        self._bot_name_edit.setEnabled(True)
-        self._user_id_edit.setEnabled(True)
-        self._interval_spin.setEnabled(True)
-        self._status_label.setText('已停止')
-        self._status_label.setStyleSheet('color:#888')
+        w = Worker(_do)
+        w.ok.connect(self._on_rule_added)
+        w.err.connect(lambda e: QMessageBox.warning(self, '添加失败', e))
+        w.start()
+        self._worker = w
 
-    # ── slots ─────────────────────────────────────────────────────
+    def _on_rule_added(self, result: dict):
+        if not result.get('success', True) and 'message' in result:
+            QMessageBox.warning(self, '添加失败', result['message'])
+            return
+        self._gid_edit.clear()
+        self._gname_edit.clear()
+        self._append_row(result)
 
-    def _append_log(self, text: str):
-        self._log_edit.appendPlainText(text)
+    def _delete_rule(self, rule_id: int):
+        def _do():
+            return backend.delete_welink_rule(rule_id)
 
-    def _on_uploaded(self, info: dict):
-        group = info.get('group_name', '')
-        count = info.get('count', 0)
-        dup   = info.get('duplicate', False)
-        if not dup:
-            self._status_label.setText(f'最近上传: [{group}] {count} 条')
+        w = Worker(_do)
+        w.ok.connect(lambda _: self._load_rules())
+        w.err.connect(lambda e: QMessageBox.warning(self, '删除失败', e))
+        w.start()
+        self._worker = w
+
+    # ── status ────────────────────────────────────────────────────
+
+    def _set_status(self, connected):
+        if connected is None:
+            self._status_dot.setStyleSheet('color:#ccc;font-size:14px')
+            self._status_lbl.setText('连接中…')
+        elif connected:
+            self._status_dot.setStyleSheet('color:#008C64;font-size:14px')
+            self._status_lbl.setText('已连接')
+        else:
+            self._status_dot.setStyleSheet('color:#c00;font-size:14px')
+            self._status_lbl.setText('无法连接后端')
 
     # ── lifecycle ─────────────────────────────────────────────────
 
     def activate(self):
-        pass
+        self._load_rules()
 
     def deactivate(self):
         pass
-
-    def closeEvent(self, event):
-        if self._monitor:
-            self._monitor.stop()
-        super().closeEvent(event)
