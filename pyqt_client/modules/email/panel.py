@@ -5,6 +5,7 @@ from PyQt5.QtCore import Qt, QTimer, QPoint
 from PyQt5.QtGui import QColor, QFont
 
 from modules.email import outlook, rules as rules_mod
+from modules.email.dialogs import SettingsDialog
 import backend
 import store  # 仅用于 settings 读写
 from utils import Worker
@@ -124,9 +125,11 @@ class EmailPanel(QWidget):
 
         self._btn_refresh  = QPushButton('刷新邮件')
         self._btn_sync     = QPushButton('立即同步')
+        self._btn_settings = QPushButton('设置')
         self._btn_refresh.setObjectName('btnRefresh')
         self._btn_sync.setObjectName('btnSync')
-        for b in (self._btn_refresh, self._btn_sync):
+        self._btn_settings.setObjectName('btnSettings')
+        for b in (self._btn_refresh, self._btn_sync, self._btn_settings):
             lay.addWidget(b)
 
         self._btn_more = QToolButton()
@@ -157,6 +160,7 @@ class EmailPanel(QWidget):
 
         self._btn_refresh.clicked.connect(self._do_refresh)
         self._btn_sync.clicked.connect(self._do_sync)
+        self._btn_settings.clicked.connect(self._open_settings)
         return bar
 
     def _make_progress(self):
@@ -247,6 +251,7 @@ class EmailPanel(QWidget):
         self._progress.setVisible(busy)
         self._btn_refresh.setEnabled(not busy)
         self._btn_sync.setEnabled(not busy)
+        self._btn_settings.setEnabled(not busy)
         self._btn_more.setEnabled(not busy)
 
     # ── 刷新邮件 ──────────────────────────────────────────
@@ -485,4 +490,15 @@ class EmailPanel(QWidget):
         w.err.connect(lambda _: None)
         w.start()
         self._workers.append(w)
+
+    # ── 设置 ──────────────────────────────────────────────
+    def _open_settings(self):
+        dlg = SettingsDialog(self._settings, parent=self)
+        if dlg.exec_() == SettingsDialog.Accepted:
+            saved = dlg.get_settings()
+            self._settings.update(saved)
+            store.save_settings(self._settings)
+            self._start_auto_sync()
+            self._set_status('设置已更新', 'green')
+            self._do_refresh()
 

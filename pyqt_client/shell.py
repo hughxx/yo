@@ -25,7 +25,7 @@ def _app_icon() -> QIcon:
 
 from modules.email.panel import EmailPanel
 from modules.welink.panel import WelinkPanel
-from modules.email.dialogs import SettingsDialog, SetupDialog
+from modules.email.dialogs import SetupDialog
 import store
 import backend
 
@@ -303,8 +303,8 @@ class MainShell(QMainWindow):
 
     def _open_settings(self):
         s = store.load_settings()
-        dlg = SettingsDialog(s, parent=self)
-        if dlg.exec_() == SettingsDialog.Accepted:
+        dlg = SetupDialog(s, parent=self)
+        if dlg.exec_() == SetupDialog.Accepted:
             s = dlg.get_settings()
             store.save_settings(s)
             backend.set_base(s['backendUrl'])

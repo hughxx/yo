@@ -168,7 +168,6 @@ class SettingsDialog(QDialog):
 
     # ── 基本 tab ─────────────────────────────────────────
     def _make_basic(self):
-        # 外层 VBox：表单顶对齐，底部 stretch 撑开
         outer = QWidget()
         vlay = QVBoxLayout(outer)
         vlay.setContentsMargins(0, 0, 0, 0)
@@ -179,56 +178,6 @@ class SettingsDialog(QDialog):
         lay.setVerticalSpacing(4)
         lay.setHorizontalSpacing(8)
         lay.setContentsMargins(8, 8, 8, 8)
-
-        row1 = QHBoxLayout()
-        row1.setSpacing(6)
-        self._server_combo = QComboBox()
-        self._server_combo.setEditable(True)
-        for _name in _SERVER_PRESETS:
-            self._server_combo.addItem(_name)
-        self._server_combo.addItem(_MANUAL_INPUT)
-        self._server_combo.lineEdit().setPlaceholderText('选择预设或输入服务器地址')
-        self._server_combo.setCurrentText(_url_to_display(self._s.get('backendUrl', '')) or '云核心网')
-        self._server_combo.activated.connect(self._on_server_activated)
-        btn_test = QPushButton('测试连接')
-        btn_test.setFixedWidth(80)
-        btn_test.clicked.connect(self._test_conn)
-        row1.addWidget(self._server_combo, stretch=1)
-        row1.addWidget(btn_test)
-        lay.addRow('服务器：', row1)
-
-        btn_api_doc = QPushButton('接口实现说明 ↗')
-        btn_api_doc.setFlat(True)
-        btn_api_doc.setStyleSheet('color: #0078D4; text-align: left; border: none; padding: 0 2px;')
-        btn_api_doc.setCursor(Qt.PointingHandCursor)
-        btn_api_doc.clicked.connect(lambda: _show_api_doc(self))
-        lay.addRow('', btn_api_doc)
-
-        self._user_id = QLineEdit(self._s.get('userId', ''))
-        self._user_id.setPlaceholderText('输入姓名或工号搜索，从下拉结果中选择')
-        self._userinfo_map   = {}
-        self._confirmed_uid  = self._s.get('userId', '')   # 必须来自接口选择
-        self._user_completer = QCompleter([], self)
-        self._user_completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self._user_completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
-        self._user_completer.setMaxVisibleItems(8)
-        self._user_id.setCompleter(self._user_completer)
-        self._user_completer.activated.connect(self._on_userinfo_selected)
-        self._user_search_timer = QTimer(self)
-        self._user_search_timer.setSingleShot(True)
-        self._user_search_timer.timeout.connect(self._search_userinfo)
-        self._user_id.textEdited.connect(self._on_uid_edited)
-        lay.addRow('工号：', self._user_id)
-
-        row3 = QHBoxLayout()
-        row3.setSpacing(6)
-        self._ns_combo = QComboBox()
-        btn_ns = QPushButton('刷新')
-        btn_ns.setFixedWidth(50)
-        btn_ns.clicked.connect(self._load_namespaces)
-        row3.addWidget(self._ns_combo)
-        row3.addWidget(btn_ns)
-        lay.addRow('Namespace：', row3)
 
         self._interval = QSpinBox()
         self._interval.setRange(1, 1440)
@@ -244,73 +193,7 @@ class SettingsDialog(QDialog):
 
         vlay.addWidget(form_w)
         vlay.addStretch()
-
-        self._load_namespaces()
         return outer
-
-    def _search_userinfo(self):
-        query = self._user_id.text().strip()
-        if not query:
-            return
-        url = _resolve_server_url(self._server_combo.currentText()) or _resolve_server_url(self._s.get('backendUrl', ''))
-        if not url:
-            return
-        backend.set_base(url)
-
-        def _done(items):
-            self._userinfo_map = {f'{r["label"]} ({r["value"]})': r['value'] for r in items}
-            self._user_completer.setModel(QStringListModel(list(self._userinfo_map)))
-            if self._userinfo_map:
-                self._user_completer.complete()
-
-        w = Worker(backend.get_userinfo, query)
-        w.ok.connect(_done)
-        w.start()
-        self._workers.append(w)
-
-    def _on_uid_edited(self):
-        self._confirmed_uid = ''
-        self._user_search_timer.start(400)
-
-    def _on_userinfo_selected(self, display_text: str):
-        value = self._userinfo_map.get(display_text, display_text)
-        self._confirmed_uid = value
-        QTimer.singleShot(0, lambda: self._user_id.setText(display_text))
-
-    def _on_server_activated(self, index: int):
-        if self._server_combo.itemText(index) == _MANUAL_INPUT:
-            self._server_combo.setCurrentText('')
-            self._server_combo.lineEdit().setFocus()
-        else:
-            self._load_namespaces()
-
-    def _test_conn(self):
-        url = _resolve_server_url(self._server_combo.currentText())
-        if not url:
-            QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
-            return
-        backend.set_base(url)
-        ok = backend.ping()
-        QMessageBox.information(self, '连接测试', '连接成功 ✓' if ok else '连接失败，请检查服务器地址')
-
-    def _load_namespaces(self):
-        url = _resolve_server_url(self._server_combo.currentText()) or _resolve_server_url(self._s.get('backendUrl', ''))
-        backend.set_base(url)
-        cur = self._s.get('namespace', '')
-
-        def _done(items):
-            self._ns_combo.clear()
-            self._ns_combo.addItem('-- 请选择 --', '')
-            for it in items:
-                self._ns_combo.addItem(it['name'], it['name'])
-            idx = self._ns_combo.findData(cur)
-            if idx >= 0:
-                self._ns_combo.setCurrentIndex(idx)
-
-        w = Worker(backend.get_namespaces)
-        w.ok.connect(_done)
-        w.start()
-        self._workers.append(w)
 
     # ── 文件夹 tab ───────────────────────────────────────
     def _make_folders(self):
@@ -633,18 +516,6 @@ class SettingsDialog(QDialog):
 
     # ── 保存 ─────────────────────────────────────────────
     def _on_save(self):
-        url = _resolve_server_url(self._server_combo.currentText())
-        if not url:
-            QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
-            self._tabs.setCurrentIndex(0)
-            return
-        self._s['backendUrl']          = url
-        if not self._confirmed_uid:
-            QMessageBox.warning(self, '错误', '请在工号栏搜索并从下拉结果中选择用户')
-            self._tabs.setCurrentIndex(0)
-            return
-        self._s['userId']              = self._confirmed_uid
-        self._s['namespace']           = self._ns_combo.currentData() or ''
         self._s['scanIntervalMinutes'] = self._interval.value()
         self._s['customJsonConfig']    = self._custom_json.toPlainText()
         self._s['scanFolders']         = sorted(self._scan_folders)
