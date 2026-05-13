@@ -100,9 +100,15 @@ class WelinkPanel(QWidget):
         self._start_cmd_edit   = QLineEdit()
         self._end_cmd_edit     = QLineEdit()
         self._summary_cmd_edit = QLineEdit()
+        summary_row = QHBoxLayout()
+        summary_row.setSpacing(6)
+        summary_row.addWidget(self._summary_cmd_edit)
+        _hint = QLabel('张三 z00123456 2026-01-01 00:00')
+        _hint.setStyleSheet('color:#bbb;font-size:11px')
+        summary_row.addWidget(_hint)
         form.addRow('开始命令:', self._start_cmd_edit)
         form.addRow('结束命令:', self._end_cmd_edit)
-        form.addRow('总结命令:', self._summary_cmd_edit)
+        form.addRow('总结命令:', summary_row)
         root.addLayout(form)
 
         # ── 规则表 + 日志（上下分割）──
