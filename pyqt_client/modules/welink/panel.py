@@ -75,9 +75,6 @@ class WelinkPanel(QWidget):
 
         # ── 标题 + 监听控制 ──
         hdr = QHBoxLayout()
-        title = QLabel('定位过程记录')
-        title.setStyleSheet('font-size:16px;font-weight:bold;color:#252526')
-        hdr.addWidget(title)
         hdr.addStretch()
         self._dot = QLabel('●')
         self._dot.setStyleSheet('color:#ccc;font-size:14px')
