@@ -193,7 +193,7 @@ _MODULES = [
 class MainShell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('xiaoluban-extension')
+        self.setWindowTitle('Cor')
         self.setWindowIcon(_app_icon())
         self.resize(1020, 640)
         self.setMinimumSize(820, 500)
@@ -256,7 +256,7 @@ class MainShell(QMainWindow):
     def _build_tray(self):
         self._tray = QSystemTrayIcon(self)
         self._tray.setIcon(_app_icon())
-        self._tray.setToolTip('xiaoluban-extension')
+        self._tray.setToolTip('Cor')
 
         menu = QMenu()
         act_show = QAction('显示', self)
@@ -284,7 +284,7 @@ class MainShell(QMainWindow):
         event.ignore()
         self.hide()
         self._tray.showMessage(
-            'xiaoluban-extension',
+            'Cor',
             '程序已缩小到系统托盘，定时同步继续运行。',
             QSystemTrayIcon.Information,
             2000,
@@ -335,4 +335,4 @@ class MainShell(QMainWindow):
 
         if 0 <= idx < len(self._panels):
             self._panels[idx].activate()
-            self.setWindowTitle('xiaoluban-extension')
+            self.setWindowTitle('Cor')
