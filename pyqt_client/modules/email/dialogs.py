@@ -658,7 +658,7 @@ class SetupDialog(QDialog):
         backend.set_base(url)
 
         def _done(items):
-            self._userinfo_map = {f'{r["label"]} ({r["value"]})': r['value'] for r in items}
+            self._userinfo_map = {r["label"]: r["value"] for r in items}
             self._user_completer.setModel(QStringListModel(list(self._userinfo_map)))
             if self._userinfo_map:
                 self._user_completer.complete()
@@ -675,7 +675,7 @@ class SetupDialog(QDialog):
     def _on_userinfo_selected(self, text: str):
         value = self._userinfo_map.get(text, text)
         self._confirmed_uid = value
-        QTimer.singleShot(0, lambda: self._user_id.setText(text))
+        QTimer.singleShot(0, lambda: self._user_id.setText(value))
 
     def _confirm(self):
         url = self._get_url()
