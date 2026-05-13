@@ -1,6 +1,5 @@
 """WeLink 群聊录制监听线程"""
 import json
-import re
 import subprocess
 import sys
 import time
@@ -159,10 +158,12 @@ class WelinkMonitor(QThread):
     log_signal      = pyqtSignal(str)
     uploaded_signal = pyqtSignal(dict)
 
-    def __init__(self, backend_base: str, bot_name: str, user_id: str, poll_interval: int = 3):
+    def __init__(self, backend_base: str, start_cmd: str, end_cmd: str,
+                 user_id: str, poll_interval: int = 3):
         super().__init__()
         self._backend_base  = backend_base.rstrip('/')
-        self._bot_name      = bot_name
+        self._start_cmd     = start_cmd
+        self._end_cmd       = end_cmd
         self._user_id       = user_id
         self._poll_interval = max(1, poll_interval)
         self._running       = False
@@ -176,9 +177,6 @@ class WelinkMonitor(QThread):
 
         last_ids:  dict = _load(_STATE_FILE, {})
         recording: dict = _load(_SESSION_FILE, {})
-
-        start_re = re.compile(rf'@{re.escape(self._bot_name)}\s+开始问题记录')
-        end_re   = re.compile(rf'@{re.escape(self._bot_name)}\s+结束问题记录')
 
         rules_cache: list = []
         rules_ts = 0.0
@@ -219,7 +217,7 @@ class WelinkMonitor(QThread):
 
                         content = msg.get('content', '')
 
-                        if start_re.search(content):
+                        if self._start_cmd in content:
                             recording[group_id] = {
                                 'start_msg_id': msg_id,
                                 'start_time':   msg.get('serverSendTime', 0),
@@ -228,7 +226,7 @@ class WelinkMonitor(QThread):
                             _save(_SESSION_FILE, recording)
                             self._log(f'[{group_name}] 开始录制 (msgId={msg_id})')
 
-                        elif end_re.search(content) and group_id in recording:
+                        elif self._end_cmd in content and group_id in recording:
                             rec = recording.pop(group_id)
                             _save(_SESSION_FILE, recording)
                             self._log(f'[{group_name}] 结束录制，正在上传…')

@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QMessageBox, QPlainTextEdit, QSplitter,
+    QFormLayout,
 )
 from PyQt5.QtCore import Qt
 
@@ -46,24 +47,15 @@ class WelinkPanel(QWidget):
         hdr.addWidget(self._btn_toggle)
         root.addLayout(hdr)
 
-        # ── 机器人名配置 ──
-        cfg_row = QHBoxLayout()
-        cfg_row.addWidget(QLabel('机器人名:'))
-        self._bot_name_edit = QLineEdit()
-        self._bot_name_edit.setFixedWidth(100)
-        self._bot_name_edit.textChanged.connect(self._update_hint)
-        cfg_row.addWidget(self._bot_name_edit)
-        cfg_row.addStretch()
-        root.addLayout(cfg_row)
-
-        # ── 触发提示（动态显示机器人名）──
-        self._hint = QLabel()
-        self._hint.setWordWrap(True)
-        self._hint.setStyleSheet(
-            'color:#555;font-size:11px;background:#fffbe6;'
-            'padding:4px 10px;border-radius:4px;border:1px solid #ffe58f'
-        )
-        root.addWidget(self._hint)
+        # ── 触发命令配置 ──
+        form = QFormLayout()
+        form.setSpacing(4)
+        form.setContentsMargins(0, 0, 0, 0)
+        self._start_cmd_edit = QLineEdit()
+        self._end_cmd_edit   = QLineEdit()
+        form.addRow('开始命令:', self._start_cmd_edit)
+        form.addRow('结束命令:', self._end_cmd_edit)
+        root.addLayout(form)
 
         # ── 规则表 + 日志（上下分割）──
         splitter = QSplitter(Qt.Vertical)
@@ -81,7 +73,7 @@ class WelinkPanel(QWidget):
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
         self._table.setColumnWidth(0, 180)
-        self._table.setColumnWidth(2, 26)
+        self._table.setColumnWidth(2, 44)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
@@ -127,20 +119,15 @@ class WelinkPanel(QWidget):
 
         self._load_config()
 
-    def _update_hint(self):
-        name = self._bot_name_edit.text().strip() or '机器人名'
-        self._hint.setText(
-            f'触发：群聊中 <b>@{name} 开始问题记录</b> / <b>@{name} 结束问题记录</b>'
-        )
-
     def _load_config(self):
         s = store.load_settings()
-        self._bot_name_edit.setText(s.get('welinkBotName', '云见'))
-        self._update_hint()
+        self._start_cmd_edit.setText(s.get('welinkStartCmd', '@云见 开始问题记录'))
+        self._end_cmd_edit.setText(s.get('welinkEndCmd',   '@云见 结束问题记录'))
 
     def _save_config(self):
         s = store.load_settings()
-        s['welinkBotName'] = self._bot_name_edit.text().strip() or '云见'
+        s['welinkStartCmd'] = self._start_cmd_edit.text().strip()
+        s['welinkEndCmd']   = self._end_cmd_edit.text().strip()
         store.save_settings(s)
 
     # ── monitor toggle ────────────────────────────────────────────
@@ -158,7 +145,8 @@ class WelinkPanel(QWidget):
 
         self._monitor = WelinkMonitor(
             backend_base  = s.get('backendUrl', 'http://localhost:8023').rstrip('/'),
-            bot_name      = s.get('welinkBotName', '云见'),
+            start_cmd     = s.get('welinkStartCmd', '@云见 开始问题记录'),
+            end_cmd       = s.get('welinkEndCmd',   '@云见 结束问题记录'),
             user_id       = s.get('welinkUserId', '') or s.get('userId', ''),
             poll_interval = s.get('welinkPollInterval', 3),
         )
@@ -166,7 +154,6 @@ class WelinkPanel(QWidget):
         self._monitor.uploaded_signal.connect(self._on_uploaded)
         self._monitor.start()
         self._set_running(True)
-        self._bot_name_edit.setEnabled(False)
 
     def _stop_monitor(self):
         if self._monitor:
@@ -174,9 +161,11 @@ class WelinkPanel(QWidget):
             self._monitor.wait(3000)
             self._monitor = None
         self._set_running(False)
-        self._bot_name_edit.setEnabled(True)
 
     def _set_running(self, running: bool):
+        editable = not running
+        self._start_cmd_edit.setEnabled(editable)
+        self._end_cmd_edit.setEnabled(editable)
         if running:
             self._dot.setStyleSheet('color:#008C64;font-size:14px')
             self._status_lbl.setText('监听中')
@@ -214,16 +203,10 @@ class WelinkPanel(QWidget):
 
         btn = QPushButton('×')
         btn.setObjectName('btnDanger')
-        btn.setFixedSize(22, 20)
-        btn.setStyleSheet('font-size:13px;padding:0;border-radius:2px')
+        btn.setFixedSize(36, 20)
+        btn.setStyleSheet('font-size:13px;padding:0;min-height:0;border-radius:2px')
         btn.clicked.connect(lambda _, rid=rule['id']: self._delete_rule(rid))
-
-        # 居中放按钮
-        cell = QWidget()
-        lay  = QHBoxLayout(cell)
-        lay.setContentsMargins(2, 2, 2, 2)
-        lay.addWidget(btn)
-        self._table.setCellWidget(row, 2, cell)
+        self._table.setCellWidget(row, 2, btn)
 
     def _add_rule(self):
         gid   = self._gid_edit.text().strip()
