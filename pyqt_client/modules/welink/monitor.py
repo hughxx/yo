@@ -187,6 +187,11 @@ class WelinkMonitor(QThread):
                 if now - rules_ts > 60:
                     rules_cache = self._fetch_rules()
                     rules_ts    = now
+                    if rules_cache:
+                        names = ', '.join(r.get('group_name') or r['group_id'] for r in rules_cache)
+                        self._log(f'已加载 {len(rules_cache)} 条规则: {names}')
+                    else:
+                        self._log('未找到启用的群聊规则，请在规则列表中添加')
 
                 for rule in rules_cache:
                     if not self._running:
@@ -340,7 +345,8 @@ class WelinkMonitor(QThread):
                              timeout=10, verify=False)
             r.raise_for_status()
             return [row for row in r.json() if row.get('enabled', True)]
-        except Exception:
+        except Exception as e:
+            self._log(f'获取规则失败: {e}')
             return []
 
     def _log(self, msg: str):

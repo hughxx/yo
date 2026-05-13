@@ -231,6 +231,7 @@ class EmailPanel(QWidget):
     def activate(self):
         self._settings = store.load_settings()
         backend.set_base(self._settings.get('backendUrl', ''))
+        self._do_refresh()
 
     def deactivate(self):
         pass

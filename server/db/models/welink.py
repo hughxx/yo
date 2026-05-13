@@ -4,7 +4,7 @@ from server.db.models import Base, _now
 
 
 class WelinkRule(Base):
-    __tablename__ = "t_welink_rules"
+    __tablename__ = "t_collection_welink_rules"
 
     id         = Column(Integer, primary_key=True, autoincrement=True)
     group_id   = Column(String(100), nullable=False, unique=True, index=True)
@@ -22,7 +22,7 @@ class WelinkRule(Base):
 
 
 class WelinkChatlog(Base):
-    __tablename__ = "t_welink_chatlogs"
+    __tablename__ = "t_collection_welink_chatlogs"
 
     id         = Column(Integer, primary_key=True, autoincrement=True)
     chat_id    = Column(String(200), nullable=False, unique=True, index=True)  # "{group_id}_{start_msg_id}"
