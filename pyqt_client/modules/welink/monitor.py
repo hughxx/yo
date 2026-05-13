@@ -226,6 +226,7 @@ class WelinkMonitor(QThread):
                             continue
 
                         content = msg.get('content', '')
+                        self._log(f'[{group_name}] 新消息 {msg_id}: {content[:60]!r}')
 
                         if self._start_cmd in content:
                             recording[group_id] = {
