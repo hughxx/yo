@@ -119,7 +119,7 @@ def _one_box_download(download_url: str, extraction_code: str):
     return None
 
 
-def _msgs_to_html(msgs: list, group_name: str, start_ts: int, end_ts: int) -> str:
+def _msgs_to_html(msgs: list) -> str:
     def fmt(ms):
         return datetime.fromtimestamp(ms / 1000).strftime('%Y-%m-%d %H:%M:%S') if ms else ''
 
@@ -158,9 +158,6 @@ def _msgs_to_html(msgs: list, group_name: str, start_ts: int, end_ts: int) -> st
         '<!DOCTYPE html><html><head><meta charset="utf-8">'
         '<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;'
         'max-width:860px;margin:20px auto;padding:0 16px}</style></head><body>'
-        f'<h2 style="margin:0 0 4px">群聊记录 — {escape(group_name)}</h2>'
-        f'<p style="color:#888;font-size:12px;margin:0 0 12px">'
-        f'{fmt(start_ts)} ~ {fmt(end_ts)}</p>'
         + ''.join(rows)
         + '</body></html>'
     )
@@ -285,6 +282,8 @@ class WelinkMonitor(QThread):
         in_range = [
             m for m in all_msgs
             if start_msg_id <= int(m.get('msgId', 0)) <= end_msg_id
+            and self._start_cmd not in _normalize(m.get('content', ''))
+            and self._end_cmd   not in _normalize(m.get('content', ''))
         ]
         in_range.sort(key=lambda m: m.get('serverSendTime', 0))
 
@@ -308,7 +307,7 @@ class WelinkMonitor(QThread):
                     else:
                         self._log(f'  图片下载失败: {fname} ({dl_url[:60]})')
 
-        html_body = _msgs_to_html(in_range, group_name, start_time, end_time)
+        html_body = _msgs_to_html(in_range)
         chat_id   = f'{group_id}_{start_msg_id}'
 
         try:
