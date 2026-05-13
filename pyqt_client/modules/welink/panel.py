@@ -249,7 +249,6 @@ class WelinkPanel(QWidget):
 
         id_item = QTableWidgetItem(rule['group_id'])
         id_item.setData(Qt.UserRole, rule['id'])   # 存 rule_id
-        id_item.setForeground(Qt.gray)             # 视觉提示不可编辑
         self._table.setItem(row, 0, id_item)
         self._table.setItem(row, 1, QTableWidgetItem(rule.get('group_name', '')))
 
