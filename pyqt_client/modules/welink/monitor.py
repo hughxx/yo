@@ -90,7 +90,8 @@ def _normalize(text: str) -> str:
 
 
 def _parse_summary_cmd(prefix: str, norm: str):
-    """解析 '<prefix> 用户名 工号 YYYY-MM-DD HH:MM'，返回 (username, employee_id, datetime) 或 None。"""
+    """解析 '<prefix> 用户名 工号 YYYY-MM-DD HH:MM [YYYY-MM-DD HH:MM]'
+    返回 (username, employee_id, start_dt, end_dt_or_None) 或 None。"""
     if prefix not in norm:
         return None
     rest = norm[norm.index(prefix) + len(prefix):].strip()
@@ -98,8 +99,11 @@ def _parse_summary_cmd(prefix: str, norm: str):
     if len(parts) < 4:
         return None
     try:
-        dt = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
-        return parts[0], parts[1], dt
+        start_dt = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
+        end_dt = None
+        if len(parts) >= 6:
+            end_dt = datetime.strptime(f'{parts[4]} {parts[5]}', '%Y-%m-%d %H:%M')
+        return parts[0], parts[1], start_dt, end_dt
     except ValueError:
         return None
 
@@ -272,15 +276,15 @@ class WelinkMonitor(QThread):
                         elif self._summary_cmd and self._summary_cmd in norm:
                             parsed = _parse_summary_cmd(self._summary_cmd, norm)
                             if parsed:
-                                username, employee_id, target_dt = parsed
+                                username, employee_id, start_dt, end_dt = parsed
                                 self._log(f'[{group_name}] 收到总结命令，定位起始消息…')
                                 self._finish_summary(
                                     group_id, group_name,
                                     msg_id, msg.get('serverSendTime', 0),
-                                    username, employee_id, target_dt,
+                                    username, employee_id, start_dt, end_dt,
                                 )
                             else:
-                                self._log(f'[{group_name}] 总结命令格式错误，期望: {self._summary_cmd} 用户名 工号 YYYY-MM-DD HH:MM')
+                                self._log(f'[{group_name}] 总结命令格式错误，期望: {self._summary_cmd} 用户名 工号 YYYY-MM-DD HH:MM [YYYY-MM-DD HH:MM]')
 
                         last_ids[group_id] = msg_id
                         _save(_STATE_FILE, last_ids)
@@ -325,45 +329,56 @@ class WelinkMonitor(QThread):
 
     def _finish_summary(self, group_id: str, group_name: str,
                         summary_msg_id: int, summary_time: int,
-                        username: str, employee_id: str, target_dt: datetime):
+                        username: str, employee_id: str,
+                        start_dt: datetime, end_dt: datetime | None):
         all_msgs, err = _get_messages(group_id, 100)
         if err or not all_msgs:
             self._log(f'[{group_name}] 获取消息失败: {err}，放弃总结')
             return
 
         # 找起始消息：sender 匹配 username 或 employee_id，时间戳在指定分钟内
-        start_ms = int(target_dt.timestamp() * 1000)
-        end_ms   = start_ms + 60_000
+        start_ms = int(start_dt.timestamp() * 1000)
 
         start_msg = None
         for m in sorted(all_msgs, key=lambda x: x.get('serverSendTime', 0)):
             sender    = m.get('sender', '')
             send_time = m.get('serverSendTime', 0)
-            if start_ms <= send_time < end_ms and sender in (username, employee_id):
+            if start_ms <= send_time < start_ms + 60_000 and sender in (username, employee_id):
                 start_msg = m
                 break
 
         if start_msg is None:
             self._log(
-                f'[{group_name}] 未找到 {username}/{employee_id} 在 {target_dt.strftime("%H:%M")} 的起始消息'
+                f'[{group_name}] 未找到 {username}/{employee_id} 在 {start_dt.strftime("%H:%M")} 的起始消息'
             )
             return
 
         start_msg_id = int(start_msg.get('msgId', 0))
 
-        # 截取起始消息到总结命令之间（不含总结命令本身）
-        in_range = [
-            m for m in all_msgs
-            if start_msg_id <= int(m.get('msgId', 0)) < summary_msg_id
-        ]
-        in_range.sort(key=lambda m: m.get('serverSendTime', 0))
+        if end_dt is not None:
+            # 指定了结束时间：截到该时间戳所在分钟结束
+            end_ms = int(end_dt.timestamp() * 1000) + 60_000
+            in_range = [
+                m for m in all_msgs
+                if start_msg_id <= int(m.get('msgId', 0))
+                and m.get('serverSendTime', 0) < end_ms
+            ]
+            actual_end_time = int(end_dt.timestamp() * 1000)
+        else:
+            # 未指定结束时间：截到总结命令前一条
+            in_range = [
+                m for m in all_msgs
+                if start_msg_id <= int(m.get('msgId', 0)) < summary_msg_id
+            ]
+            actual_end_time = summary_time
 
+        in_range.sort(key=lambda m: m.get('serverSendTime', 0))
         self._log(f'[{group_name}] 总结范围 {len(in_range)} 条，正在上传…')
         self._enrich_images(in_range, group_name)
 
         chat_id = f'{group_id}_{start_msg_id}_s'
         self._upload_chatlog(chat_id, group_id, group_name,
-                             start_msg.get('serverSendTime', 0), summary_time, in_range)
+                             start_msg.get('serverSendTime', 0), actual_end_time, in_range)
 
     # ── helpers ───────────────────────────────────────────────────
 

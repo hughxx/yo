@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QPushButton, QStackedWidget, QSizePolicy,
     QSystemTrayIcon, QMenu, QAction, QApplication
 )
-from PyQt5.QtCore import Qt
+from PyQt5.Qt问题定位助手e import Qt
 from PyQt5.QtGui import QIcon, QPixmap, QPainter
 from PyQt5.QtSvg import QSvgRenderer
 import os as _os, sys as _sys
@@ -34,6 +34,7 @@ def _app_icon() -> QIcon:
 
 from modules.email.panel import EmailPanel
 from modules.welink.panel import WelinkPanel
+from modules.welink.autoreply_panel import AutoReplyPanel
 from modules.email.dialogs import SetupDialog
 import store
 import backend
@@ -184,8 +185,9 @@ QFormLayout { margin: 12px; }
 
 # ── 模块注册表 ────────────────────────────────────────────
 _MODULES = [
-    ('邮件',   EmailPanel),
-    ('WeLink', WelinkPanel),
+    ('邮件',       EmailPanel),
+    ('定位过程记录', WelinkPanel),
+    ('问题自动回复', AutoReplyPanel),
 ]
 
 
@@ -193,7 +195,7 @@ _MODULES = [
 class MainShell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Cor')
+        self.setWindowTitle('问题定位助手')
         self.setWindowIcon(_app_icon())
         self.resize(1020, 640)
         self.setMinimumSize(820, 500)
@@ -256,7 +258,7 @@ class MainShell(QMainWindow):
     def _build_tray(self):
         self._tray = QSystemTrayIcon(self)
         self._tray.setIcon(_app_icon())
-        self._tray.setToolTip('Cor')
+        self._tray.setToolTip('问题定位助手')
 
         menu = QMenu()
         act_show = QAction('显示', self)
@@ -284,7 +286,7 @@ class MainShell(QMainWindow):
         event.ignore()
         self.hide()
         self._tray.showMessage(
-            'Cor',
+            '问题定位助手',
             '程序已缩小到系统托盘，定时同步继续运行。',
             QSystemTrayIcon.Information,
             2000,
@@ -335,4 +337,4 @@ class MainShell(QMainWindow):
 
         if 0 <= idx < len(self._panels):
             self._panels[idx].activate()
-            self.setWindowTitle('Cor')
+            self.setWindowTitle('问题定位助手')
