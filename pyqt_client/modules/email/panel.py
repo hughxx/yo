@@ -231,7 +231,12 @@ class EmailPanel(QWidget):
     def activate(self):
         self._settings = store.load_settings()
         backend.set_base(self._settings.get('backendUrl', ''))
-        self._do_refresh()
+        if self._is_configured():
+            self._do_refresh()
+
+    def _is_configured(self) -> bool:
+        s = self._settings
+        return bool(s.get('backendUrl') and s.get('userId') and s.get('namespace'))
 
     def deactivate(self):
         pass
@@ -240,6 +245,7 @@ class EmailPanel(QWidget):
         self._settings = s
         backend.set_base(s.get('backendUrl', ''))
         self._start_auto_sync()
+        self._do_refresh()
 
     # ── 状态控制 ──────────────────────────────────────────
     def _set_status(self, text: str, color: str = 'green'):
