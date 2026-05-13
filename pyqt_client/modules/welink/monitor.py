@@ -90,20 +90,22 @@ def _normalize(text: str) -> str:
 
 
 def _parse_summary_cmd(prefix: str, norm: str):
-    """解析 '<prefix> 用户名 工号 YYYY-MM-DD HH:MM [YYYY-MM-DD HH:MM]'
-    返回 (username, employee_id, start_dt, end_dt_or_None) 或 None。"""
+    """解析 '<prefix> 名1 工号1 YYYY-MM-DD HH:MM 名2 工号2 YYYY-MM-DD HH:MM'
+    自动容错：若两个时间顺序写反则自动对调。
+    返回 (name1, id1, dt1, name2, id2, dt2) dt1<=dt2，或 None。"""
     if prefix not in norm:
         return None
     rest = norm[norm.index(prefix) + len(prefix):].strip()
     parts = rest.split()
-    if len(parts) < 4:
+    if len(parts) < 8:
         return None
     try:
-        start_dt = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
-        end_dt = None
-        if len(parts) >= 6:
-            end_dt = datetime.strptime(f'{parts[4]} {parts[5]}', '%Y-%m-%d %H:%M')
-        return parts[0], parts[1], start_dt, end_dt
+        dt_a = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
+        dt_b = datetime.strptime(f'{parts[6]} {parts[7]}', '%Y-%m-%d %H:%M')
+        if dt_a <= dt_b:
+            return parts[0], parts[1], dt_a, parts[4], parts[5], dt_b
+        else:
+            return parts[4], parts[5], dt_b, parts[0], parts[1], dt_a
     except ValueError:
         return None
 
@@ -138,16 +140,56 @@ def _one_box_download(download_url: str, extraction_code: str):
     return None
 
 
+# 发言人配色：(字体色, 气泡背景色)
+_SENDER_PALETTE = [
+    ('#1558d6', '#e8f0fe'),
+    ('#b71c1c', '#ffebee'),
+    ('#1b5e20', '#e8f5e9'),
+    ('#e65100', '#fff3e0'),
+    ('#4a148c', '#f3e5f5'),
+    ('#006064', '#e0f7fa'),
+    ('#827717', '#f9fbe7'),
+    ('#37474f', '#eceff1'),
+]
+_sender_cache = {}
+
+def _sender_style(sender: str):
+    if sender not in _sender_cache:
+        _sender_cache[sender] = _SENDER_PALETTE[len(_sender_cache) % len(_SENDER_PALETTE)]
+    return _sender_cache[sender]
+
+
 def _msgs_to_html(msgs: list) -> str:
+    _sender_cache.clear()
+
     def fmt(ms):
         return datetime.fromtimestamp(ms / 1000).strftime('%Y-%m-%d %H:%M:%S') if ms else ''
 
     rows = []
+    prev_sender  = None
+    prev_time_ms = 0
+    _GAP_MS = 5 * 60 * 1000  # 5 分钟间隔加分割线
+
     for m in msgs:
-        sender = escape(m.get('sender', ''))
-        ct     = m.get('contentType', '')
-        raw    = m.get('content', '')
-        t      = fmt(m.get('serverSendTime', 0))
+        sender    = m.get('sender', '')
+        ct        = m.get('contentType', '')
+        raw       = m.get('content', '')
+        send_time = m.get('serverSendTime', 0)
+        t         = fmt(send_time)
+
+        # 超过 5 分钟加时间分割线
+        if prev_time_ms and send_time - prev_time_ms > _GAP_MS:
+            rows.append(
+                f'<div style="text-align:center;margin:12px 0;font-size:11px;color:#aaa;">'
+                f'<span style="border-top:1px dashed #ddd;display:inline-block;'
+                f'width:40%;vertical-align:middle"></span>'
+                f'&nbsp;{fmt(send_time)}&nbsp;'
+                f'<span style="border-top:1px dashed #ddd;display:inline-block;'
+                f'width:40%;vertical-align:middle"></span></div>'
+            )
+
+        fc, bg = _sender_style(sender)
+        new_block = (sender != prev_sender)
 
         if ct in ('PICTURE_MSG', 'FILE_MSG'):
             img_url  = m.get('_img_url')
@@ -162,21 +204,33 @@ def _msgs_to_html(msgs: list) -> str:
         elif ct == 'CARD_MSG':
             body = '<em>[卡片消息]</em>'
         elif ct == 'NOTICE_MSG':
-            body = f'<em>[系统通知] {escape(raw)}</em>'
+            body = f'<em style="color:#888">[系统通知] {escape(raw)}</em>'
         else:
             body = raw if raw.strip().startswith('<') else escape(raw).replace('\n', '<br>')
 
+        mt = '10px' if new_block else '2px'
+        header = (
+            f'<div style="margin-bottom:3px">'
+            f'<span style="font-weight:bold;color:{fc}">{escape(sender)}</span>'
+            f'<span style="font-size:10px;color:#bbb;margin-left:8px">{t}</span>'
+            f'</div>'
+        ) if new_block else ''
+
         rows.append(
-            f'<div style="margin:6px 0;padding:6px 10px;background:#f5f5f5;border-radius:4px;">'
-            f'<span style="font-weight:bold;color:#1a73e8">{sender}</span>'
-            f'<span style="font-size:11px;color:#aaa;margin-left:8px">{t}</span>'
-            f'<div style="margin-top:4px">{body}</div></div>'
+            f'<div style="margin:{mt} 0 0 0;padding:6px 10px;background:{bg};'
+            f'border-radius:{"6px 6px" if new_block else "4px"} 4px 4px;">'
+            f'{header}'
+            f'<div style="color:#222">{body}</div></div>'
         )
 
+        prev_sender  = sender
+        prev_time_ms = send_time
+
     return (
-        '<!DOCTYPE html><html><head><meta charset="utf-8">'
-        '<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;'
-        'max-width:860px;margin:20px auto;padding:0 16px}</style></head><body>'
+        '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
+        'body{font-family:Arial,sans-serif;font-size:13px;color:#222;'
+        'max-width:860px;margin:20px auto;padding:0 16px}'
+        '</style></head><body>'
         + ''.join(rows)
         + '</body></html>'
     )
@@ -276,15 +330,18 @@ class WelinkMonitor(QThread):
                         elif self._summary_cmd and self._summary_cmd in norm:
                             parsed = _parse_summary_cmd(self._summary_cmd, norm)
                             if parsed:
-                                username, employee_id, start_dt, end_dt = parsed
-                                self._log(f'[{group_name}] 收到总结命令，定位起始消息…')
+                                sn, si, s_dt, en, ei, e_dt = parsed
+                                self._log(f'[{group_name}] 收到总结命令，定位消息范围…')
                                 self._finish_summary(
                                     group_id, group_name,
                                     msg_id, msg.get('serverSendTime', 0),
-                                    username, employee_id, start_dt, end_dt,
+                                    sn, si, s_dt, en, ei, e_dt,
                                 )
                             else:
-                                self._log(f'[{group_name}] 总结命令格式错误，期望: {self._summary_cmd} 用户名 工号 YYYY-MM-DD HH:MM [YYYY-MM-DD HH:MM]')
+                                self._log(
+                                    f'[{group_name}] 总结命令格式错误，期望: '
+                                    f'{self._summary_cmd} 张三 z001 2026-01-01 00:00 李四 z002 2026-01-01 01:00'
+                                )
 
                         last_ids[group_id] = msg_id
                         _save(_STATE_FILE, last_ids)
@@ -329,49 +386,39 @@ class WelinkMonitor(QThread):
 
     def _finish_summary(self, group_id: str, group_name: str,
                         summary_msg_id: int, summary_time: int,
-                        username: str, employee_id: str,
-                        start_dt: datetime, end_dt):
+                        start_name: str, start_id: str, start_dt: datetime,
+                        end_name: str, end_id: str, end_dt: datetime):
         all_msgs, err = _get_messages(group_id, 100)
         if err or not all_msgs:
             self._log(f'[{group_name}] 获取消息失败: {err}，放弃总结')
             return
 
-        # 找起始消息：sender 匹配 username 或 employee_id，时间戳在指定分钟内
-        start_ms = int(start_dt.timestamp() * 1000)
+        sorted_msgs = sorted(all_msgs, key=lambda x: x.get('serverSendTime', 0))
 
-        start_msg = None
-        for m in sorted(all_msgs, key=lambda x: x.get('serverSendTime', 0)):
-            sender    = m.get('sender', '')
-            send_time = m.get('serverSendTime', 0)
-            if start_ms <= send_time < start_ms + 60_000 and sender in (username, employee_id):
-                start_msg = m
-                break
+        def find_msg(name, eid, dt):
+            ms = int(dt.timestamp() * 1000)
+            for m in sorted_msgs:
+                if ms <= m.get('serverSendTime', 0) < ms + 60_000 and m.get('sender', '') in (name, eid):
+                    return m
+            return None
 
+        start_msg = find_msg(start_name, start_id, start_dt)
         if start_msg is None:
-            self._log(
-                f'[{group_name}] 未找到 {username}/{employee_id} 在 {start_dt.strftime("%H:%M")} 的起始消息'
-            )
+            self._log(f'[{group_name}] 未找到起始消息: {start_name}/{start_id} {start_dt.strftime("%H:%M")}')
             return
 
-        start_msg_id = int(start_msg.get('msgId', 0))
+        end_msg = find_msg(end_name, end_id, end_dt)
+        if end_msg is None:
+            self._log(f'[{group_name}] 未找到结束消息: {end_name}/{end_id} {end_dt.strftime("%H:%M")}，将截取至总结命令前')
 
-        if end_dt is not None:
-            # 指定了结束时间：截到该时间戳所在分钟结束
-            end_ms = int(end_dt.timestamp() * 1000) + 60_000
-            in_range = [
-                m for m in all_msgs
-                if start_msg_id <= int(m.get('msgId', 0))
-                and m.get('serverSendTime', 0) < end_ms
-            ]
-            actual_end_time = int(end_dt.timestamp() * 1000)
-        else:
-            # 未指定结束时间：截到总结命令前一条
-            in_range = [
-                m for m in all_msgs
-                if start_msg_id <= int(m.get('msgId', 0)) < summary_msg_id
-            ]
-            actual_end_time = summary_time
+        start_msg_id    = int(start_msg.get('msgId', 0))
+        end_msg_id      = int(end_msg.get('msgId', 0)) if end_msg else summary_msg_id - 1
+        actual_end_time = end_msg.get('serverSendTime', 0) if end_msg else summary_time
 
+        in_range = [
+            m for m in all_msgs
+            if start_msg_id <= int(m.get('msgId', 0)) <= end_msg_id
+        ]
         in_range.sort(key=lambda m: m.get('serverSendTime', 0))
         self._log(f'[{group_name}] 总结范围 {len(in_range)} 条，正在上传…')
         self._enrich_images(in_range, group_name)
