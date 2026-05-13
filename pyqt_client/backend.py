@@ -97,6 +97,12 @@ def delete_welink_rule(rule_id: int) -> dict:
     r.raise_for_status()
     return r.json()
 
+def update_welink_rule_name(rule_id: int, group_name: str) -> dict:
+    r = requests.put(f'{_base}/api/welink/rules/{rule_id}',
+                     json={'group_name': group_name}, timeout=10, verify=False)
+    r.raise_for_status()
+    return r.json()
+
 def toggle_welink_rule(rule_id: int, enabled: bool) -> dict:
     r = requests.put(f'{_base}/api/welink/rules/{rule_id}',
                      json={'enabled': enabled}, timeout=10, verify=False)

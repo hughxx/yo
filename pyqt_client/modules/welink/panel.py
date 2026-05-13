@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QMessageBox, QPlainTextEdit, QSplitter,
-    QFormLayout,
+    QFormLayout, QDialog, QInputDialog,
 )
 from PyQt5.QtCore import Qt
 
@@ -11,6 +11,55 @@ import backend
 import store
 from utils import Worker
 from modules.welink.monitor import WelinkMonitor
+
+_CONFIRM_KEYWORD = '接口人已知晓'
+
+
+class _ConfirmDialog(QDialog):
+    """添加/删除共享规则前的确认弹窗，需用户手动输入关键词。"""
+
+    def __init__(self, action_desc: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('确认操作')
+        self.setFixedWidth(400)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+
+        warn = QLabel(
+            f'⚠ 监听规则属于<b>共享资源</b>，修改将影响所有监听用户。\n\n'
+            f'操作：{action_desc}'
+        )
+        warn.setWordWrap(True)
+        warn.setStyleSheet('color:#333;padding:6px;background:#fff8e1;'
+                           'border:1px solid #ffe082;border-radius:4px')
+        lay.addWidget(warn)
+
+        lay.addWidget(QLabel(f'请在下方输入 <b>{_CONFIRM_KEYWORD}</b> 后点击确认：'))
+        self._input = QLineEdit()
+        self._input.setPlaceholderText(_CONFIRM_KEYWORD)
+        lay.addWidget(self._input)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self._btn_cancel = QPushButton('取消')
+        self._btn_ok     = QPushButton('确认')
+        self._btn_ok.setObjectName('btnSync')
+        self._btn_ok.setEnabled(False)
+        btn_row.addWidget(self._btn_cancel)
+        btn_row.addWidget(self._btn_ok)
+        lay.addLayout(btn_row)
+
+        self._input.textChanged.connect(
+            lambda t: self._btn_ok.setEnabled(t == _CONFIRM_KEYWORD)
+        )
+        self._btn_ok.clicked.connect(self.accept)
+        self._btn_cancel.clicked.connect(self.reject)
+
+    @staticmethod
+    def ask(action_desc: str, parent=None) -> bool:
+        return _ConfirmDialog(action_desc, parent).exec_() == QDialog.Accepted
 
 
 class WelinkPanel(QWidget):
@@ -65,7 +114,9 @@ class WelinkPanel(QWidget):
         rule_lay = QVBoxLayout(rule_box)
         rule_lay.setContentsMargins(0, 0, 0, 0)
         rule_lay.setSpacing(4)
-        rule_lay.addWidget(QLabel('监听的群聊'))
+        lbl = QLabel('监听的群聊  <span style="color:#aaa;font-size:10px">（双击群组名称可修改）</span>')
+        lbl.setTextFormat(Qt.RichText)
+        rule_lay.addWidget(lbl)
 
         self._table = QTableWidget(0, 3)
         self._table.setHorizontalHeaderLabels(['群组 ID', '群组名称', ''])
@@ -79,6 +130,7 @@ class WelinkPanel(QWidget):
         self._table.verticalHeader().setVisible(False)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setDefaultSectionSize(24)
+        self._table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         rule_lay.addWidget(self._table)
 
         # 添加行
@@ -118,6 +170,8 @@ class WelinkPanel(QWidget):
         root.addWidget(splitter, stretch=1)
 
         self._load_config()
+
+    # ── config ────────────────────────────────────────────────────
 
     def _load_config(self):
         s = store.load_settings()
@@ -198,15 +252,40 @@ class WelinkPanel(QWidget):
     def _append_row(self, rule: dict):
         row = self._table.rowCount()
         self._table.insertRow(row)
-        self._table.setItem(row, 0, QTableWidgetItem(rule['group_id']))
+
+        id_item = QTableWidgetItem(rule['group_id'])
+        id_item.setData(Qt.UserRole, rule['id'])   # 存 rule_id
+        id_item.setForeground(Qt.gray)             # 视觉提示不可编辑
+        self._table.setItem(row, 0, id_item)
         self._table.setItem(row, 1, QTableWidgetItem(rule.get('group_name', '')))
 
         btn = QPushButton('×')
         btn.setObjectName('btnDanger')
         btn.setFixedSize(36, 20)
         btn.setStyleSheet('font-size:13px;padding:0;min-height:0;border-radius:2px')
-        btn.clicked.connect(lambda _, rid=rule['id']: self._delete_rule(rid))
+        btn.clicked.connect(lambda _, rid=rule['id'], gid=rule['group_id']: self._delete_rule(rid, gid))
         self._table.setCellWidget(row, 2, btn)
+
+    def _on_cell_double_clicked(self, row: int, col: int):
+        if col != 1:
+            return
+        id_item = self._table.item(row, 0)
+        if not id_item:
+            return
+        rule_id      = id_item.data(Qt.UserRole)
+        current_name = self._table.item(row, 1).text() if self._table.item(row, 1) else ''
+
+        new_name, ok = QInputDialog.getText(
+            self, '修改群组名称', '群组名称:', text=current_name
+        )
+        if not ok or new_name.strip() == current_name:
+            return
+
+        w = Worker(backend.update_welink_rule_name, rule_id, new_name.strip())
+        w.ok.connect(lambda _: self._load_rules())
+        w.err.connect(lambda e: QMessageBox.warning(self, '修改失败', e))
+        w.start()
+        self._worker = w
 
     def _add_rule(self):
         gid   = self._gid_edit.text().strip()
@@ -214,6 +293,11 @@ class WelinkPanel(QWidget):
         if not gid:
             QMessageBox.warning(self, '提示', '群组 ID 不能为空')
             return
+
+        desc = f'添加群聊监听：{gid}' + (f'（{gname}）' if gname else '')
+        if not _ConfirmDialog.ask(desc, self):
+            return
+
         w = Worker(backend.add_welink_rule, gid, gname)
         w.ok.connect(self._on_rule_added)
         w.err.connect(lambda e: QMessageBox.warning(self, '添加失败', e))
@@ -228,7 +312,11 @@ class WelinkPanel(QWidget):
         self._gname_edit.clear()
         self._append_row(result)
 
-    def _delete_rule(self, rule_id: int):
+    def _delete_rule(self, rule_id: int, group_id: str):
+        desc = f'删除群聊监听：{group_id}'
+        if not _ConfirmDialog.ask(desc, self):
+            return
+
         w = Worker(backend.delete_welink_rule, rule_id)
         w.ok.connect(lambda _: self._load_rules())
         w.err.connect(lambda e: QMessageBox.warning(self, '删除失败', e))
