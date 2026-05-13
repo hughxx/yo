@@ -70,7 +70,7 @@ class _StatusLabel(QLabel):
 
     def enterEvent(self, e):
         if self._full:
-            gpos = self.mapToGlobal(QPoint(0, self.height() + 2))
+            gpos = self.mapToGlobal(QPoint(self.width() // 2 - 210, self.height() + 2))
             self._popup.show_at(self._full, gpos)
         super().enterEvent(e)
 
