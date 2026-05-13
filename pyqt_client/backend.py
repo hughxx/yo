@@ -71,3 +71,8 @@ def get_userinfo(query: str) -> list:
         return r.json()
     except Exception:
         return []
+
+def receive_welink_chatlog(payload: dict) -> dict:
+    r = requests.post(f'{_base}/api/welink/receive', json=payload, timeout=60, verify=False)
+    r.raise_for_status()
+    return r.json()

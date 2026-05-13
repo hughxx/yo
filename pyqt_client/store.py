@@ -19,6 +19,10 @@ DEFAULT = {
     'scanIntervalMinutes': 60,
     'customJsonConfig':    '{}',
     'scanFolders':         [],
+    # WeLink settings
+    'welinkBotName':       '云见',
+    'welinkUserId':        '',
+    'welinkPollInterval':  3,
 }
 
 def load_settings() -> dict:
