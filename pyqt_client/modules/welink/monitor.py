@@ -89,6 +89,21 @@ def _normalize(text: str) -> str:
 
 
 
+def _parse_summary_cmd(prefix: str, norm: str):
+    """解析 '<prefix> 用户名 工号 YYYY-MM-DD HH:MM'，返回 (username, employee_id, datetime) 或 None。"""
+    if prefix not in norm:
+        return None
+    rest = norm[norm.index(prefix) + len(prefix):].strip()
+    parts = rest.split()
+    if len(parts) < 4:
+        return None
+    try:
+        dt = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
+        return parts[0], parts[1], dt
+    except ValueError:
+        return None
+
+
 def _parse_um_content(content: str):
     """解析 /:um_begin{URL|Type|Size|FileName|0|W;H;extraction_code|...}/:um_end
     返回 (download_url, file_name, extraction_code) 或 (None, None, None)"""
@@ -168,11 +183,12 @@ class WelinkMonitor(QThread):
     uploaded_signal = pyqtSignal(dict)
 
     def __init__(self, backend_base: str, start_cmd: str, end_cmd: str,
-                 user_id: str, poll_interval: int = 3):
+                 summary_cmd: str, user_id: str, poll_interval: int = 3):
         super().__init__()
         self._backend_base  = backend_base.rstrip('/')
         self._start_cmd     = start_cmd
         self._end_cmd       = end_cmd
+        self._summary_cmd   = summary_cmd
         self._user_id       = user_id
         self._poll_interval = max(1, poll_interval)
         self._running       = False
@@ -253,6 +269,19 @@ class WelinkMonitor(QThread):
                             self._finish(group_id, group_name, rec,
                                          msg_id, msg.get('serverSendTime', 0))
 
+                        elif self._summary_cmd and self._summary_cmd in norm:
+                            parsed = _parse_summary_cmd(self._summary_cmd, norm)
+                            if parsed:
+                                username, employee_id, target_dt = parsed
+                                self._log(f'[{group_name}] 收到总结命令，定位起始消息…')
+                                self._finish_summary(
+                                    group_id, group_name,
+                                    msg_id, msg.get('serverSendTime', 0),
+                                    username, employee_id, target_dt,
+                                )
+                            else:
+                                self._log(f'[{group_name}] 总结命令格式错误，期望: {self._summary_cmd} 用户名 工号 YYYY-MM-DD HH:MM')
+
                         last_ids[group_id] = msg_id
                         _save(_STATE_FILE, last_ids)
 
@@ -282,15 +311,65 @@ class WelinkMonitor(QThread):
         in_range = [
             m for m in all_msgs
             if start_msg_id <= int(m.get('msgId', 0)) <= end_msg_id
-            and self._start_cmd not in _normalize(m.get('content', ''))
-            and self._end_cmd   not in _normalize(m.get('content', ''))
         ]
         in_range.sort(key=lambda m: m.get('serverSendTime', 0))
 
         self._log(f'[{group_name}] 共拉取 {len(all_msgs)} 条，范围内 {len(in_range)} 条')
+        self._enrich_images(in_range, group_name)
 
-        # 下载图片/文件并上传到后端，写入 _img_url 供 HTML 渲染使用
-        for m in in_range:
+        chat_id = f'{group_id}_{start_msg_id}'
+        self._upload_chatlog(chat_id, group_id, group_name,
+                             start_time, end_time, in_range)
+
+    # ── finish summary ────────────────────────────────────────────
+
+    def _finish_summary(self, group_id: str, group_name: str,
+                        summary_msg_id: int, summary_time: int,
+                        username: str, employee_id: str, target_dt: datetime):
+        all_msgs, err = _get_messages(group_id, 100)
+        if err or not all_msgs:
+            self._log(f'[{group_name}] 获取消息失败: {err}，放弃总结')
+            return
+
+        # 找起始消息：sender 匹配 username 或 employee_id，时间戳在指定分钟内
+        start_ms = int(target_dt.timestamp() * 1000)
+        end_ms   = start_ms + 60_000
+
+        start_msg = None
+        for m in sorted(all_msgs, key=lambda x: x.get('serverSendTime', 0)):
+            sender    = m.get('sender', '')
+            send_time = m.get('serverSendTime', 0)
+            if start_ms <= send_time < end_ms and sender in (username, employee_id):
+                start_msg = m
+                break
+
+        if start_msg is None:
+            self._log(
+                f'[{group_name}] 未找到 {username}/{employee_id} 在 {target_dt.strftime("%H:%M")} 的起始消息'
+            )
+            return
+
+        start_msg_id = int(start_msg.get('msgId', 0))
+
+        # 截取起始消息到总结命令之间（不含总结命令本身）
+        in_range = [
+            m for m in all_msgs
+            if start_msg_id <= int(m.get('msgId', 0)) < summary_msg_id
+        ]
+        in_range.sort(key=lambda m: m.get('serverSendTime', 0))
+
+        self._log(f'[{group_name}] 总结范围 {len(in_range)} 条，正在上传…')
+        self._enrich_images(in_range, group_name)
+
+        chat_id = f'{group_id}_{start_msg_id}_s'
+        self._upload_chatlog(chat_id, group_id, group_name,
+                             start_msg.get('serverSendTime', 0), summary_time, in_range)
+
+    # ── helpers ───────────────────────────────────────────────────
+
+    def _enrich_images(self, msgs: list, group_name: str):
+        """下载图片/文件并上传到后端，写入 _img_url 供 HTML 渲染使用。"""
+        for m in msgs:
             ct = m.get('contentType', '')
             if ct in ('PICTURE_MSG', 'FILE_MSG'):
                 raw = m.get('content', '')
@@ -307,9 +386,9 @@ class WelinkMonitor(QThread):
                     else:
                         self._log(f'  图片下载失败: {fname} ({dl_url[:60]})')
 
-        html_body = _msgs_to_html(in_range)
-        chat_id   = f'{group_id}_{start_msg_id}'
-
+    def _upload_chatlog(self, chat_id: str, group_id: str, group_name: str,
+                        start_time: int, end_time: int, msgs: list):
+        html_body = _msgs_to_html(msgs)
         try:
             r = requests.post(
                 f'{self._backend_base}/api/welink/receive',
@@ -330,20 +409,17 @@ class WelinkMonitor(QThread):
             if dup:
                 self._log(f'[{group_name}] 已存在，跳过')
             else:
-                self._log(f'[{group_name}] 上传成功 ({len(in_range)} 条)')
+                self._log(f'[{group_name}] 上传成功 ({len(msgs)} 条)')
             self.uploaded_signal.emit({
                 'group_name': group_name,
                 'chat_id':    chat_id,
-                'count':      len(in_range),
+                'count':      len(msgs),
                 'duplicate':  dup,
             })
         except Exception as e:
             self._log(f'[{group_name}] 上传失败: {e}')
 
-    # ── helpers ───────────────────────────────────────────────────
-
     def _upload_image(self, file_bytes: bytes, file_name: str):
-        """上传图片到后端，返回公开 URL 或 None"""
         try:
             r = requests.post(
                 f'{self._backend_base}/api/email/upload_image',

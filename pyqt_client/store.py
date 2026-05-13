@@ -22,6 +22,7 @@ DEFAULT = {
     # WeLink settings
     'welinkStartCmd':      '@云见 开始定位',
     'welinkEndCmd':        '@云见 结束定位',
+    'welinkSummaryCmd':    '@云见 总结经验',
     'welinkUserId':        '',
     'welinkPollInterval':  3,
 }

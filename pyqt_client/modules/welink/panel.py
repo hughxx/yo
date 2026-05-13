@@ -97,10 +97,12 @@ class WelinkPanel(QWidget):
         form = QFormLayout()
         form.setSpacing(4)
         form.setContentsMargins(0, 0, 0, 0)
-        self._start_cmd_edit = QLineEdit()
-        self._end_cmd_edit   = QLineEdit()
+        self._start_cmd_edit   = QLineEdit()
+        self._end_cmd_edit     = QLineEdit()
+        self._summary_cmd_edit = QLineEdit()
         form.addRow('开始命令:', self._start_cmd_edit)
         form.addRow('结束命令:', self._end_cmd_edit)
+        form.addRow('总结命令:', self._summary_cmd_edit)
         root.addLayout(form)
 
         # ── 规则表 + 日志（上下分割）──
@@ -169,13 +171,15 @@ class WelinkPanel(QWidget):
 
     def _load_config(self):
         s = store.load_settings()
-        self._start_cmd_edit.setText(s.get('welinkStartCmd', '@云见 开始定位'))
-        self._end_cmd_edit.setText(s.get('welinkEndCmd',   '@云见 结束定位'))
+        self._start_cmd_edit.setText(s.get('welinkStartCmd',   '@云见 开始定位'))
+        self._end_cmd_edit.setText(s.get('welinkEndCmd',     '@云见 结束定位'))
+        self._summary_cmd_edit.setText(s.get('welinkSummaryCmd', '@云见 总结经验'))
 
     def _save_config(self):
         s = store.load_settings()
-        s['welinkStartCmd'] = self._start_cmd_edit.text().strip()
-        s['welinkEndCmd']   = self._end_cmd_edit.text().strip()
+        s['welinkStartCmd']   = self._start_cmd_edit.text().strip()
+        s['welinkEndCmd']     = self._end_cmd_edit.text().strip()
+        s['welinkSummaryCmd'] = self._summary_cmd_edit.text().strip()
         store.save_settings(s)
 
     # ── monitor toggle ────────────────────────────────────────────
@@ -193,8 +197,9 @@ class WelinkPanel(QWidget):
 
         self._monitor = WelinkMonitor(
             backend_base  = s.get('backendUrl', 'http://localhost:8023').rstrip('/'),
-            start_cmd     = s.get('welinkStartCmd', '@云见 开始定位'),
-            end_cmd       = s.get('welinkEndCmd',   '@云见 结束定位'),
+            start_cmd     = s.get('welinkStartCmd',   '@云见 开始定位'),
+            end_cmd       = s.get('welinkEndCmd',     '@云见 结束定位'),
+            summary_cmd   = s.get('welinkSummaryCmd', '@云见 总结经验'),
             user_id       = s.get('welinkUserId', '') or s.get('userId', ''),
             poll_interval = s.get('welinkPollInterval', 3),
         )
@@ -221,6 +226,7 @@ class WelinkPanel(QWidget):
         editable = not running
         self._start_cmd_edit.setEnabled(editable)
         self._end_cmd_edit.setEnabled(editable)
+        self._summary_cmd_edit.setEnabled(editable)
         if running:
             self._dot.setStyleSheet('color:#008C64;font-size:14px')
             self._status_lbl.setText('监听中')
