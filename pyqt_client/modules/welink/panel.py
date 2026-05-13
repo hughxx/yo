@@ -210,6 +210,13 @@ class WelinkPanel(QWidget):
             self._monitor = None
         self._set_running(False)
 
+    def _restart_monitor(self):
+        if self._monitor and self._monitor.isRunning():
+            self._monitor.stop()
+            self._monitor.wait(3000)
+            self._monitor = None
+        self._start_monitor()
+
     def _set_running(self, running: bool):
         editable = not running
         self._start_cmd_edit.setEnabled(editable)
@@ -282,13 +289,14 @@ class WelinkPanel(QWidget):
         self._gid_edit.clear()
         self._gname_edit.clear()
         self._append_row(result)
+        self._restart_monitor()
 
     def _delete_rule(self, rule_id: int, group_id: str):
         if not _ConfirmDialog.ask(self):
             return
 
         w = Worker(backend.delete_welink_rule, rule_id)
-        w.ok.connect(lambda _: self._load_rules())
+        w.ok.connect(lambda _: (self._load_rules(), self._restart_monitor()))
         w.err.connect(lambda e: QMessageBox.warning(self, '删除失败', e))
         w.start()
         self._worker = w
@@ -311,6 +319,8 @@ class WelinkPanel(QWidget):
         backend.set_base(s.get('backendUrl', ''))
         self._load_config()
         self._load_rules()
+        if not (self._monitor and self._monitor.isRunning()):
+            self._start_monitor()
 
     def deactivate(self):
         pass
