@@ -77,6 +77,18 @@ def _save(path: Path, obj):
         pass
 
 
+def _normalize(text: str) -> str:
+    """WeLink @提及后跟的 Unicode 空格（如 ）归一化为普通空格。"""
+    for cp in (
+        ' ', ' ', ' ', ' ', ' ', ' ',
+        ' ', ' ', ' ', ' ', ' ', ' ',
+        ' ', ' ', ' ', '　',
+    ):
+        text = text.replace(cp, ' ')
+    return text
+
+
+
 def _parse_um_content(content: str):
     """解析 /:um_begin{URL|Type|Size|FileName|0|W;H;extraction_code|...}/:um_end
     返回 (download_url, file_name, extraction_code) 或 (None, None, None)"""
@@ -226,9 +238,9 @@ class WelinkMonitor(QThread):
                             continue
 
                         content = msg.get('content', '')
-                        self._log(f'[{group_name}] 新消息 {msg_id}: {content[:60]!r}')
+                        norm = _normalize(content)
 
-                        if self._start_cmd in content:
+                        if self._start_cmd in norm:
                             recording[group_id] = {
                                 'start_msg_id': msg_id,
                                 'start_time':   msg.get('serverSendTime', 0),
@@ -237,7 +249,7 @@ class WelinkMonitor(QThread):
                             _save(_SESSION_FILE, recording)
                             self._log(f'[{group_name}] 开始录制 (msgId={msg_id})')
 
-                        elif self._end_cmd in content and group_id in recording:
+                        elif self._end_cmd in norm and group_id in recording:
                             rec = recording.pop(group_id)
                             _save(_SESSION_FILE, recording)
                             self._log(f'[{group_name}] 结束录制，正在上传…')
