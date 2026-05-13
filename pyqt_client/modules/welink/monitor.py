@@ -330,7 +330,7 @@ class WelinkMonitor(QThread):
     def _finish_summary(self, group_id: str, group_name: str,
                         summary_msg_id: int, summary_time: int,
                         username: str, employee_id: str,
-                        start_dt: datetime, end_dt: datetime | None):
+                        start_dt: datetime, end_dt):
         all_msgs, err = _get_messages(group_id, 100)
         if err or not all_msgs:
             self._log(f'[{group_name}] 获取消息失败: {err}，放弃总结')
