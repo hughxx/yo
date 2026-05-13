@@ -5,7 +5,8 @@ from PyQt5.QtWidgets import (
     QSystemTrayIcon, QMenu, QAction, QApplication
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QPixmap, QPainter
+from PyQt5.QtSvg import QSvgRenderer
 import os as _os, sys as _sys
 
 
@@ -16,7 +17,15 @@ def _asset(name: str) -> str:
 
 
 def _app_icon() -> QIcon:
-    """优先使用 icon.png，其次 icon.ico；文件不存在则返回空图标。"""
+    svg_path = _asset('icon.svg')
+    if _os.path.exists(svg_path):
+        renderer = QSvgRenderer(svg_path)
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pixmap)
     for name in ('icon.png', 'icon.ico'):
         path = _asset(name)
         if _os.path.exists(path):
@@ -184,7 +193,7 @@ _MODULES = [
 class MainShell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('问题定位助手')
+        self.setWindowTitle('WeCorder')
         self.setWindowIcon(_app_icon())
         self.resize(1020, 640)
         self.setMinimumSize(820, 500)
@@ -247,7 +256,7 @@ class MainShell(QMainWindow):
     def _build_tray(self):
         self._tray = QSystemTrayIcon(self)
         self._tray.setIcon(_app_icon())
-        self._tray.setToolTip('问题定位助手')
+        self._tray.setToolTip('WeCorder')
 
         menu = QMenu()
         act_show = QAction('显示', self)
@@ -275,7 +284,7 @@ class MainShell(QMainWindow):
         event.ignore()
         self.hide()
         self._tray.showMessage(
-            '问题定位助手',
+            'WeCorder',
             '程序已缩小到系统托盘，定时同步继续运行。',
             QSystemTrayIcon.Information,
             2000,
@@ -326,4 +335,4 @@ class MainShell(QMainWindow):
 
         if 0 <= idx < len(self._panels):
             self._panels[idx].activate()
-            self.setWindowTitle('问题定位助手')
+            self.setWindowTitle('WeCorder')
