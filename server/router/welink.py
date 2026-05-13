@@ -1,11 +1,12 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 
 from server.db.db import get_db
 from server.db.models.welink import WelinkChatlog, WelinkRule
+from server.service.welink_service import process_chatlog
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,11 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db)):
 # ── 聊天记录上传 ───────────────────────────────────────────────
 
 @router.post("/receive")
-async def receive_chatlog(request: Request, db: Session = Depends(get_db)):
+async def receive_chatlog(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     try:
         data = await request.json()
     except Exception:
@@ -86,18 +91,33 @@ async def receive_chatlog(request: Request, db: Session = Depends(get_db)):
         logger.info("welink duplicate: chat_id=%r", chat_id)
         return {"Success": True, "Message": "Already exists", "Duplicate": True}
 
+    html_body  = data.get("HtmlBody", "")
+    group_name = (data.get("GroupName") or "").strip()
+    upload_by  = (data.get("UploadBy") or "").strip()
+
     row = WelinkChatlog(
         chat_id    = chat_id,
-        group_id   = (data.get("GroupId")   or "").strip(),
-        group_name = (data.get("GroupName") or "").strip(),
+        group_id   = (data.get("GroupId") or "").strip(),
+        group_name = group_name,
         start_time = _parse_ms(data.get("StartTime")),
         end_time   = _parse_ms(data.get("EndTime")),
-        html_body  = data.get("HtmlBody", ""),
-        upload_by  = (data.get("UploadBy") or "").strip(),
+        html_body  = html_body,
+        upload_by  = upload_by,
+        process_status = "pending",
     )
     db.add(row)
     db.commit()
     logger.info("welink saved: chat_id=%r", chat_id)
+
+    if html_body:
+        background_tasks.add_task(
+            process_chatlog,
+            html_body  = html_body,
+            group_name = group_name,
+            chat_id    = chat_id,
+            upload_by  = upload_by,
+        )
+
     return {"Success": True, "Message": "Received successfully", "Duplicate": False}
 
 

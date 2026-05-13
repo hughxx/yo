@@ -31,6 +31,7 @@ class WelinkChatlog(Base):
     start_time = Column(DateTime)
     end_time   = Column(DateTime)
     html_body  = Column(Text(4294967295), default="")  # LONGTEXT
-    upload_by  = Column(String(100), default="")
-    created_at = Column(DateTime, default=_now)
-    updated_at = Column(DateTime, default=_now, onupdate=_now)
+    upload_by      = Column(String(100), default="")
+    process_status = Column(String(20), default="pending")
+    created_at     = Column(DateTime, default=_now)
+    updated_at     = Column(DateTime, default=_now, onupdate=_now)
