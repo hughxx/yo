@@ -1,1 +1,267 @@
-# 已迁移到项目根目录的 welink_monitor.py，此文件废弃
+"""WeLink 群聊录制监听线程"""
+import json
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime
+from html import escape
+from pathlib import Path
+
+import requests
+import urllib3
+
+urllib3.disable_warnings()
+
+from PyQt5.QtCore import QThread, pyqtSignal
+
+
+def _app_dir() -> Path:
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent.parent.parent
+
+
+_STATE_FILE   = _app_dir() / '.welink_last_ids.json'
+_SESSION_FILE = _app_dir() / '.welink_sessions.json'
+
+# Windows 下隐藏 subprocess 弹出的黑框
+_STARTUPINFO = None
+if sys.platform == 'win32':
+    _STARTUPINFO = subprocess.STARTUPINFO()
+    _STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+
+def _run_cli(args: list):
+    try:
+        r = subprocess.run(
+            ['welink-cli'] + args,
+            capture_output=True, text=True,
+            encoding='utf-8', errors='ignore',
+            timeout=30,
+            startupinfo=_STARTUPINFO,
+        )
+        return json.loads(r.stdout)
+    except Exception:
+        return None
+
+
+def _get_messages(group_id: str, count: int = 20) -> list:
+    d = _run_cli(['im', 'query-history-message',
+                  '--group-id', group_id, '--query-count', str(count)])
+    if d and d.get('resultCode') == '0':
+        return d.get('respData', {}).get('chatInfo', [])
+    return []
+
+
+def _load(path: Path, default):
+    try:
+        if path.exists():
+            return json.loads(path.read_text('utf-8'))
+    except Exception:
+        pass
+    return default
+
+
+def _save(path: Path, obj):
+    try:
+        path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), 'utf-8')
+    except Exception:
+        pass
+
+
+def _msgs_to_html(msgs: list, group_name: str, start_ts: int, end_ts: int) -> str:
+    def fmt(ms):
+        return datetime.fromtimestamp(ms / 1000).strftime('%Y-%m-%d %H:%M:%S') if ms else ''
+
+    rows = []
+    for m in msgs:
+        sender = escape(m.get('sender', ''))
+        ct     = m.get('contentType', '')
+        raw    = m.get('content', '')
+        t      = fmt(m.get('serverSendTime', 0))
+
+        if ct == 'PICTURE_MSG':
+            body = '<em>[图片]</em>'
+        elif ct == 'FILE_MSG':
+            body = '<em>[文件]</em>'
+        elif ct == 'CARD_MSG':
+            body = '<em>[卡片消息]</em>'
+        elif ct == 'NOTICE_MSG':
+            body = f'<em>[系统通知] {escape(raw)}</em>'
+        else:
+            body = raw if raw.strip().startswith('<') else escape(raw).replace('\n', '<br>')
+
+        rows.append(
+            f'<div style="margin:6px 0;padding:6px 10px;background:#f5f5f5;border-radius:4px;">'
+            f'<span style="font-weight:bold;color:#1a73e8">{sender}</span>'
+            f'<span style="font-size:11px;color:#aaa;margin-left:8px">{t}</span>'
+            f'<div style="margin-top:4px">{body}</div></div>'
+        )
+
+    return (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        '<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;'
+        'max-width:860px;margin:20px auto;padding:0 16px}</style></head><body>'
+        f'<h2 style="margin:0 0 4px">群聊记录 — {escape(group_name)}</h2>'
+        f'<p style="color:#888;font-size:12px;margin:0 0 12px">'
+        f'{fmt(start_ts)} ~ {fmt(end_ts)}</p>'
+        + ''.join(rows)
+        + '</body></html>'
+    )
+
+
+class WelinkMonitor(QThread):
+    log_signal      = pyqtSignal(str)
+    uploaded_signal = pyqtSignal(dict)   # {group_name, chat_id, count, duplicate}
+
+    def __init__(self, backend_base: str, bot_name: str, user_id: str, poll_interval: int = 3):
+        super().__init__()
+        self._backend_base  = backend_base.rstrip('/')
+        self._bot_name      = bot_name
+        self._user_id       = user_id
+        self._poll_interval = max(1, poll_interval)
+        self._running       = False
+
+    def stop(self):
+        self._running = False
+
+    def run(self):
+        self._running = True
+        self._log('WeLink 监听已启动')
+
+        last_ids:  dict = _load(_STATE_FILE, {})
+        recording: dict = _load(_SESSION_FILE, {})
+
+        start_re = re.compile(rf'@{re.escape(self._bot_name)}\s+开始问题记录')
+        end_re   = re.compile(rf'@{re.escape(self._bot_name)}\s+结束问题记录')
+
+        rules_cache: list = []
+        rules_ts = 0.0
+
+        while self._running:
+            try:
+                now = time.time()
+                if now - rules_ts > 60:
+                    rules_cache = self._fetch_rules()
+                    rules_ts    = now
+
+                for rule in rules_cache:
+                    if not self._running:
+                        break
+                    group_id   = str(rule['group_id'])
+                    group_name = rule.get('group_name') or group_id
+
+                    msgs = _get_messages(group_id, 20)
+                    if not msgs:
+                        continue
+
+                    last_seen = last_ids.get(group_id)
+
+                    for msg in reversed(msgs):  # oldest first
+                        msg_id = msg.get('msgId')
+                        if msg_id is None:
+                            continue
+                        msg_id = int(msg_id)
+
+                        if last_seen is None:
+                            last_ids[group_id] = msg_id
+                            _save(_STATE_FILE, last_ids)
+                            break
+
+                        if msg_id <= last_seen:
+                            continue
+
+                        content = msg.get('content', '')
+
+                        if start_re.search(content):
+                            recording[group_id] = {
+                                'start_msg_id': msg_id,
+                                'start_time':   msg.get('serverSendTime', 0),
+                                'group_name':   group_name,
+                            }
+                            _save(_SESSION_FILE, recording)
+                            self._log(f'[{group_name}] 开始录制 (msgId={msg_id})')
+
+                        elif end_re.search(content) and group_id in recording:
+                            rec = recording.pop(group_id)
+                            _save(_SESSION_FILE, recording)
+                            self._log(f'[{group_name}] 结束录制，正在上传…')
+                            self._finish(group_id, group_name, rec,
+                                         int(msg_id), msg.get('serverSendTime', 0))
+
+                        last_ids[group_id] = msg_id
+                        _save(_STATE_FILE, last_ids)
+
+            except Exception as e:
+                self._log(f'轮询异常: {e}')
+
+            time.sleep(self._poll_interval)
+
+        self._log('WeLink 监听已停止')
+
+    # ── finish recording ──────────────────────────────────────────
+
+    def _finish(self, group_id: str, group_name: str, rec: dict,
+                end_msg_id: int, end_time: int):
+        start_msg_id = rec['start_msg_id']
+        start_time   = rec['start_time']
+
+        all_msgs = _get_messages(group_id, 200)
+        if not all_msgs:
+            self._log(f'[{group_name}] 获取消息失败，放弃上传')
+            return
+
+        in_range = [
+            m for m in all_msgs
+            if start_msg_id <= int(m.get('msgId', 0)) <= end_msg_id
+        ]
+        in_range.sort(key=lambda m: m.get('serverSendTime', 0))
+
+        html_body = _msgs_to_html(in_range, group_name, start_time, end_time)
+        chat_id   = f'{group_id}_{start_msg_id}'
+
+        try:
+            r = requests.post(
+                f'{self._backend_base}/api/welink/receive',
+                json={
+                    'ChatId':    chat_id,
+                    'GroupId':   group_id,
+                    'GroupName': group_name,
+                    'StartTime': start_time,
+                    'EndTime':   end_time,
+                    'HtmlBody':  html_body,
+                    'UploadBy':  self._user_id,
+                },
+                timeout=60, verify=False,
+            )
+            r.raise_for_status()
+            result = r.json()
+            dup = result.get('Duplicate', False)
+            if dup:
+                self._log(f'[{group_name}] 已存在，跳过')
+            else:
+                self._log(f'[{group_name}] 上传成功 ({len(in_range)} 条)')
+            self.uploaded_signal.emit({
+                'group_name': group_name,
+                'chat_id':    chat_id,
+                'count':      len(in_range),
+                'duplicate':  dup,
+            })
+        except Exception as e:
+            self._log(f'[{group_name}] 上传失败: {e}')
+
+    # ── helpers ───────────────────────────────────────────────────
+
+    def _fetch_rules(self) -> list:
+        try:
+            r = requests.get(f'{self._backend_base}/api/welink/rules',
+                             timeout=10, verify=False)
+            r.raise_for_status()
+            return [row for row in r.json() if row.get('enabled', True)]
+        except Exception:
+            return []
+
+    def _log(self, msg: str):
+        ts = datetime.now().strftime('%H:%M:%S')
+        self.log_signal.emit(f'[{ts}] {msg}')
