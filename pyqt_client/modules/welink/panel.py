@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QMessageBox, QPlainTextEdit, QSplitter,
-    QFormLayout, QDialog, QInputDialog,
+    QFormLayout, QDialog,
 )
 from PyQt5.QtCore import Qt
 
@@ -18,7 +18,7 @@ _CONFIRM_KEYWORD = '接口人已知晓'
 class _ConfirmDialog(QDialog):
     """添加/删除共享规则前的确认弹窗，需用户手动输入关键词。"""
 
-    def __init__(self, action_desc: str, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('确认操作')
         self.setFixedWidth(400)
@@ -27,10 +27,7 @@ class _ConfirmDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.setSpacing(10)
 
-        warn = QLabel(
-            f'⚠ 监听规则属于<b>共享资源</b>，修改将影响所有监听用户。\n\n'
-            f'操作：{action_desc}'
-        )
+        warn = QLabel('⚠ 监听规则属于<b>共享资源</b>，修改将影响所有监听用户。')
         warn.setWordWrap(True)
         warn.setStyleSheet('color:#333;padding:6px;background:#fff8e1;'
                            'border:1px solid #ffe082;border-radius:4px')
@@ -58,8 +55,8 @@ class _ConfirmDialog(QDialog):
         self._btn_cancel.clicked.connect(self.reject)
 
     @staticmethod
-    def ask(action_desc: str, parent=None) -> bool:
-        return _ConfirmDialog(action_desc, parent).exec_() == QDialog.Accepted
+    def ask(parent=None) -> bool:
+        return _ConfirmDialog(parent).exec_() == QDialog.Accepted
 
 
 class WelinkPanel(QWidget):
@@ -114,9 +111,7 @@ class WelinkPanel(QWidget):
         rule_lay = QVBoxLayout(rule_box)
         rule_lay.setContentsMargins(0, 0, 0, 0)
         rule_lay.setSpacing(4)
-        lbl = QLabel('监听的群聊  <span style="color:#aaa;font-size:10px">（双击群组名称可修改）</span>')
-        lbl.setTextFormat(Qt.RichText)
-        rule_lay.addWidget(lbl)
+        rule_lay.addWidget(QLabel('监听的群聊'))
 
         self._table = QTableWidget(0, 3)
         self._table.setHorizontalHeaderLabels(['群组 ID', '群组名称', ''])
@@ -130,7 +125,6 @@ class WelinkPanel(QWidget):
         self._table.verticalHeader().setVisible(False)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setDefaultSectionSize(24)
-        self._table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         rule_lay.addWidget(self._table)
 
         # 添加行
@@ -138,7 +132,7 @@ class WelinkPanel(QWidget):
         self._gid_edit   = QLineEdit()
         self._gid_edit.setPlaceholderText('群组 ID（必填）')
         self._gname_edit = QLineEdit()
-        self._gname_edit.setPlaceholderText('群组名称（可选）')
+        self._gname_edit.setPlaceholderText('群组名称（必填）')
         btn_add = QPushButton('+ 添加')
         btn_add.setObjectName('btnSync')
         btn_add.setFixedWidth(64)
@@ -266,36 +260,14 @@ class WelinkPanel(QWidget):
         btn.clicked.connect(lambda _, rid=rule['id'], gid=rule['group_id']: self._delete_rule(rid, gid))
         self._table.setCellWidget(row, 2, btn)
 
-    def _on_cell_double_clicked(self, row: int, col: int):
-        if col != 1:
-            return
-        id_item = self._table.item(row, 0)
-        if not id_item:
-            return
-        rule_id      = id_item.data(Qt.UserRole)
-        current_name = self._table.item(row, 1).text() if self._table.item(row, 1) else ''
-
-        new_name, ok = QInputDialog.getText(
-            self, '修改群组名称', '群组名称:', text=current_name
-        )
-        if not ok or new_name.strip() == current_name:
-            return
-
-        w = Worker(backend.update_welink_rule_name, rule_id, new_name.strip())
-        w.ok.connect(lambda _: self._load_rules())
-        w.err.connect(lambda e: QMessageBox.warning(self, '修改失败', e))
-        w.start()
-        self._worker = w
-
     def _add_rule(self):
         gid   = self._gid_edit.text().strip()
         gname = self._gname_edit.text().strip()
-        if not gid:
-            QMessageBox.warning(self, '提示', '群组 ID 不能为空')
+        if not gid or not gname:
+            QMessageBox.warning(self, '提示', '群组 ID 和群组名称均不能为空')
             return
 
-        desc = f'添加群聊监听：{gid}' + (f'（{gname}）' if gname else '')
-        if not _ConfirmDialog.ask(desc, self):
+        if not _ConfirmDialog.ask(self):
             return
 
         w = Worker(backend.add_welink_rule, gid, gname)
@@ -313,8 +285,7 @@ class WelinkPanel(QWidget):
         self._append_row(result)
 
     def _delete_rule(self, rule_id: int, group_id: str):
-        desc = f'删除群聊监听：{group_id}'
-        if not _ConfirmDialog.ask(desc, self):
+        if not _ConfirmDialog.ask(self):
             return
 
         w = Worker(backend.delete_welink_rule, rule_id)
