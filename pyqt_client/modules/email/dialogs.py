@@ -639,7 +639,7 @@ class SetupDialog(QDialog):
         def _done(items):
             self._ns_combo.clear()
             self._ns_combo.addItem('-- 请选择 --', '')
-            for it in items:
+            for it in sorted(items, key=lambda x: x.get('id', 0)):
                 self._ns_combo.addItem(it['name'], it['name'])
             idx = self._ns_combo.findData(cur)
             if idx >= 0:
