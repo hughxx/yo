@@ -32,34 +32,38 @@ class WelinkPanel(QWidget):
         title.setStyleSheet('font-size:16px;font-weight:bold;color:#252526')
         hdr.addWidget(title)
         hdr.addStretch()
-
         self._dot = QLabel('●')
         self._dot.setStyleSheet('color:#ccc;font-size:14px')
         self._status_lbl = QLabel('未运行')
         self._status_lbl.setStyleSheet('color:#888;font-size:11px')
-
         self._btn_toggle = QPushButton('开始监听')
         self._btn_toggle.setObjectName('btnSync')
         self._btn_toggle.setFixedWidth(80)
         self._btn_toggle.clicked.connect(self._toggle_monitor)
-
         hdr.addWidget(self._dot)
         hdr.addWidget(self._status_lbl)
         hdr.addSpacing(8)
         hdr.addWidget(self._btn_toggle)
         root.addLayout(hdr)
 
-        # ── 触发提示 ──
-        hint = QLabel(
-            '触发：群聊中 <b>@机器人名 开始问题记录</b> / <b>@机器人名 结束问题记录</b>'
-            '（机器人名在设置中配置）'
-        )
-        hint.setWordWrap(True)
-        hint.setStyleSheet(
+        # ── 机器人名配置 ──
+        cfg_row = QHBoxLayout()
+        cfg_row.addWidget(QLabel('机器人名:'))
+        self._bot_name_edit = QLineEdit()
+        self._bot_name_edit.setFixedWidth(100)
+        self._bot_name_edit.textChanged.connect(self._update_hint)
+        cfg_row.addWidget(self._bot_name_edit)
+        cfg_row.addStretch()
+        root.addLayout(cfg_row)
+
+        # ── 触发提示（动态显示机器人名）──
+        self._hint = QLabel()
+        self._hint.setWordWrap(True)
+        self._hint.setStyleSheet(
             'color:#555;font-size:11px;background:#fffbe6;'
             'padding:4px 10px;border-radius:4px;border:1px solid #ffe58f'
         )
-        root.addWidget(hint)
+        root.addWidget(self._hint)
 
         # ── 规则表 + 日志（上下分割）──
         splitter = QSplitter(Qt.Vertical)
@@ -69,15 +73,7 @@ class WelinkPanel(QWidget):
         rule_lay = QVBoxLayout(rule_box)
         rule_lay.setContentsMargins(0, 0, 0, 0)
         rule_lay.setSpacing(4)
-
-        rule_hdr = QHBoxLayout()
-        rule_hdr.addWidget(QLabel('监听的群聊'))
-        rule_hdr.addStretch()
-        btn_refresh = QPushButton('刷新')
-        btn_refresh.setFixedWidth(48)
-        btn_refresh.clicked.connect(self._load_rules)
-        rule_hdr.addWidget(btn_refresh)
-        rule_lay.addLayout(rule_hdr)
+        rule_lay.addWidget(QLabel('监听的群聊'))
 
         self._table = QTableWidget(0, 3)
         self._table.setHorizontalHeaderLabels(['群组 ID', '群组名称', ''])
@@ -85,11 +81,12 @@ class WelinkPanel(QWidget):
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
         self._table.setColumnWidth(0, 180)
-        self._table.setColumnWidth(2, 52)
+        self._table.setColumnWidth(2, 26)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         self._table.setAlternatingRowColors(True)
+        self._table.verticalHeader().setDefaultSectionSize(24)
         rule_lay.addWidget(self._table)
 
         # 添加行
@@ -128,6 +125,24 @@ class WelinkPanel(QWidget):
         splitter.setSizes([280, 160])
         root.addWidget(splitter, stretch=1)
 
+        self._load_config()
+
+    def _update_hint(self):
+        name = self._bot_name_edit.text().strip() or '机器人名'
+        self._hint.setText(
+            f'触发：群聊中 <b>@{name} 开始问题记录</b> / <b>@{name} 结束问题记录</b>'
+        )
+
+    def _load_config(self):
+        s = store.load_settings()
+        self._bot_name_edit.setText(s.get('welinkBotName', '云见'))
+        self._update_hint()
+
+    def _save_config(self):
+        s = store.load_settings()
+        s['welinkBotName'] = self._bot_name_edit.text().strip() or '云见'
+        store.save_settings(s)
+
     # ── monitor toggle ────────────────────────────────────────────
 
     def _toggle_monitor(self):
@@ -137,24 +152,21 @@ class WelinkPanel(QWidget):
             self._start_monitor()
 
     def _start_monitor(self):
+        self._save_config()
         s = store.load_settings()
         backend.set_base(s.get('backendUrl', ''))
 
-        bot_name = s.get('welinkBotName', '云见')
-        user_id  = s.get('welinkUserId', '') or s.get('userId', '')
-        interval = s.get('welinkPollInterval', 3)
-        base_url = s.get('backendUrl', 'http://localhost:8023').rstrip('/')
-
         self._monitor = WelinkMonitor(
-            backend_base  = base_url,
-            bot_name      = bot_name,
-            user_id       = user_id,
-            poll_interval = interval,
+            backend_base  = s.get('backendUrl', 'http://localhost:8023').rstrip('/'),
+            bot_name      = s.get('welinkBotName', '云见'),
+            user_id       = s.get('welinkUserId', '') or s.get('userId', ''),
+            poll_interval = s.get('welinkPollInterval', 3),
         )
         self._monitor.log_signal.connect(self._append_log)
         self._monitor.uploaded_signal.connect(self._on_uploaded)
         self._monitor.start()
         self._set_running(True)
+        self._bot_name_edit.setEnabled(False)
 
     def _stop_monitor(self):
         if self._monitor:
@@ -162,6 +174,7 @@ class WelinkPanel(QWidget):
             self._monitor.wait(3000)
             self._monitor = None
         self._set_running(False)
+        self._bot_name_edit.setEnabled(True)
 
     def _set_running(self, running: bool):
         if running:
@@ -173,10 +186,9 @@ class WelinkPanel(QWidget):
         else:
             self._dot.setStyleSheet('color:#ccc;font-size:14px')
             self._status_lbl.setText('未运行')
-            self._status_lbl.setStyleSheet('color:#888;font-size:11px')
+            self._status_lbl.setStyleSheet('color:#888;font-size:11px;font-weight:normal')
             self._btn_toggle.setText('开始监听')
             self._btn_toggle.setObjectName('btnSync')
-        # 触发样式重绘
         self._btn_toggle.style().unpolish(self._btn_toggle)
         self._btn_toggle.style().polish(self._btn_toggle)
 
@@ -199,12 +211,19 @@ class WelinkPanel(QWidget):
         self._table.insertRow(row)
         self._table.setItem(row, 0, QTableWidgetItem(rule['group_id']))
         self._table.setItem(row, 1, QTableWidgetItem(rule.get('group_name', '')))
-        btn = QPushButton('删除')
+
+        btn = QPushButton('×')
         btn.setObjectName('btnDanger')
-        btn.setFixedSize(48, 22)
+        btn.setFixedSize(22, 20)
+        btn.setStyleSheet('font-size:13px;padding:0;border-radius:2px')
         btn.clicked.connect(lambda _, rid=rule['id']: self._delete_rule(rid))
-        self._table.setCellWidget(row, 2, btn)
-        self._table.setRowHeight(row, 28)
+
+        # 居中放按钮
+        cell = QWidget()
+        lay  = QHBoxLayout(cell)
+        lay.setContentsMargins(2, 2, 2, 2)
+        lay.addWidget(btn)
+        self._table.setCellWidget(row, 2, cell)
 
     def _add_rule(self):
         gid   = self._gid_edit.text().strip()
@@ -212,7 +231,6 @@ class WelinkPanel(QWidget):
         if not gid:
             QMessageBox.warning(self, '提示', '群组 ID 不能为空')
             return
-
         w = Worker(backend.add_welink_rule, gid, gname)
         w.ok.connect(self._on_rule_added)
         w.err.connect(lambda e: QMessageBox.warning(self, '添加失败', e))
@@ -226,9 +244,6 @@ class WelinkPanel(QWidget):
         self._gid_edit.clear()
         self._gname_edit.clear()
         self._append_row(result)
-        # 如果监听已启动，立即刷新规则（monitor 每 60s 拉一次，手动触发快速生效）
-        if self._monitor and self._monitor.isRunning():
-            self._append_log(f'[规则] 已添加群聊 {result.get("group_id")}，下次轮询生效')
 
     def _delete_rule(self, rule_id: int):
         w = Worker(backend.delete_welink_rule, rule_id)
@@ -245,7 +260,7 @@ class WelinkPanel(QWidget):
     def _on_uploaded(self, info: dict):
         if not info.get('duplicate'):
             self._status_lbl.setText(
-                f'监听中  |  最近上传: [{info["group_name"]}] {info["count"]} 条'
+                f'监听中  |  最近: [{info["group_name"]}] {info["count"]} 条'
             )
 
     # ── lifecycle ─────────────────────────────────────────────────
@@ -253,6 +268,7 @@ class WelinkPanel(QWidget):
     def activate(self):
         s = store.load_settings()
         backend.set_base(s.get('backendUrl', ''))
+        self._load_config()
         self._load_rules()
 
     def deactivate(self):
