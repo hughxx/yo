@@ -33,6 +33,7 @@ if sys.platform == 'win32':
 
 
 def _run_cli(args: list):
+    """返回 (parsed_json_or_None, error_str_or_None)"""
     try:
         r = subprocess.run(
             ['welink-cli'] + args,
@@ -41,17 +42,24 @@ def _run_cli(args: list):
             timeout=30,
             startupinfo=_STARTUPINFO,
         )
-        return json.loads(r.stdout)
-    except Exception:
-        return None
+        return json.loads(r.stdout), None
+    except json.JSONDecodeError as e:
+        return None, f'JSON解析失败: {e}'
+    except Exception as e:
+        return None, str(e)
 
 
-def _get_messages(group_id: str, count: int = 20) -> list:
-    d = _run_cli(['im', 'query-history-message',
-                  '--group-id', group_id, '--query-count', str(count)])
-    if d and d.get('resultCode') == '0':
-        return d.get('respData', {}).get('chatInfo', [])
-    return []
+def _get_messages(group_id: str, count: int = 20):
+    """返回 (messages: list, error: str | None)"""
+    d, err = _run_cli(['im', 'query-history-message',
+                       '--group-id', group_id, '--query-count', str(count)])
+    if err:
+        return [], err
+    if not d:
+        return [], 'CLI 无返回'
+    if d.get('resultCode') != '0':
+        return [], f'resultCode={d.get("resultCode")} context={d.get("resultContext", "")}'
+    return d.get('respData', {}).get('chatInfo', []), None
 
 
 def _load(path: Path, default):
@@ -113,7 +121,7 @@ def _msgs_to_html(msgs: list, group_name: str, start_ts: int, end_ts: int) -> st
 
 class WelinkMonitor(QThread):
     log_signal      = pyqtSignal(str)
-    uploaded_signal = pyqtSignal(dict)   # {group_name, chat_id, count, duplicate}
+    uploaded_signal = pyqtSignal(dict)
 
     def __init__(self, backend_base: str, bot_name: str, user_id: str, poll_interval: int = 3):
         super().__init__()
@@ -152,8 +160,9 @@ class WelinkMonitor(QThread):
                     group_id   = str(rule['group_id'])
                     group_name = rule.get('group_name') or group_id
 
-                    msgs = _get_messages(group_id, 20)
-                    if not msgs:
+                    msgs, err = _get_messages(group_id, 20)
+                    if err:
+                        self._log(f'[{group_name}] 拉取消息失败: {err}')
                         continue
 
                     last_seen = last_ids.get(group_id)
@@ -188,7 +197,7 @@ class WelinkMonitor(QThread):
                             _save(_SESSION_FILE, recording)
                             self._log(f'[{group_name}] 结束录制，正在上传…')
                             self._finish(group_id, group_name, rec,
-                                         int(msg_id), msg.get('serverSendTime', 0))
+                                         msg_id, msg.get('serverSendTime', 0))
 
                         last_ids[group_id] = msg_id
                         _save(_STATE_FILE, last_ids)
@@ -207,9 +216,13 @@ class WelinkMonitor(QThread):
         start_msg_id = rec['start_msg_id']
         start_time   = rec['start_time']
 
-        all_msgs = _get_messages(group_id, 200)
+        # welink-cli 单次最多支持 100 条，分两次取保险
+        all_msgs, err = _get_messages(group_id, 100)
+        if err:
+            self._log(f'[{group_name}] 获取消息失败: {err}，放弃上传')
+            return
         if not all_msgs:
-            self._log(f'[{group_name}] 获取消息失败，放弃上传')
+            self._log(f'[{group_name}] 获取到 0 条消息，放弃上传')
             return
 
         in_range = [
@@ -217,6 +230,8 @@ class WelinkMonitor(QThread):
             if start_msg_id <= int(m.get('msgId', 0)) <= end_msg_id
         ]
         in_range.sort(key=lambda m: m.get('serverSendTime', 0))
+
+        self._log(f'[{group_name}] 共拉取 {len(all_msgs)} 条，范围内 {len(in_range)} 条')
 
         html_body = _msgs_to_html(in_range, group_name, start_time, end_time)
         chat_id   = f'{group_id}_{start_msg_id}'
