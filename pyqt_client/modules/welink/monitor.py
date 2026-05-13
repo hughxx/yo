@@ -78,6 +78,36 @@ def _save(path: Path, obj):
         pass
 
 
+def _parse_um_content(content: str):
+    """解析 /:um_begin{URL|Type|Size|FileName|0|W;H;extraction_code|...}/:um_end
+    返回 (download_url, file_name, extraction_code) 或 (None, None, None)"""
+    prefix, suffix = '/:um_begin{', '}/:um_end'
+    if not (content.startswith(prefix) and content.endswith(suffix)):
+        return None, None, None
+    inner = content[len(prefix):-len(suffix)]
+    parts = inner.split('|')
+    if len(parts) < 6:
+        return None, None, None
+    download_url = parts[0]
+    file_name    = parts[3]
+    field5       = parts[5].split(';')
+    extraction_code = field5[2] if len(field5) > 2 else ''
+    return download_url, file_name, extraction_code
+
+
+def _one_box_download(download_url: str, extraction_code: str):
+    """从 onebox/clouddrive 下载文件，返回 bytes 或 None"""
+    try:
+        r = requests.get(download_url,
+                         params={'extractionCode': extraction_code},
+                         timeout=30, verify=False)
+        if r.ok and r.content:
+            return r.content
+    except Exception:
+        pass
+    return None
+
+
 def _msgs_to_html(msgs: list, group_name: str, start_ts: int, end_ts: int) -> str:
     def fmt(ms):
         return datetime.fromtimestamp(ms / 1000).strftime('%Y-%m-%d %H:%M:%S') if ms else ''
@@ -89,10 +119,16 @@ def _msgs_to_html(msgs: list, group_name: str, start_ts: int, end_ts: int) -> st
         raw    = m.get('content', '')
         t      = fmt(m.get('serverSendTime', 0))
 
-        if ct == 'PICTURE_MSG':
-            body = '<em>[图片]</em>'
-        elif ct == 'FILE_MSG':
-            body = '<em>[文件]</em>'
+        if ct in ('PICTURE_MSG', 'FILE_MSG'):
+            img_url  = m.get('_img_url')
+            img_name = escape(m.get('_img_name', ''))
+            if ct == 'PICTURE_MSG' and img_url:
+                body = (f'<img src="{img_url}" style="max-width:480px;display:block">'
+                        f'<small style="color:#888">{img_name}</small>')
+            elif ct == 'FILE_MSG' and img_url:
+                body = f'<a href="{img_url}">[文件] {img_name}</a>'
+            else:
+                body = f'<em>[{"图片" if ct == "PICTURE_MSG" else "文件"}] {img_name}</em>'
         elif ct == 'CARD_MSG':
             body = '<em>[卡片消息]</em>'
         elif ct == 'NOTICE_MSG':
@@ -233,6 +269,24 @@ class WelinkMonitor(QThread):
 
         self._log(f'[{group_name}] 共拉取 {len(all_msgs)} 条，范围内 {len(in_range)} 条')
 
+        # 下载图片/文件并上传到后端，写入 _img_url 供 HTML 渲染使用
+        for m in in_range:
+            ct = m.get('contentType', '')
+            if ct in ('PICTURE_MSG', 'FILE_MSG'):
+                raw = m.get('content', '')
+                dl_url, fname, extraction_code = _parse_um_content(raw)
+                if dl_url and fname:
+                    m['_img_name'] = fname
+                    file_bytes = _one_box_download(dl_url, extraction_code)
+                    if file_bytes:
+                        public_url = self._upload_image(file_bytes, fname)
+                        if public_url:
+                            m['_img_url'] = public_url
+                        else:
+                            self._log(f'  图片上传失败: {fname}')
+                    else:
+                        self._log(f'  图片下载失败: {fname} ({dl_url[:60]})')
+
         html_body = _msgs_to_html(in_range, group_name, start_time, end_time)
         chat_id   = f'{group_id}_{start_msg_id}'
 
@@ -267,6 +321,20 @@ class WelinkMonitor(QThread):
             self._log(f'[{group_name}] 上传失败: {e}')
 
     # ── helpers ───────────────────────────────────────────────────
+
+    def _upload_image(self, file_bytes: bytes, file_name: str):
+        """上传图片到后端，返回公开 URL 或 None"""
+        try:
+            r = requests.post(
+                f'{self._backend_base}/api/email/upload_image',
+                files={'file': (file_name, file_bytes)},
+                data={'filename': file_name},
+                timeout=30, verify=False,
+            )
+            r.raise_for_status()
+            return r.json().get('Url')
+        except Exception:
+            return None
 
     def _fetch_rules(self) -> list:
         try:
