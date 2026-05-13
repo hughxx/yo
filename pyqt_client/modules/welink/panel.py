@@ -169,8 +169,8 @@ class WelinkPanel(QWidget):
 
     def _load_config(self):
         s = store.load_settings()
-        self._start_cmd_edit.setText(s.get('welinkStartCmd', '@云见 开始问题记录'))
-        self._end_cmd_edit.setText(s.get('welinkEndCmd',   '@云见 结束问题记录'))
+        self._start_cmd_edit.setText(s.get('welinkStartCmd', '@云见 开始定位'))
+        self._end_cmd_edit.setText(s.get('welinkEndCmd',   '@云见 结束定位'))
 
     def _save_config(self):
         s = store.load_settings()
@@ -193,8 +193,8 @@ class WelinkPanel(QWidget):
 
         self._monitor = WelinkMonitor(
             backend_base  = s.get('backendUrl', 'http://localhost:8023').rstrip('/'),
-            start_cmd     = s.get('welinkStartCmd', '@云见 开始问题记录'),
-            end_cmd       = s.get('welinkEndCmd',   '@云见 结束问题记录'),
+            start_cmd     = s.get('welinkStartCmd', '@云见 开始定位'),
+            end_cmd       = s.get('welinkEndCmd',   '@云见 结束定位'),
             user_id       = s.get('welinkUserId', '') or s.get('userId', ''),
             poll_interval = s.get('welinkPollInterval', 3),
         )

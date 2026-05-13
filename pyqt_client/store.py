@@ -20,8 +20,8 @@ DEFAULT = {
     'customJsonConfig':    '{}',
     'scanFolders':         [],
     # WeLink settings
-    'welinkStartCmd':      '@云见 开始问题记录',
-    'welinkEndCmd':        '@云见 结束问题记录',
+    'welinkStartCmd':      '@云见 开始定位',
+    'welinkEndCmd':        '@云见 结束定位',
     'welinkUserId':        '',
     'welinkPollInterval':  3,
 }
