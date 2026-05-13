@@ -100,14 +100,13 @@ class WelinkPanel(QWidget):
         self._start_cmd_edit   = QLineEdit()
         self._end_cmd_edit     = QLineEdit()
         self._summary_cmd_edit = QLineEdit()
+        _usage = QLabel('用法: <总结命令> 张三 z00123456 2026-01-01 00:00 [2026-01-01 01:00]')
+        _usage.setStyleSheet('font-size:10px')
         form.addRow('开始命令:', self._start_cmd_edit)
         form.addRow('结束命令:', self._end_cmd_edit)
         form.addRow('总结命令:', self._summary_cmd_edit)
+        form.addRow('', _usage)
         root.addLayout(form)
-
-        _usage = QLabel('总结命令用法：<总结命令> 张三 z00123456 2026-01-01 00:00 [2026-01-01 01:00]')
-        _usage.setStyleSheet('color:#bbb;font-size:10px;font-style:italic')
-        root.addWidget(_usage)
 
         # ── 规则表 + 日志（上下分割）──
         splitter = QSplitter(Qt.Vertical)

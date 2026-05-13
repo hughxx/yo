@@ -33,8 +33,7 @@ def _app_icon() -> QIcon:
     return QIcon()
 
 from modules.email.panel import EmailPanel
-from modules.welink.panel import WelinkPanel
-from modules.welink.autoreply_panel import AutoReplyPanel
+from modules.welink.container import WelinkContainer
 from modules.email.dialogs import SetupDialog
 import store
 import backend
@@ -185,9 +184,8 @@ QFormLayout { margin: 12px; }
 
 # ── 模块注册表 ────────────────────────────────────────────
 _MODULES = [
-    ('邮件',       EmailPanel),
-    ('定位过程记录', WelinkPanel),
-    ('问题自动回复', AutoReplyPanel),
+    ('邮件',   EmailPanel),
+    ('WeLink', WelinkContainer),
 ]
 
 
