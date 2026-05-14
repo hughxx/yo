@@ -532,6 +532,7 @@ class SetupDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('初始配置 — 问题定位助手')
         self.setFixedWidth(420)
+        self.setMinimumHeight(360)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self._s = dict(settings)
         self._workers = []
@@ -609,12 +610,6 @@ class SetupDialog(QDialog):
         lay.addWidget(btn_ok)
 
         self._load_namespaces()
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        screen = self.screen().availableGeometry()
-        self.move(screen.center().x() - self.width() // 2,
-                  screen.top() + 60)
 
     def _on_server_activated(self, index: int):
         if self._server_combo.itemText(index) == _MANUAL_INPUT:
