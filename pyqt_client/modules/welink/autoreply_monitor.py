@@ -5,8 +5,15 @@ import subprocess
 import time
 import unicodedata
 
+import sys
+
 import requests
 from PyQt5.QtCore import QThread, pyqtSignal
+
+_STARTUPINFO = None
+if sys.platform == 'win32':
+    _STARTUPINFO = subprocess.STARTUPINFO()
+    _STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
 NON_QUESTION_PATTERNS = [
     "嗯", "嗯嗯", "嗯嗯嗯", "好的", "好滴", "收到", "知道了", "明白",
@@ -35,7 +42,8 @@ def _run_cli(*args) -> dict:
     cmd = ['welink-cli', 'im'] + list(args)
     try:
         result = subprocess.run(cmd, capture_output=True, text=True,
-                                timeout=15, encoding='utf-8', errors='ignore')
+                                timeout=15, encoding='utf-8', errors='ignore',
+                                startupinfo=_STARTUPINFO)
         return json.loads(result.stdout or '{}')
     except Exception:
         return {}
