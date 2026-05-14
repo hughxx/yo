@@ -393,7 +393,7 @@ class WelinkMonitor(QThread):
     # ── helpers ───────────────────────────────────────────────────
 
     def _enrich_images(self, msgs: list, group_name: str):
-        """下载图片/文件并上传到后端，写入 _img_url 供 HTML 渲染使用。"""
+        """解析图片/文件 URL，直接嵌入原始地址（内网浏览器有登录态可直接加载）。"""
         for m in msgs:
             ct = m.get('contentType', '')
             if ct in ('PICTURE_MSG', 'FILE_MSG'):
@@ -401,15 +401,11 @@ class WelinkMonitor(QThread):
                 dl_url, fname, extraction_code = _parse_um_content(raw)
                 if dl_url and fname:
                     m['_img_name'] = fname
-                    file_bytes, dl_err = _one_box_download(dl_url, extraction_code)
-                    if file_bytes:
-                        public_url = self._upload_image(file_bytes, fname)
-                        if public_url:
-                            m['_img_url'] = public_url
-                        else:
-                            self._log(f'  图片上传失败: {fname}')
+                    # 直接拼原始 URL，跳过下载重传（clouddrive 需要登录态）
+                    if extraction_code:
+                        m['_img_url'] = f'{dl_url}?extractionCode={extraction_code}'
                     else:
-                        self._log(f'  图片下载失败: {fname} ({dl_err})')
+                        m['_img_url'] = dl_url
 
     def _upload_chatlog(self, chat_id: str, group_id: str, group_name: str,
                         start_time: int, end_time: int, msgs: list):
