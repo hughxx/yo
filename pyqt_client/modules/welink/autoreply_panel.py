@@ -337,7 +337,7 @@ class AutoReplyPanel(QWidget):
             row = self._rule_table.rowCount()
             self._rule_table.insertRow(row)
             kw_text = ', '.join(rule.get('keywords', []))
-            type_text = 'AI' if rule.get('action') == 'ai' else '固定'
+            type_text = 'AI回复' if rule.get('action') == 'ai' else '固定回复'
             content = rule.get('prompt', '') if rule.get('action') == 'ai' \
                       else rule.get('reply', '')
             self._rule_table.setItem(row, 0, QTableWidgetItem(kw_text))
