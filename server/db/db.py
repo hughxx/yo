@@ -44,15 +44,13 @@ def init_db():
     except Exception as e:
         print(f"Warning: could not ensure database: {e}")
     Base.metadata.create_all(bind=engine)
-    # inline migrations
-    _migrations = [
-        "ALTER TABLE t_collection_email_rules ADD COLUMN body_keywords TEXT NOT NULL DEFAULT '[]'",
-        "ALTER TABLE t_collection_welink_chatlogs ADD COLUMN process_status VARCHAR(20) NOT NULL DEFAULT 'pending'",
-    ]
-    for sql in _migrations:
-        try:
-            with engine.connect() as conn:
-                conn.execute(text(sql))
-                conn.commit()
-        except Exception:
-            pass  # column already exists
+    # inline migration: add body_keywords to email rules if missing
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE t_collection_email_rules "
+                "ADD COLUMN body_keywords TEXT NOT NULL DEFAULT '[]'"
+            ))
+            conn.commit()
+    except Exception:
+        pass  # column already exists
