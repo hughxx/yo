@@ -41,7 +41,11 @@ def _run_cli(args: list):
             timeout=30,
             startupinfo=_STARTUPINFO,
         )
-        return json.loads(r.stdout), None
+        out = r.stdout.strip()
+        if not out:
+            stderr = r.stderr.strip()[:200] if r.stderr else '(无输出)'
+            return None, f'CLI 无输出 (stderr: {stderr})'
+        return json.loads(out), None
     except json.JSONDecodeError as e:
         return None, f'JSON解析失败: {e}'
     except Exception as e:
