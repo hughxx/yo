@@ -77,7 +77,7 @@ def one_box_download(down_url: str, extraction_code: str) -> DownloadMsgFile:
     if not ok:
         return DownloadMsgFile(download_result=False, download_error_msg=token)
 
-    date = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
+    date = datetime.now().strftime('%a, %d %b %Y %H:%M:%S GMT')
     str_sha = hashlib.sha256((extraction_code + "_sep_" + date).encode('utf-8')).hexdigest()
     plain_access_code = (
         base64.encodebytes(str_sha.encode('utf-8')).decode().strip().replace('\n', '')
