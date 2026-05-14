@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -12,6 +13,7 @@ from server.utils.html2md import html2md
 from server.utils.llm import chat
 from server.utils.ocr import ocr
 from server.utils.settings import EXPERIENCE_ENGINE_URL
+from server.utils.um_content import replace_um_images
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +162,7 @@ async def process_chatlog(
             return
 
         logger.info("html2md: %d chars", len(markdown))
+        markdown = await asyncio.to_thread(replace_um_images, markdown)
         markdown = await _enrich_with_ocr(markdown)
         result   = await _call_llm(markdown)
 
