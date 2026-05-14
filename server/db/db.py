@@ -1,7 +1,7 @@
 from urllib.parse import quote_plus
 
 import pymysql
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from server.utils.settings import DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER
@@ -44,21 +44,15 @@ def init_db():
     except Exception as e:
         print(f"Warning: could not ensure database: {e}")
     Base.metadata.create_all(bind=engine)
-    # inline migration: add body_keywords column if missing
-    try:
-        with engine.connect() as conn:
-            conn.execute(
-                "ALTER TABLE t_collection_email_rules "
-                "ADD COLUMN body_keywords TEXT NOT NULL DEFAULT '[]'"
-            )
-    except Exception:
-        pass  # column already exists
-    # inline migration: add process_status column to welink chatlogs if missing
-    try:
-        with engine.connect() as conn:
-            conn.execute(
-                "ALTER TABLE t_collection_welink_chatlogs "
-                "ADD COLUMN process_status VARCHAR(20) NOT NULL DEFAULT 'pending'"
-            )
-    except Exception:
-        pass  # column already exists
+    # inline migrations
+    _migrations = [
+        "ALTER TABLE t_collection_email_rules ADD COLUMN body_keywords TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE t_collection_welink_chatlogs ADD COLUMN process_status VARCHAR(20) NOT NULL DEFAULT 'pending'",
+    ]
+    for sql in _migrations:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(sql))
+                conn.commit()
+        except Exception:
+            pass  # column already exists
