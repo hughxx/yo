@@ -7,6 +7,35 @@ import httpx
 from server.utils.settings import LLM_BASE_URL, LLM_API_KEY, LLM_MODEL_ID
 
 
+async def chat_with_tools(
+    messages: list,
+    tools: list,
+    temperature: float = 0.3,
+) -> dict:
+    """调用 LLM with tool use（OpenAI-compatible）。
+    返回 assistant message dict，含 tool_calls 字段（可能为空列表）。
+    """
+    payload = {
+        "model":        LLM_MODEL_ID,
+        "messages":     messages,
+        "temperature":  temperature,
+        "tools":        tools,
+        "tool_choice":  "auto",
+    }
+    headers = {
+        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Content-Type":  "application/json",
+    }
+    url = f"{LLM_BASE_URL}/chat/completions"
+
+    async with httpx.AsyncClient(proxy=None, trust_env=False, verify=False) as client:
+        resp = await client.post(url, headers=headers, json=payload, timeout=999.0)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return data["choices"][0]["message"]
+
+
 async def chat(
     messages: list,
     temperature: float = 0.3,

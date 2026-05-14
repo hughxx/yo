@@ -92,30 +92,35 @@ async def receive_chatlog(
         return {"Success": True, "Message": "Already exists", "Duplicate": True}
 
     html_body  = data.get("HtmlBody", "")
+    group_id   = (data.get("GroupId") or "").strip()
     group_name = (data.get("GroupName") or "").strip()
     upload_by  = (data.get("UploadBy") or "").strip()
+    is_daily   = bool(data.get("IsDaily", False))
 
     row = WelinkChatlog(
-        chat_id    = chat_id,
-        group_id   = (data.get("GroupId") or "").strip(),
-        group_name = group_name,
-        start_time = _parse_ms(data.get("StartTime")),
-        end_time   = _parse_ms(data.get("EndTime")),
-        html_body  = html_body,
-        upload_by  = upload_by,
+        chat_id        = chat_id,
+        group_id       = group_id,
+        group_name     = group_name,
+        start_time     = _parse_ms(data.get("StartTime")),
+        end_time       = _parse_ms(data.get("EndTime")),
+        html_body      = html_body,
+        upload_by      = upload_by,
         process_status = "pending",
+        is_daily       = 1 if is_daily else 0,
     )
     db.add(row)
     db.commit()
-    logger.info("welink saved: chat_id=%r", chat_id)
+    logger.info("welink saved: chat_id=%r is_daily=%s", chat_id, is_daily)
 
     if html_body:
         background_tasks.add_task(
             process_chatlog,
             html_body  = html_body,
+            group_id   = group_id,
             group_name = group_name,
             chat_id    = chat_id,
             upload_by  = upload_by,
+            is_daily   = is_daily,
         )
 
     return {"Success": True, "Message": "Received successfully", "Duplicate": False}

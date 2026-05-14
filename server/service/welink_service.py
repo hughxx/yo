@@ -10,7 +10,7 @@ from server.db.models.welink import WelinkChatlog
 from server.db.models.email import Collection
 from server.db.db import SessionLocal
 from server.utils.html2md import html2md
-from server.utils.llm import chat
+from server.utils.llm import chat, chat_with_tools
 from server.utils.img import ocr
 from server.utils.settings import EXPERIENCE_ENGINE_URL
 from server.utils.um_content import replace_um_images
@@ -149,7 +149,13 @@ async def process_chatlog(
     group_name: str,
     chat_id:    str,
     upload_by:  str,
+    group_id:   str = '',
+    is_daily:   bool = False,
 ) -> None:
+    if is_daily:
+        await _process_daily_chatlog(html_body, group_id, group_name, chat_id, upload_by)
+        return
+
     doc_id = _make_doc_id(chat_id)
     logger.info(
         "process_chatlog start: group=%r chat_id=%r user=%r doc_id=%s",
@@ -179,3 +185,216 @@ async def process_chatlog(
     except Exception:
         logger.exception("process_chatlog failed: group=%r chat_id=%r", group_name, chat_id)
         _update_status(chat_id, "failed")
+
+
+# ── 按天归档：Agent 定义 ──────────────────────────────────────────
+
+_DAILY_AGENT_SYSTEM = """\
+你是一个专业的技术知识整理专家。
+
+下方是今日 WeLink 群聊的过滤记录（已剔除通过手动标记归档过的片段）。
+请从头到尾仔细阅读，识别其中的**技术问题定位案例**。
+
+判断标准（同时满足才算一个案例）：
+- 有具体的问题现象描述
+- 有分析讨论过程
+- 有结论或解决方案（即使是暂时结论）
+
+请跳过：纯通知、签到、闲聊、无实质内容的短回复。
+
+每发现一个值得归档的案例，立即调用 create_experience 工具保存。
+一份记录可能包含 0 个、1 个或多个案例，按实际情况处理即可。
+"""
+
+_CREATE_EXPERIENCE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "create_experience",
+        "description": "保存一条技术问题定位经验",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "简洁的经验标题，不超过 50 字",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "问题背景与最终结论的简短总结，不超过 200 字",
+                },
+                "experience": {
+                    "type": "string",
+                    "description": (
+                        "详细经验正文（Markdown 格式）。"
+                        "包含章节：## 问题背景、## 问题现象、## 分析过程、## 根因、"
+                        "## 解决方案、## 讨论摘要。"
+                        "保留图片 ![](url)、代码块、接口路径、错误日志等技术细节。"
+                        "讨论摘要按时间顺序列出关键发言，格式：**发言人（时间）**：内容。"
+                    ),
+                },
+                "rag_search_text": {
+                    "type": "string",
+                    "description": "检索用关键词，空格分隔，覆盖技术术语、接口名、模块名等",
+                },
+            },
+            "required": ["title", "summary", "experience", "rag_search_text"],
+        },
+    },
+}
+
+
+async def _run_daily_agent(markdown: str) -> list:
+    """Agent loop：读完过滤后的全天记录，对每个发现的案例调用 create_experience。"""
+    tools    = [_CREATE_EXPERIENCE_TOOL]
+    messages = [
+        {"role": "system", "content": _DAILY_AGENT_SYSTEM},
+        {"role": "user",   "content": markdown},
+    ]
+    experiences = []
+
+    for _turn in range(10):  # 防止无限循环
+        assistant_msg = await chat_with_tools(messages, tools)
+        tool_calls    = assistant_msg.get("tool_calls") or []
+
+        if not tool_calls:
+            break
+
+        messages.append(assistant_msg)
+
+        for tc in tool_calls:
+            fn   = tc.get("function", {})
+            name = fn.get("name", "")
+            tid  = tc.get("id", "")
+            try:
+                args = json.loads(fn.get("arguments", "{}"))
+            except Exception:
+                args = {}
+
+            if name == "create_experience":
+                experiences.append(args)
+                result = "已保存"
+            else:
+                result = "unknown tool"
+
+            messages.append({
+                "role":         "tool",
+                "tool_call_id": tid,
+                "content":      result,
+            })
+
+    return experiences
+
+
+def _filter_daily_html(html_body: str, excluded_intervals: list) -> str:
+    """从全天 HTML 中剔除已被手动记录覆盖的消息块，返回过滤后的完整 HTML。"""
+    import re as _re
+    from datetime import datetime
+
+    MSG_OPEN = '<div style="margin:6px 0;padding:6px 10px;background:#f5f5f5;border-radius:4px;">'
+    TS_RE = _re.compile(
+        r'<span style="font-size:11px;color:#aaa;margin-left:8px">'
+        r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})</span>'
+    )
+
+    bs = html_body.find('<body>')
+    be = html_body.find('</body>')
+    if bs == -1 or be == -1:
+        return html_body
+
+    header       = html_body[:bs + len('<body>')]
+    footer       = html_body[be:]
+    body_content = html_body[bs + len('<body>'):be]
+
+    kept = []
+    for part in body_content.split(MSG_OPEN)[1:]:
+        div_html = MSG_OPEN + part
+        m = TS_RE.search(div_html)
+        if m:
+            try:
+                dt = datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S')
+                if any(s and e and s <= dt <= e for s, e in excluded_intervals):
+                    continue
+            except ValueError:
+                pass
+        kept.append(div_html)
+
+    return (header + ''.join(kept) + footer) if kept else ''
+
+
+async def _process_daily_chatlog(
+    html_body:  str,
+    group_id:   str,
+    group_name: str,
+    chat_id:    str,
+    upload_by:  str,
+) -> None:
+    import re as _re
+    from datetime import datetime, timedelta
+
+    date_match = _re.search(r'_(\d{4}-\d{2}-\d{2})_daily$', chat_id)
+    if not date_match:
+        logger.warning("cannot extract date from daily chat_id=%r", chat_id)
+        _update_status(chat_id, "failed")
+        return
+
+    date_str  = date_match.group(1)
+    day_start = datetime.strptime(date_str, '%Y-%m-%d')
+    day_end   = day_start + timedelta(days=1)
+
+    # 查当天手动记录，排除其时间段
+    db = SessionLocal()
+    try:
+        manual_records = db.query(WelinkChatlog).filter(
+            WelinkChatlog.group_id == group_id,
+            WelinkChatlog.is_daily == 0,
+            WelinkChatlog.start_time >= day_start,
+            WelinkChatlog.start_time <  day_end,
+        ).all()
+        excluded = [
+            (r.start_time, r.end_time)
+            for r in manual_records
+            if r.start_time and r.end_time
+        ]
+    finally:
+        db.close()
+
+    logger.info("daily: group=%r date=%s manual_excluded=%d", group_id, date_str, len(excluded))
+
+    filtered_html = _filter_daily_html(html_body, excluded)
+    if not filtered_html:
+        logger.info("daily: no content after exclusion, group=%r date=%s", group_id, date_str)
+        _update_status(chat_id, "done")
+        return
+
+    markdown = html2md(filtered_html)
+    if not markdown.strip():
+        _update_status(chat_id, "done")
+        return
+
+    markdown = await asyncio.to_thread(replace_um_images, markdown)
+    markdown = await _enrich_with_ocr(markdown)
+
+    logger.info("daily: running agent, group=%r date=%s markdown_len=%d",
+                group_id, date_str, len(markdown))
+    experiences = await _run_daily_agent(markdown)
+    logger.info("daily: agent found %d experience(s), group=%r date=%s",
+                len(experiences), group_id, date_str)
+
+    if experiences:
+        db = SessionLocal()
+        try:
+            scene_id = _get_or_create_collection(db, group_name)
+            db.commit()
+        finally:
+            db.close()
+
+        for i, exp in enumerate(experiences):
+            doc_id = _make_doc_id(f'{chat_id}_{i}')
+            try:
+                _push_to_engine(exp, upload_by, scene_id, group_name, doc_id)
+                logger.info("daily exp[%d] pushed: doc_id=%s title=%r",
+                            i, doc_id, exp.get("title"))
+            except Exception:
+                logger.exception("daily exp[%d] push failed: group=%r", i, group_name)
+
+    _update_status(chat_id, "done")

@@ -102,7 +102,7 @@ class EmailPanel(QWidget):
         self._workers = []
         self._loading = False
         self._syncing = False
-        self._last_sync_time = ''
+        self._last_sync_time = self._settings.get('lastSyncTime', '')
 
         self._build_ui()
         self._start_auto_sync()
@@ -352,6 +352,8 @@ class EmailPanel(QWidget):
         if offset >= len(matched):
             from datetime import datetime
             self._last_sync_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self._settings['lastSyncTime'] = self._last_sync_time
+            store.save_settings(self._settings)
             verb = '重推' if force else '同步'
             summary = f'{verb}完成：{len(matched)} 封，成功 {success}，失败 {failed}'
             self._set_status(summary, 'red' if failed else 'green')

@@ -298,7 +298,7 @@ class WelinkMonitor(QThread):
                             else:
                                 self._log(
                                     f'[{group_name}] 总结命令格式错误，期望: '
-                                    f'{self._summary_cmd} 张三 z001 2026-01-01 00:00 李四 z002 2026-01-01 01:00'
+                                    f'{self._summary_cmd} 张三 00123456 2026-01-01 00:00 李四 0054321 2026-01-01 01:00'
                                 )
 
                         last_ids[group_id] = msg_id
@@ -393,32 +393,7 @@ class WelinkMonitor(QThread):
     # ── helpers ───────────────────────────────────────────────────
 
     def _enrich_images(self, msgs: list, group_name: str):
-        """通过后端代理用机器人账号下载图片并上传，写入公开 URL 供 HTML 渲染。"""
-        for m in msgs:
-            ct = m.get('contentType', '')
-            if ct in ('PICTURE_MSG', 'FILE_MSG'):
-                raw = m.get('content', '')
-                dl_url, fname, extraction_code = _parse_um_content(raw)
-                if dl_url and fname:
-                    m['_img_name'] = fname
-                    try:
-                        resp = requests.post(
-                            f'{self._backend_base}/api/image/proxy',
-                            json={
-                                'download_url':    dl_url,
-                                'extraction_code': extraction_code,
-                                'file_name':       fname,
-                            },
-                            timeout=60,
-                            verify=False,
-                        )
-                        data = resp.json()
-                        if data.get('success') and data.get('url'):
-                            m['_img_url'] = data['url']
-                        else:
-                            self._log(f'  图片下载失败: {fname} ({data.get("message")})')
-                    except Exception as e:
-                        self._log(f'  图片请求失败: {fname} ({e})')
+        _enrich_images_inplace(msgs, self._backend_base, self._log)
 
     def _upload_chatlog(self, chat_id: str, group_id: str, group_name: str,
                         start_time: int, end_time: int, msgs: list):
@@ -465,6 +440,133 @@ class WelinkMonitor(QThread):
             return r.json().get('Url')
         except Exception:
             return None
+
+    def _fetch_rules(self) -> list:
+        try:
+            r = requests.get(f'{self._backend_base}/api/welink/rules',
+                             timeout=10, verify=False)
+            r.raise_for_status()
+            return [row for row in r.json() if row.get('enabled', True)]
+        except Exception as e:
+            self._log(f'获取规则失败: {e}')
+            return []
+
+    def _log(self, msg: str):
+        ts = datetime.now().strftime('%H:%M:%S')
+        self.log_signal.emit(f'[{ts}] {msg}')
+
+
+# ── 模块级共享工具 ────────────────────────────────────────────────
+
+def _enrich_images_inplace(msgs: list, backend_base: str, log_fn) -> None:
+    """通过后端代理下载图片并上传，写入公开 URL 供 HTML 渲染。"""
+    for m in msgs:
+        ct = m.get('contentType', '')
+        if ct in ('PICTURE_MSG', 'FILE_MSG'):
+            raw = m.get('content', '')
+            dl_url, fname, extraction_code = _parse_um_content(raw)
+            if dl_url and fname:
+                m['_img_name'] = fname
+                try:
+                    resp = requests.post(
+                        f'{backend_base}/api/image/proxy',
+                        json={
+                            'download_url':    dl_url,
+                            'extraction_code': extraction_code,
+                            'file_name':       fname,
+                        },
+                        timeout=60,
+                        verify=False,
+                    )
+                    data = resp.json()
+                    if data.get('success') and data.get('url'):
+                        m['_img_url'] = data['url']
+                    else:
+                        log_fn(f'  图片下载失败: {fname} ({data.get("message")})')
+                except Exception as e:
+                    log_fn(f'  图片请求失败: {fname} ({e})')
+
+
+# ── 按天自动归档 Worker ───────────────────────────────────────────
+
+class WelinkDailyWorker(QThread):
+    log_signal = pyqtSignal(str)
+
+    def __init__(self, backend_base: str, user_id: str, date_str: str):
+        super().__init__()
+        self._backend_base = backend_base.rstrip('/')
+        self._user_id      = user_id
+        self._date_str     = date_str
+
+    def run(self):
+        self._log(f'按天记录开始: {self._date_str}')
+        try:
+            day_start_ms, day_end_ms = self._day_range_ms(self._date_str)
+            rules = self._fetch_rules()
+            if not rules:
+                self._log('未找到群聊规则，按天记录跳过')
+                return
+            for rule in rules:
+                self._process_group(rule, day_start_ms, day_end_ms)
+        except Exception as e:
+            self._log(f'按天记录异常: {e}')
+        self._log(f'按天记录完成: {self._date_str}')
+
+    def _day_range_ms(self, date_str: str):
+        from datetime import datetime, timedelta
+        day_start = datetime.strptime(date_str, '%Y-%m-%d')
+        day_end   = day_start + timedelta(days=1)
+        return int(day_start.timestamp() * 1000), int(day_end.timestamp() * 1000)
+
+    def _process_group(self, rule: dict, day_start_ms: int, day_end_ms: int):
+        group_id   = str(rule['group_id'])
+        group_name = rule.get('group_name') or group_id
+
+        msgs, err = _get_messages(group_id, 200)
+        if err or not msgs:
+            self._log(f'[{group_name}] 获取消息失败: {err}，跳过')
+            return
+
+        day_msgs = [
+            m for m in msgs
+            if day_start_ms <= m.get('serverSendTime', 0) < day_end_ms
+        ]
+        if not day_msgs:
+            self._log(f'[{group_name}] {self._date_str} 无消息，跳过')
+            return
+
+        day_msgs.sort(key=lambda m: m.get('serverSendTime', 0))
+        self._log(f'[{group_name}] {self._date_str} 共 {len(day_msgs)} 条，正在处理图片并上传...')
+        _enrich_images_inplace(day_msgs, self._backend_base, self._log)
+
+        chat_id    = f'{group_id}_{self._date_str}_daily'
+        start_time = day_msgs[0].get('serverSendTime', 0)
+        end_time   = day_msgs[-1].get('serverSendTime', 0)
+        html_body  = _msgs_to_html(day_msgs)
+
+        try:
+            r = requests.post(
+                f'{self._backend_base}/api/welink/receive',
+                json={
+                    'ChatId':    chat_id,
+                    'GroupId':   group_id,
+                    'GroupName': group_name,
+                    'StartTime': start_time,
+                    'EndTime':   end_time,
+                    'HtmlBody':  html_body,
+                    'UploadBy':  self._user_id,
+                    'IsDaily':   True,
+                },
+                timeout=60, verify=False,
+            )
+            r.raise_for_status()
+            result = r.json()
+            if result.get('Duplicate'):
+                self._log(f'[{group_name}] 今日记录已存在，跳过')
+            else:
+                self._log(f'[{group_name}] 按天记录上传成功 ({len(day_msgs)} 条)')
+        except Exception as e:
+            self._log(f'[{group_name}] 按天记录上传失败: {e}')
 
     def _fetch_rules(self) -> list:
         try:

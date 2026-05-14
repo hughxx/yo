@@ -25,6 +25,8 @@ DEFAULT = {
     'welinkSummaryCmd':    '@云见 总结经验',
     'welinkUserId':        '',
     'welinkPollInterval':  3,
+    'welinkDailyRecord':   False,
+    'lastSyncTime':        '',
 }
 
 def load_settings() -> dict:

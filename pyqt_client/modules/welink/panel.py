@@ -3,14 +3,14 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QMessageBox, QPlainTextEdit, QSplitter,
-    QFormLayout, QDialog, QRadioButton, QButtonGroup,
+    QFormLayout, QDialog, QCheckBox,
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 
 import backend
 import store
 from utils import Worker
-from modules.welink.monitor import WelinkMonitor
+from modules.welink.monitor import WelinkMonitor, WelinkDailyWorker
 
 _CONFIRM_KEYWORD = '接口人已知晓'
 
@@ -90,22 +90,9 @@ class WelinkPanel(QWidget):
         hdr.addWidget(self._btn_toggle)
         root.addLayout(hdr)
 
-        # ── 记录模式选择 ──
-        mode_row = QHBoxLayout()
-        self._rb_manual = QRadioButton('手动记录')
-        self._rb_auto   = QRadioButton('按天自动记录')
-        self._rb_manual.setChecked(True)
-        self._mode_group = QButtonGroup(self)
-        self._mode_group.addButton(self._rb_manual, 0)
-        self._mode_group.addButton(self._rb_auto,   1)
-        mode_row.addWidget(self._rb_manual)
-        mode_row.addWidget(self._rb_auto)
-        mode_row.addStretch()
-        root.addLayout(mode_row)
-
-        # ── 手动记录配置区（按天模式时隐藏）──
-        self._manual_widget = QWidget()
-        form = QFormLayout(self._manual_widget)
+        # ── 手动记录配置 ──
+        _cmd_widget = QWidget()
+        form = QFormLayout(_cmd_widget)
         form.setSpacing(4)
         form.setContentsMargins(0, 4, 0, 0)
         self._start_cmd_edit   = QLineEdit()
@@ -113,19 +100,21 @@ class WelinkPanel(QWidget):
         self._summary_cmd_edit = QLineEdit()
         _usage = QLabel(
             '用法: &lt;总结命令&gt; '
-            '<span style="color:#1558d6">张三&nbsp;z001&nbsp;2026-01-01&nbsp;00:00</span>'
+            '<span style="color:#1558d6">张三&nbsp;00123456&nbsp;2026-01-01&nbsp;00:00</span>'
             ' &nbsp;['
-            '<span style="color:#b71c1c">李四&nbsp;z002&nbsp;2026-01-01&nbsp;01:00</span>'
+            '<span style="color:#b71c1c">李四&nbsp;0054321&nbsp;2026-01-01&nbsp;01:00</span>'
             ']'
         )
         _usage.setTextFormat(2)  # Qt.RichText
         _usage.setStyleSheet('font-size:10px')
+        self._chk_daily = QCheckBox('按天自动记录（每日凌晨 1 点归档全天记录）')
         form.addRow('开始命令:', self._start_cmd_edit)
         form.addRow('结束命令:', self._end_cmd_edit)
         form.addRow('总结命令:', self._summary_cmd_edit)
         form.addRow('', _usage)
-        self._rb_auto.toggled.connect(lambda on: self._manual_widget.setVisible(not on))
-        root.addWidget(self._manual_widget)
+        form.addRow('', self._chk_daily)
+        self._chk_daily.stateChanged.connect(self._on_daily_changed)
+        root.addWidget(_cmd_widget)
 
         _sep = QLabel()
         _sep.setFixedHeight(1)
@@ -201,13 +190,54 @@ class WelinkPanel(QWidget):
         self._start_cmd_edit.setText(s.get('welinkStartCmd',   '@云见 开始定位'))
         self._end_cmd_edit.setText(s.get('welinkEndCmd',     '@云见 结束定位'))
         self._summary_cmd_edit.setText(s.get('welinkSummaryCmd', '@云见 总结经验'))
+        self._chk_daily.setChecked(bool(s.get('welinkDailyRecord', False)))
+        self._schedule_daily_timer()
 
     def _save_config(self):
         s = store.load_settings()
-        s['welinkStartCmd']   = self._start_cmd_edit.text().strip()
-        s['welinkEndCmd']     = self._end_cmd_edit.text().strip()
-        s['welinkSummaryCmd'] = self._summary_cmd_edit.text().strip()
+        s['welinkStartCmd']    = self._start_cmd_edit.text().strip()
+        s['welinkEndCmd']      = self._end_cmd_edit.text().strip()
+        s['welinkSummaryCmd']  = self._summary_cmd_edit.text().strip()
+        s['welinkDailyRecord'] = self._chk_daily.isChecked()
         store.save_settings(s)
+
+    # ── daily record timer ────────────────────────────────────────
+
+    def _on_daily_changed(self, state: int):
+        s = store.load_settings()
+        s['welinkDailyRecord'] = bool(state)
+        store.save_settings(s)
+        self._schedule_daily_timer()
+
+    def _schedule_daily_timer(self):
+        if not hasattr(self, '_daily_timer'):
+            self._daily_timer = QTimer(self)
+            self._daily_timer.setSingleShot(True)
+            self._daily_timer.timeout.connect(self._on_daily_tick)
+        if not store.load_settings().get('welinkDailyRecord', False):
+            self._daily_timer.stop()
+            return
+        from datetime import datetime, timedelta
+        now    = datetime.now()
+        target = now.replace(hour=1, minute=0, second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        ms = int((target - now).total_seconds() * 1000)
+        self._daily_timer.start(ms)
+
+    def _on_daily_tick(self):
+        from datetime import datetime, timedelta
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        s = store.load_settings()
+        worker = WelinkDailyWorker(
+            backend_base = s.get('backendUrl', '').rstrip('/'),
+            user_id      = s.get('welinkUserId', '') or s.get('userId', ''),
+            date_str     = yesterday,
+        )
+        worker.log_signal.connect(self._append_log)
+        worker.start()
+        self._daily_worker = worker
+        self._schedule_daily_timer()
 
     # ── monitor toggle ────────────────────────────────────────────
 
