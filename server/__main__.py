@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from server.router.email import router as email_router
 from server.router.welink import router as welink_router
+from server.router.ai import router as ai_router
 from server.db.db import init_db
 
 logging.basicConfig(
@@ -24,6 +25,7 @@ app.add_middleware(
 
 app.include_router(email_router)
 app.include_router(welink_router)
+app.include_router(ai_router)
 
 
 @app.on_event("startup")
