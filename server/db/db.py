@@ -1,7 +1,7 @@
 from urllib.parse import quote_plus
 
 import pymysql
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from server.utils.settings import DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER
@@ -44,13 +44,3 @@ def init_db():
     except Exception as e:
         print(f"Warning: could not ensure database: {e}")
     Base.metadata.create_all(bind=engine)
-    # inline migration: add body_keywords to email rules if missing
-    try:
-        with engine.connect() as conn:
-            conn.execute(text(
-                "ALTER TABLE t_collection_email_rules "
-                "ADD COLUMN body_keywords TEXT NOT NULL DEFAULT '[]'"
-            ))
-            conn.commit()
-    except Exception:
-        pass  # column already exists
