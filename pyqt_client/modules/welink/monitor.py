@@ -136,16 +136,16 @@ def _parse_um_content(content: str):
 
 
 def _one_box_download(download_url: str, extraction_code: str):
-    """从 onebox/clouddrive 下载文件，返回 bytes 或 None"""
+    """从 onebox/clouddrive 下载文件，返回 (bytes_or_None, error_str_or_None)"""
     try:
         r = requests.get(download_url,
                          params={'extractionCode': extraction_code},
                          timeout=30, verify=False)
         if r.ok and r.content:
-            return r.content
-    except Exception:
-        pass
-    return None
+            return r.content, None
+        return None, f'HTTP {r.status_code}'
+    except Exception as e:
+        return None, str(e)
 
 
 def _msgs_to_html(msgs: list) -> str:
@@ -401,7 +401,7 @@ class WelinkMonitor(QThread):
                 dl_url, fname, extraction_code = _parse_um_content(raw)
                 if dl_url and fname:
                     m['_img_name'] = fname
-                    file_bytes = _one_box_download(dl_url, extraction_code)
+                    file_bytes, dl_err = _one_box_download(dl_url, extraction_code)
                     if file_bytes:
                         public_url = self._upload_image(file_bytes, fname)
                         if public_url:
@@ -409,7 +409,7 @@ class WelinkMonitor(QThread):
                         else:
                             self._log(f'  图片上传失败: {fname}')
                     else:
-                        self._log(f'  图片下载失败: {fname} ({dl_url[:60]})')
+                        self._log(f'  图片下载失败: {fname} ({dl_err})')
 
     def _upload_chatlog(self, chat_id: str, group_id: str, group_name: str,
                         start_time: int, end_time: int, msgs: list):
