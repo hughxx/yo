@@ -403,7 +403,7 @@ class WelinkMonitor(QThread):
                     m['_img_name'] = fname
                     try:
                         resp = requests.post(
-                            f'{self._backend_base}/api/welink/proxy_image',
+                            f'{self._backend_base}/api/image/proxy',
                             json={
                                 'download_url':    dl_url,
                                 'extraction_code': extraction_code,

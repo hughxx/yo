@@ -1,13 +1,8 @@
-import hashlib
 import re
-import uuid
 from datetime import datetime, timezone
 
-import requests
-
-from server.utils.settings import FILE_SERVER_URL, RAG_PIC_PUBLIC_BASE
 from server.db.models import _now
-from server.db.models.email import Collection, Email, EmailNamespace, ImageCache
+from server.db.models.email import Collection, Email, EmailNamespace
 
 
 # ==================== 时间处理 ====================
@@ -141,31 +136,3 @@ def upsert_email(db, data: dict, force: bool = False):
     return True, "Received successfully", process_kwargs
 
 
-# ==================== 图片上传 ====================
-
-def img_to_url(file_bytes: bytes, file_name: str, db=None) -> str:
-    h = hashlib.sha256(file_bytes).hexdigest()
-
-    if db is not None:
-        cached = db.query(ImageCache).filter_by(hash=h).first()
-        if cached:
-            return cached.url
-
-    uuid_ = str(uuid.uuid4())
-    resp = requests.post(
-        f"{FILE_SERVER_URL}/rag_pic/{uuid_}",
-        files={"file": (file_name, file_bytes)},
-        timeout=30,
-        verify=False,
-    )
-    resp.raise_for_status()
-    url = f"{RAG_PIC_PUBLIC_BASE}/rag_pic/{uuid_}/{file_name}"
-
-    if db is not None:
-        try:
-            db.add(ImageCache(hash=h, url=url))
-            db.commit()
-        except Exception:
-            db.rollback()
-
-    return url

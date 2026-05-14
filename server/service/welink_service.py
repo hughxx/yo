@@ -11,7 +11,7 @@ from server.db.models.email import Collection
 from server.db.db import SessionLocal
 from server.utils.html2md import html2md
 from server.utils.llm import chat
-from server.utils.ocr import ocr
+from server.utils.img import ocr
 from server.utils.settings import EXPERIENCE_ENGINE_URL
 from server.utils.um_content import replace_um_images
 

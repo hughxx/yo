@@ -1,0 +1,126 @@
+接口总览
+功能	HTTP 方法	API 端点	描述
+保存经验	POST	/memory/experience/doc	将一条新的经验文档存入系统
+检索经验	POST	/memory/experience/doc/search	根据关键词在指定场景中检索相关经验
+1. 保存经验
+接口信息
+URL: https://fuyao.rnd.huawei.com/memory/experience/doc
+Method: POST
+Headers:
+Content-Type: application/json
+请求体
+请求体是一个 JSON 对象，包含以下字段：
+
+字段名	类型	必填	描述	示例值
+scene_id	String	是	经验所属的场景 ID	"421"
+user_id	String	是	提交经验的用户 ID	"zhangsan"
+title	String	是	经验的标题	"如何高效调试 Python 脚本"
+summary	String	是	经验的摘要	本文介绍了使用 PDB 和 VS Code 进行 Python 脚本调试的几种方法...
+experience	String	是	经验的详细内容（Markdown 格式）	"# 使用 PDB 调试\n在终端中，可以通过..."
+rag_search_text	String	是	用于检索的关键词或短语（空格分隔）	"Python 调试 PDB VS Code"
+scene	String	否	场景的名称（描述性信息）	"后端开发"
+Postman 请求示例
+创建新请求，设置 Method 为 POST，URL 为 https://fuyao.rnd.huawei.com/memory/experience/doc。
+Headers 标签页下，添加键值对：
+Key: Content-Type
+Value: application/json
+Body 标签页下，选择 raw，然后从下拉菜单中选择 JSON。
+在下方的文本框中填入 JSON 数据：
+{
+    "scene_id": "421",
+    "user_id": "zhangsan",
+    "title": "如何高效调试 Python 脚本",
+    "summary": "本文介绍了使用 PDB 和 VS Code 进行 Python 脚本调试的几种方法。",
+    "experience": "# 使用 PDB 调试\n在终端中，可以通过 `python -m pdb your_script.py` 命令启动调试器...\n\n## 使用 VS Code 调试\n在 VS Code 中配置 `launch.json` 文件后，可以直接设置断点进行调试...",
+    "rag_search_text": "Python 调试 PDB VS Code",
+    "scene": "后端开发"
+}
+复制
+点击 Send 发送请求。
+预期响应
+成功时 (HTTP Status 200 OK)，响应体是一个 JSON 对象：
+
+{
+    "code": 200,
+    "msg": "success",
+    "data": {
+        "id": "xxxxx" // 新创建经验的唯一 ID
+    }
+}
+复制
+失败时，会返回类似下面的结构：
+
+{
+    "code": 400,
+    "msg": "scene_id 未提供",
+    "data": null
+}
+复制
+2. 检索经验
+接口信息
+URL: https://fuyao.rnd.huawei.com/memory/experience/doc/search
+Method: POST
+Headers:
+Content-Type: application/json
+请求体
+请求体是一个 JSON 对象，用于定义检索参数：
+
+字段名	类型	必填	描述	默认值/示例值
+scene_id	String	是	要检索的场景 ID	"" (脚本中会提示配置)
+user_id	String	是	执行检索的用户 ID	"default_user"
+query	String	是	检索关键词（空格分隔）	"Python 调试"
+search_field	String	否	指定在哪个字段进行检索	"rag_search_text"
+top_k	Number	否	返回相关性最高的结果数量	5
+score_threshold	Number	否	只返回得分高于此阈值的经验	0.3
+Postman 请求示例
+创建新请求，设置 Method 为 POST，URL 为 https://fuyao.rnd.huawei.com/memory/experience/doc/search。
+Headers 标签页下，添加键值对：
+Key: Content-Type
+Value: application/json
+Body 标签页下，选择 raw，然后从下拉菜单中选择 JSON。
+在下方的文本框中填入 JSON 数据：
+{
+    "scene_id": "421",
+    "user_id": "zhangsan",
+    "query": "Python 调试",
+    "search_field": "rag_search_text",
+    "top_k": 5,
+    "score_threshold": 0.3
+}
+复制
+点击 Send 发送请求。
+预期响应
+成功时 (HTTP Status 200 OK)，响应体是一个 JSON 对象，包含检索到的经验列表：
+
+{
+    "code": 200,
+    "msg": "success",
+    "data": {
+        "total_candidates": 10, // 召回的候选总数
+        "total_ranked": 3,      // 通过分数阈值的总数
+        "items": [
+            {
+                "id": "xxxxx",
+                "title": "如何高效调试 Python 脚本",
+                "summary": "本文介绍了使用 PDB 和 VS Code 进行 Python 脚本调试的几种方法。",
+                "experience": "# 使用 PDB 调试\n...",
+                "rag_search_text": "Python 调试 PDB VS Code",
+                "score": 0.95, // 相关性得分
+                "scene_id": "421",
+                "user_id": "zhangsan",
+                "create_time": "2023-10-27T10:00:00Z"
+            },
+            {
+                "id": "yyyyy",
+                "title": "Python 性能分析工具 cProfile 使用",
+                "summary": "cProfile 是 Python 自带的性能分析工具...",
+                "experience": "## cProfile 基础用法\n...",
+                "rag_search_text": "Python 性能分析 cProfile",
+                "score": 0.45,
+                "scene_id": "421",
+                "user_id": "lisi",
+                "create_time": "2023-10-26T15:30:00Z"
+            }
+        ]
+    }
+}

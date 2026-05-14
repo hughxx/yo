@@ -1,7 +1,6 @@
 import re
 
-from server.utils.msg_file_download import one_box_download
-from server.utils.img_utils import ocr, img_to_url
+from server.utils.img import img_to_url, ocr_sync as ocr, one_box_download
 
 # 匹配 :um_begin{...}/:um_end 包裹的图片/文件内容
 _UM_RE = re.compile(r'/:um_begin\{([^}]+)\}/:um_end')

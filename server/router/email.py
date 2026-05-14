@@ -2,11 +2,11 @@ import json
 import logging
 
 import requests
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 
 from server.db.models.email import Collection, Email, EmailNamespace, EmailRule
-from server.service.email_service import get_or_create_collection, img_to_url, upsert_email
+from server.service.email_service import get_or_create_collection, upsert_email
 from server.service.experience_service import process_email
 from server.db.db import get_db
 
@@ -160,18 +160,3 @@ def search_userinfo(info: str = ""):
         return []
 
 
-@router.post("/upload_image")
-async def upload_image(
-    file: UploadFile = File(...),
-    filename: str = Form(None),
-    db: Session = Depends(get_db),
-):
-    file_name = (filename or file.filename or "image.png").strip()
-    logger.info("upload_image: %s", file_name)
-    try:
-        url = img_to_url(await file.read(), file_name, db=db)
-        logger.info("upload_image ok: %s", url)
-        return {"Success": True, "Url": url}
-    except Exception as e:
-        logger.exception("upload_image failed: %s", file_name)
-        return {"Success": False, "Message": str(e)}
