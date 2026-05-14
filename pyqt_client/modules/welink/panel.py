@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QMessageBox, QPlainTextEdit, QSplitter,
-    QFormLayout, QDialog, QRadioButton, QButtonGroup, QStackedWidget,
+    QFormLayout, QDialog, QRadioButton, QButtonGroup,
 )
 from PyQt5.QtCore import Qt
 
@@ -103,12 +103,9 @@ class WelinkPanel(QWidget):
         mode_row.addStretch()
         root.addLayout(mode_row)
 
-        # ── 模式内容区（Stacked）──
-        self._mode_stack = QStackedWidget()
-
-        # Page 0：手动记录
-        manual_widget = QWidget()
-        form = QFormLayout(manual_widget)
+        # ── 手动记录配置区（按天模式时隐藏）──
+        self._manual_widget = QWidget()
+        form = QFormLayout(self._manual_widget)
         form.setSpacing(4)
         form.setContentsMargins(0, 4, 0, 0)
         self._start_cmd_edit   = QLineEdit()
@@ -127,20 +124,8 @@ class WelinkPanel(QWidget):
         form.addRow('结束命令:', self._end_cmd_edit)
         form.addRow('总结命令:', self._summary_cmd_edit)
         form.addRow('', _usage)
-        self._mode_stack.addWidget(manual_widget)
-
-        # Page 1：按天自动记录（待实现）
-        auto_widget = QWidget()
-        auto_lay = QVBoxLayout(auto_widget)
-        auto_lay.setContentsMargins(0, 4, 0, 0)
-        auto_lbl = QLabel('按天自动记录（敬请期待）')
-        auto_lbl.setStyleSheet('color:#bbb;font-size:12px')
-        auto_lay.addWidget(auto_lbl)
-        auto_lay.addStretch()
-        self._mode_stack.addWidget(auto_widget)
-
-        self._mode_group.idClicked.connect(self._mode_stack.setCurrentIndex)
-        root.addWidget(self._mode_stack)
+        self._rb_auto.toggled.connect(lambda on: self._manual_widget.setVisible(not on))
+        root.addWidget(self._manual_widget)
 
         _sep = QLabel()
         _sep.setFixedHeight(1)
