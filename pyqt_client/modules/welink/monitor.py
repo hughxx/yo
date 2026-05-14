@@ -393,7 +393,7 @@ class WelinkMonitor(QThread):
     # ── helpers ───────────────────────────────────────────────────
 
     def _enrich_images(self, msgs: list, group_name: str):
-        """解析图片/文件 URL，直接嵌入原始地址（内网浏览器有登录态可直接加载）。"""
+        """通过后端代理用机器人账号下载图片并上传，写入公开 URL 供 HTML 渲染。"""
         for m in msgs:
             ct = m.get('contentType', '')
             if ct in ('PICTURE_MSG', 'FILE_MSG'):
@@ -401,11 +401,24 @@ class WelinkMonitor(QThread):
                 dl_url, fname, extraction_code = _parse_um_content(raw)
                 if dl_url and fname:
                     m['_img_name'] = fname
-                    # 直接拼原始 URL，跳过下载重传（clouddrive 需要登录态）
-                    if extraction_code:
-                        m['_img_url'] = f'{dl_url}?extractionCode={extraction_code}'
-                    else:
-                        m['_img_url'] = dl_url
+                    try:
+                        resp = requests.post(
+                            f'{self._backend_base}/api/welink/proxy_image',
+                            json={
+                                'download_url':    dl_url,
+                                'extraction_code': extraction_code,
+                                'file_name':       fname,
+                            },
+                            timeout=60,
+                            verify=False,
+                        )
+                        data = resp.json()
+                        if data.get('success') and data.get('url'):
+                            m['_img_url'] = data['url']
+                        else:
+                            self._log(f'  图片下载失败: {fname} ({data.get("message")})')
+                    except Exception as e:
+                        self._log(f'  图片请求失败: {fname} ({e})')
 
     def _upload_chatlog(self, chat_id: str, group_id: str, group_name: str,
                         start_time: int, end_time: int, msgs: list):

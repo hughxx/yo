@@ -7,6 +7,10 @@ from sqlalchemy.orm import Session
 from server.db.db import get_db
 from server.db.models.welink import WelinkChatlog, WelinkRule
 from server.service.welink_service import process_chatlog
+from server.utils.msg_file_download import one_box_download
+from server.utils.settings import FILE_SERVER_URL
+
+import requests as _requests
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +123,38 @@ async def receive_chatlog(
         )
 
     return {"Success": True, "Message": "Received successfully", "Duplicate": False}
+
+
+# ── 图片代理下载 ───────────────────────────────────────────────
+
+@router.post("/proxy_image")
+async def proxy_image(request: Request):
+    """用机器人账号从 clouddrive 下载图片，上传到文件服务器，返回公开 URL。"""
+    data = await request.json()
+    download_url    = (data.get("download_url") or "").strip()
+    extraction_code = (data.get("extraction_code") or "").strip()
+    file_name       = (data.get("file_name") or "image.png").strip()
+
+    if not download_url:
+        return {"success": False, "message": "download_url is required"}
+
+    result = one_box_download(download_url, extraction_code)
+    if not result.download_result:
+        return {"success": False, "message": result.download_error_msg}
+
+    try:
+        resp = _requests.post(
+            f"{FILE_SERVER_URL}/api/email/upload_image",
+            files={"file": (file_name, result.file_content)},
+            data={"filename": file_name},
+            timeout=30,
+            verify=False,
+        )
+        resp.raise_for_status()
+        public_url = resp.json().get("url", "")
+        return {"success": True, "url": public_url}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 def _parse_ms(value):

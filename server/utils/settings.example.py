@@ -23,3 +23,7 @@ OCR_URL = "http://your-ocr-service/ocr"
 
 # ==================== 经验引擎配置 ====================
 EXPERIENCE_ENGINE_URL = "https://your-experience-engine/doc"
+
+# ==================== CloudDrive 下载账号 ====================
+CLOUDDRIVE_ACCOUNT  = "your_robot_account"
+CLOUDDRIVE_PASSWORD = "your_robot_password"
