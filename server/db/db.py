@@ -53,3 +53,12 @@ def init_db():
             )
     except Exception:
         pass  # column already exists
+    # inline migration: add process_status column to welink chatlogs if missing
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                "ALTER TABLE t_collection_welink_chatlogs "
+                "ADD COLUMN process_status VARCHAR(20) NOT NULL DEFAULT 'pending'"
+            )
+    except Exception:
+        pass  # column already exists
