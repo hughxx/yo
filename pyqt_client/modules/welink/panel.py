@@ -228,7 +228,7 @@ class WelinkPanel(QWidget):
             end_cmd       = s.get('welinkEndCmd',     '@云见 结束定位'),
             summary_cmd   = s.get('welinkSummaryCmd', '@云见 总结经验'),
             user_id       = s.get('welinkUserId', '') or s.get('userId', ''),
-            poll_interval = s.get('welinkPollInterval', 3),
+            poll_interval = s.get('welinkPollInterval', 8),
         )
         self._monitor.log_signal.connect(self._append_log)
         self._monitor.uploaded_signal.connect(self._on_uploaded)

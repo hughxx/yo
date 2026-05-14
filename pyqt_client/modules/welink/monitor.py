@@ -240,10 +240,12 @@ class WelinkMonitor(QThread):
 
                     msgs, err = _get_messages(group_id, 20)
                     if err:
-                        self._log(f'[{group_name}] 拉取消息失败: {err}')
+                        if '429' in err:
+                            time.sleep(5)  # 限流，等待后继续
+                        else:
+                            self._log(f'[{group_name}] 拉取消息失败: {err}')
                         continue
                     if not msgs:
-                        self._log(f'[{group_name}] CLI 返回 0 条消息')
                         continue
 
                     last_seen = last_ids.get(group_id)
