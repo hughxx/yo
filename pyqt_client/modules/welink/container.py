@@ -15,7 +15,7 @@ class WelinkContainer(QWidget):
         self._recording = WelinkPanel()
         self._autoreply  = AutoReplyPanel()
         self._tabs.addTab(self._recording, '定位过程记录')
-        self._tabs.addTab(self._autoreply,  '问题自动回复')
+        self._tabs.addTab(self._autoreply,  '自动回复')
         lay.addWidget(self._tabs)
 
     def activate(self):

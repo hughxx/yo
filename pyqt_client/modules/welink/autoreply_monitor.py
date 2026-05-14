@@ -1,11 +1,10 @@
-"""自动回复监听线程，逻辑参考 welink_usage.txt，AI 调用替换为本地后端。"""
+"""自动回复监听线程：已配群全量、未配群仅@、私聊全量，关键词规则驱动。"""
 import json
 import re
 import subprocess
+import sys
 import time
 import unicodedata
-
-import sys
 
 import requests
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -30,12 +29,12 @@ def _norm(text: str) -> str:
     return _UNICODE_SPACES.sub(' ', unicodedata.normalize('NFKC', text))
 
 
-def _is_question(content: str) -> bool:
+def _is_trivial(content: str) -> bool:
     c = content.strip().lower()
     for p in NON_QUESTION_PATTERNS:
         if c == p or c.startswith(p + ' ') or c.endswith(' ' + p):
-            return False
-    return True
+            return True
+    return False
 
 
 def _run_cli(*args) -> dict:
@@ -52,15 +51,17 @@ def _run_cli(*args) -> dict:
 class AutoReplyMonitor(QThread):
     log_signal = pyqtSignal(str)
 
-    def __init__(self, prompt: str, bot_id: str, backend_base: str,
-                 poll_interval: int = 5, parent=None):
+    def __init__(self, bot_id: str, groups: list, rules: list,
+                 backend_base: str, poll_interval: int = 5, parent=None):
         super().__init__(parent)
-        self._prompt    = prompt
-        self._bot_id    = bot_id.strip()
-        self._backend   = backend_base.rstrip('/')
-        self._interval  = poll_interval
-        self._running   = False
-        self._last_ids  = {}   # account / "g:{group_id}" -> last seen msgId
+        self._bot_id   = bot_id.strip()
+        # 已配置全量监听的 group_id 集合
+        self._cfg_groups = {str(g['id']) for g in groups}
+        self._rules    = rules
+        self._backend  = backend_base.rstrip('/')
+        self._interval = poll_interval
+        self._running  = False
+        self._last_ids = {}   # key -> last seen msgId
 
     def stop(self):
         self._running = False
@@ -70,8 +71,8 @@ class AutoReplyMonitor(QThread):
 
     # ── welink-cli ────────────────────────────────────────────────
 
-    def _recent_conversations(self, count: int = 20) -> list:
-        data = _run_cli('query-recent-conversation', '--count', str(count))
+    def _recent_conversations(self) -> list:
+        data = _run_cli('query-recent-conversation', '--count', '20')
         return data.get('conversation_info', [])
 
     def _user_msgs(self, account: str, count: int = 10) -> list:
@@ -90,13 +91,22 @@ class AutoReplyMonitor(QThread):
     def _send_group(self, group_id: str, text: str):
         _run_cli('send-to-group', '--group-id', group_id, '--text', text)
 
+    # ── rule matching ─────────────────────────────────────────────
+
+    def _match_rule(self, content: str):
+        for rule in self._rules:
+            for kw in rule.get('keywords', []):
+                if kw and kw in content:
+                    return rule
+        return None
+
     # ── AI ───────────────────────────────────────────────────────
 
-    def _call_ai(self, message: str) -> str:
+    def _call_ai(self, prompt: str, message: str) -> str:
         try:
             resp = requests.post(
                 f'{self._backend}/api/ai/chat',
-                json={'prompt': self._prompt, 'message': message},
+                json={'prompt': prompt, 'message': message},
                 timeout=60,
             )
             resp.raise_for_status()
@@ -107,20 +117,22 @@ class AutoReplyMonitor(QThread):
 
     # ── process ───────────────────────────────────────────────────
 
-    def _process(self, sender: str, content: str, history: list,
+    def _process(self, rule: dict, sender: str, content: str, history: list,
                  is_group: bool, group_id: str = ''):
-        # 最近 6 条聊天记录作上下文（同 welink_usage.txt）
-        lines = []
-        for m in reversed(history[-6:]):
-            c = _norm(m.get('content', ''))
-            if c:
-                lines.append(f'[{m.get("sender", "")}]: {c}')
-        ctx = ('【最近聊天记录】\n' + '\n'.join(lines) + '\n\n') if lines else ''
+        if rule['action'] == 'fixed':
+            reply = rule.get('reply', '')
+        else:
+            # 带近期聊天记录的上下文
+            lines = []
+            for m in reversed(history[-6:]):
+                c = _norm(m.get('content', ''))
+                if c:
+                    lines.append(f'[{m.get("sender", "")}]: {c}')
+            ctx = ('【最近聊天记录】\n' + '\n'.join(lines) + '\n\n') if lines else ''
+            tag = '【群聊】' if is_group else '【私聊】'
+            message = f'{tag}发送者工号: {sender}\n{ctx}最新消息: {content}'
+            reply = self._call_ai(rule.get('prompt', ''), message)
 
-        tag = '【群聊】' if is_group else '【私聊】'
-        message = f'{tag}发送者工号: {sender}\n{ctx}最新消息: {content}'
-
-        reply = self._call_ai(message)
         if not reply:
             return
 
@@ -146,7 +158,6 @@ class AutoReplyMonitor(QThread):
         lm  = msgs[0]
         lid = int(lm.get('msgId', 0))
 
-        # 初始化水位线，不回复历史消息
         if self._last_ids.get(account) is None:
             self._last_ids[account] = lid
             return
@@ -154,19 +165,22 @@ class AutoReplyMonitor(QThread):
             return
 
         sender = lm.get('sender', '')
-        # 只处理对方发来的消息（同 welink_usage.txt）
-        if sender != account:
+        if sender != account:          # 跳过自己发的消息
             self._last_ids[account] = lid
             return
 
         self._last_ids[account] = lid
 
         content = _norm(lm.get('content', ''))
-        if not content or not _is_question(content):
+        if not content or _is_trivial(content):
             return
 
-        self._log(f'[私聊][{account}] {content[:60]}')
-        self._process(account, content, msgs, is_group=False)
+        rule = self._match_rule(content)
+        if not rule:
+            return
+
+        self._log(f'[私聊][{account}] 命中「{rule["keywords"][0]}」 {content[:40]}')
+        self._process(rule, account, content, msgs, is_group=False)
 
     def _handle_group(self, conv: dict):
         group_id   = str(conv.get('group_id', ''))
@@ -189,22 +203,34 @@ class AutoReplyMonitor(QThread):
             return
 
         sender = lm.get('sender', '')
-        # 跳过自己发的消息（同 welink_usage.txt）
-        if sender == self._bot_id:
+        if sender == self._bot_id:     # 跳过自己发的消息
             self._last_ids[key] = lid
             return
 
-        # 群聊：仅 @ 我（atAccountList 含机器人工号）才回复
-        at_list = lm.get('atAccountList', [])
-        if self._bot_id not in at_list:
+        is_configured = group_id in self._cfg_groups
+        at_me = self._bot_id in lm.get('atAccountList', [])
+
+        # 未配置的群：只响应 @ 我
+        if not is_configured and not at_me:
             self._last_ids[key] = lid
             return
 
         self._last_ids[key] = lid
 
         content = _norm(lm.get('content', ''))
-        self._log(f'[群聊][{group_name}] {sender}: {content[:60]}')
-        self._process(sender, content, msgs, is_group=True, group_id=group_id)
+        if not content:
+            return
+
+        rule = self._match_rule(content)
+
+        # 已配置群且没命中关键词但被 @ 了：兜底提示
+        if rule is None:
+            if at_me:
+                self._log(f'[群聊][{group_name}] @ 我但无匹配规则，跳过')
+            return
+
+        self._log(f'[群聊][{group_name}] 命中「{rule["keywords"][0]}」 {content[:40]}')
+        self._process(rule, sender, content, msgs, is_group=True, group_id=group_id)
 
     # ── main loop ─────────────────────────────────────────────────
 
@@ -214,7 +240,7 @@ class AutoReplyMonitor(QThread):
 
         while self._running:
             try:
-                for conv in self._recent_conversations(20):
+                for conv in self._recent_conversations():
                     if not self._running:
                         break
                     ctype = conv.get('recent_conversation_type', '')
