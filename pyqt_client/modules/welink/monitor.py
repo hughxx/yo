@@ -350,8 +350,10 @@ class WelinkMonitor(QThread):
         def find_msg(name, eid, dt):
             ms = int(dt.timestamp() * 1000)
             for m in sorted_msgs:
-                if ms <= m.get('serverSendTime', 0) < ms + 60_000 and m.get('sender', '') in (name, eid):
-                    return m
+                if ms <= m.get('serverSendTime', 0) < ms + 60_000:
+                    sender = m.get('sender', '')
+                    if eid in sender or sender in eid:
+                        return m
             return None
 
         start_msg = find_msg(start_name, start_id, start_dt)
