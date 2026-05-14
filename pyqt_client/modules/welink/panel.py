@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QMessageBox, QPlainTextEdit, QSplitter,
-    QFormLayout, QDialog,
+    QFormLayout, QDialog, QRadioButton, QButtonGroup, QStackedWidget,
 )
 from PyQt5.QtCore import Qt
 
@@ -90,10 +90,27 @@ class WelinkPanel(QWidget):
         hdr.addWidget(self._btn_toggle)
         root.addLayout(hdr)
 
-        # ── 触发命令配置 ──
-        form = QFormLayout()
+        # ── 记录模式选择 ──
+        mode_row = QHBoxLayout()
+        self._rb_manual = QRadioButton('手动记录')
+        self._rb_auto   = QRadioButton('按天自动记录')
+        self._rb_manual.setChecked(True)
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.addButton(self._rb_manual, 0)
+        self._mode_group.addButton(self._rb_auto,   1)
+        mode_row.addWidget(self._rb_manual)
+        mode_row.addWidget(self._rb_auto)
+        mode_row.addStretch()
+        root.addLayout(mode_row)
+
+        # ── 模式内容区（Stacked）──
+        self._mode_stack = QStackedWidget()
+
+        # Page 0：手动记录
+        manual_widget = QWidget()
+        form = QFormLayout(manual_widget)
         form.setSpacing(4)
-        form.setContentsMargins(0, 0, 0, 0)
+        form.setContentsMargins(0, 4, 0, 0)
         self._start_cmd_edit   = QLineEdit()
         self._end_cmd_edit     = QLineEdit()
         self._summary_cmd_edit = QLineEdit()
@@ -110,7 +127,20 @@ class WelinkPanel(QWidget):
         form.addRow('结束命令:', self._end_cmd_edit)
         form.addRow('总结命令:', self._summary_cmd_edit)
         form.addRow('', _usage)
-        root.addLayout(form)
+        self._mode_stack.addWidget(manual_widget)
+
+        # Page 1：按天自动记录（待实现）
+        auto_widget = QWidget()
+        auto_lay = QVBoxLayout(auto_widget)
+        auto_lay.setContentsMargins(0, 4, 0, 0)
+        auto_lbl = QLabel('按天自动记录（敬请期待）')
+        auto_lbl.setStyleSheet('color:#bbb;font-size:12px')
+        auto_lay.addWidget(auto_lbl)
+        auto_lay.addStretch()
+        self._mode_stack.addWidget(auto_widget)
+
+        self._mode_group.idClicked.connect(self._mode_stack.setCurrentIndex)
+        root.addWidget(self._mode_stack)
 
         _sep = QLabel()
         _sep.setFixedHeight(1)
