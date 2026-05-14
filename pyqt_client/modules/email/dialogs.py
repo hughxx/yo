@@ -530,7 +530,7 @@ class SetupDialog(QDialog):
     """首次打开邮件标签时的强制配置：服务器 + 工号 + 命名空间"""
     def __init__(self, settings: dict, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('初始配置 — 研发知识助手')
+        self.setWindowTitle('初始配置 — 问题定位助手')
         self.setFixedWidth(420)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self._s = dict(settings)
@@ -609,6 +609,12 @@ class SetupDialog(QDialog):
         lay.addWidget(btn_ok)
 
         self._load_namespaces()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        screen = self.screen().availableGeometry()
+        self.move(screen.center().x() - self.width() // 2,
+                  screen.top() + 60)
 
     def _on_server_activated(self, index: int):
         if self._server_combo.itemText(index) == _MANUAL_INPUT:
