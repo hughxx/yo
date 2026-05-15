@@ -56,14 +56,14 @@ class AutoReplyMonitor(QThread):
     def __init__(self, groups: list, users: list, rules: list,
                  backend_base: str, poll_interval: int = 5, parent=None):
         """
-        groups: [{id, name, at_only}]
-        users:  [account_str, ...]
+        groups: [{id, name, at_only}]  — 已配置的群（含 at_only 设置）
+        users:  [account_str, ...]     — 已配置的特别关注用户（仅用于初始化；P2P全量处理）
         """
         super().__init__(parent)
-        # group_id -> at_only
+        # group_id -> at_only（仅存配置，未配置群默认 at_only=True）
         self._groups   = {g['id']: {'name': g.get('name', g['id']), 'at_only': g.get('at_only', True)}
                           for g in groups}
-        self._users    = set(users)
+        self._users    = set(users)   # 保留备用，实际 P2P 全量处理
         self._rules    = rules
         self._backend  = backend_base.rstrip('/')
         self._interval = poll_interval
@@ -171,7 +171,7 @@ class AutoReplyMonitor(QThread):
 
     def _handle_p2p(self, conv: dict):
         account = conv.get('target_account', '')
-        if not account or account not in self._users:
+        if not account:
             return
 
         msgs = self._user_msgs(account, 5)
@@ -207,12 +207,12 @@ class AutoReplyMonitor(QThread):
 
     def _handle_group(self, conv: dict):
         group_id = str(conv.get('group_id', ''))
-        if not group_id or group_id not in self._groups:
+        if not group_id:
             return
 
-        grp_cfg    = self._groups[group_id]
-        group_name = grp_cfg['name']
-        at_only    = grp_cfg['at_only']
+        grp_cfg    = self._groups.get(group_id, {})
+        group_name = grp_cfg.get('name', conv.get('group_name', group_id))
+        at_only    = grp_cfg.get('at_only', True)  # 未配置群默认仅@我
 
         msgs = self._group_msgs(group_id, 5)
         if not msgs:
