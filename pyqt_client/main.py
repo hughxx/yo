@@ -1,10 +1,8 @@
 """入口"""
+import ctypes
 import sys
 import traceback
 from pathlib import Path
-import win32event
-import win32api
-import winerror
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from shell import MainShell, QSS
 
@@ -23,11 +21,12 @@ sys.excepthook = _hook
 
 
 _MUTEX_NAME = 'Global\\FuyaoCollectionApp'
+_ERROR_ALREADY_EXISTS = 183
 
 
 def main():
-    mutex = win32event.CreateMutex(None, False, _MUTEX_NAME)
-    if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+    if ctypes.windll.kernel32.GetLastError() == _ERROR_ALREADY_EXISTS:
         app = QApplication(sys.argv)
         QMessageBox.warning(None, '已在运行', '程序已经在运行，请勿重复启动。')
         sys.exit(0)
