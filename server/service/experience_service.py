@@ -9,7 +9,7 @@ import requests as req_lib
 from server.db.models.email import Email, EmailNamespace
 from server.db.db import SessionLocal
 from server.utils.html2md import html2md
-from server.utils.llm import chat
+from server.utils.llm import chat_with_tools
 from server.utils.img import ocr
 from server.utils.engine import push_experience
 from server.utils.um_content import replace_um_images
@@ -20,19 +20,6 @@ _IMAGE_RE = re.compile(r'(!\[[^\]]*\]\((https?://[^)\s]+)\))')
 
 _SYSTEM_PROMPT = """\
 你是一个专业的技术知识整理专家。请将下面的邮件线程整理成一条结构化经验文档，存入知识库供后续检索和学习。
-
-## 输出要求
-
-严格输出以下 JSON，不要有任何额外说明：
-
-```json
-{
-  "title": "简洁的经验标题（不超过50字）",
-  "summary": "问题背景与最终结论的简短总结（不超过200字）",
-  "experience": "详细经验正文（Markdown格式，见下方说明）",
-  "rag_search_text": "用于检索的关键词与关键短语，空格分隔，覆盖问题特征、技术术语、接口名称、模块名等"
-}
-```
 
 ## experience 字段写作规则
 
@@ -46,13 +33,53 @@ _SYSTEM_PROMPT = """\
   ②时间紧跟姓名括号内；③内容与时间在同一行，不换行；
   ④剔除无实质内容的转发（如"麻烦看下"、"已对齐"等）。
 - 去掉收件人/抄送列表等邮件头部噪声，只保留发件人和发送时间。
-- 保留代码片段、接口路径、错误日志等技术细节，使用 ` ``` ` 代码块。
+- 保留代码片段、接口路径、错误日志等技术细节，使用 ``` 代码块。
 
 ## 邮件内容
 
 邮件中的图片已附加 OCR 识别文字（标注在图片下方），供你理解图片内容，
 但在 experience 中请使用 `![](url)` 原始格式，而非 OCR 文字块。
+
+仔细阅读邮件内容后，调用 create_experience 工具保存整理好的经验。
 """
+
+_CREATE_EXPERIENCE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "create_experience",
+        "description": "保存一条从邮件线程整理出的技术问题定位经验",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "简洁的经验标题，不超过 50 字",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "问题背景与最终结论的简短总结，不超过 200 字",
+                },
+                "experience": {
+                    "type": "string",
+                    "description": (
+                        "详细经验正文（Markdown 格式）。"
+                        "包含章节：## 问题背景、## 问题现象、## 分析过程、## 根因、"
+                        "## 解决方案、## 讨论摘要。"
+                        "保留图片 ![](url)、代码块、接口路径、错误日志等技术细节。"
+                        "讨论摘要按时间顺序列出关键回复，每条格式为一行：真实姓名（YYYY-MM-DD HH:MM）：内容。"
+                        "必须使用邮件中的真实发件人姓名，不得写'发件人'等占位词。"
+                        "示例：张三（2026-04-29 16:46）：问题复现了，日志如下…"
+                    ),
+                },
+                "rag_search_text": {
+                    "type": "string",
+                    "description": "检索用关键词，空格分隔，覆盖技术术语、接口名、模块名等",
+                },
+            },
+            "required": ["title", "summary", "experience", "rag_search_text"],
+        },
+    },
+}
 
 
 async def _enrich_with_ocr(markdown: str) -> str:
@@ -81,31 +108,52 @@ async def _enrich_with_ocr(markdown: str) -> str:
     return enriched
 
 
-_MAX_CHARS = 40000
-
-
-async def _call_llm(markdown: str) -> dict:
-    if len(markdown) > _MAX_CHARS:
-        logger.warning("LLM: truncating markdown %d → %d chars", len(markdown), _MAX_CHARS)
-        markdown = markdown[:_MAX_CHARS]
-    logger.info("LLM: sending %d chars", len(markdown))
+async def _run_agent(markdown: str) -> dict | None:
+    logger.info("LLM agent: sending %d chars", len(markdown))
+    tools    = [_CREATE_EXPERIENCE_TOOL]
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user",   "content": markdown},
     ]
-    raw = await chat(messages)
-    raw = raw.strip()
-    fence = re.search(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", raw)
-    if fence:
-        raw = fence.group(1)
-    result = json.loads(raw)
-    logger.info("LLM: got title=%r", result.get("title"))
+    result = None
+
+    for _turn in range(5):
+        assistant_msg = await chat_with_tools(messages, tools)
+        tool_calls    = assistant_msg.get("tool_calls") or []
+
+        if not tool_calls:
+            break
+
+        messages.append(assistant_msg)
+
+        for tc in tool_calls:
+            fn   = tc.get("function", {})
+            name = fn.get("name", "")
+            tid  = tc.get("id", "")
+            try:
+                args = json.loads(fn.get("arguments", "{}"))
+            except Exception:
+                args = {}
+
+            if name == "create_experience":
+                if result is None:
+                    result = args
+                    logger.info("LLM agent: got title=%r", args.get("title"))
+                tool_result = "已保存"
+            else:
+                tool_result = "unknown tool"
+
+            messages.append({
+                "role":         "tool",
+                "tool_call_id": tid,
+                "content":      tool_result,
+            })
+
     return result
 
 
 def _make_doc_id(conversation_topic: str) -> str:
     return uuid.uuid5(uuid.NAMESPACE_DNS, conversation_topic).hex
-
 
 
 def _update_ns_status(conversation_topic: str, namespace_id: int, status: str) -> None:
@@ -154,7 +202,12 @@ async def process_email(
         logger.info("html2md: %d chars", len(markdown))
         markdown = await asyncio.to_thread(replace_um_images, markdown)
         markdown = await _enrich_with_ocr(markdown)
-        result   = await _call_llm(markdown)
+        result   = await _run_agent(markdown)
+        if result is None:
+            logger.warning("process_email: agent returned no experience, subject=%r", subject)
+            _update_ns_status(conversation_topic, namespace_id, "failed")
+            return
+
         push_experience(result, user_id, doc_id)
         _update_ns_status(conversation_topic, namespace_id, "done")
         logger.info("process_email done: subject=%r", subject)
