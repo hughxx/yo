@@ -174,7 +174,7 @@ def mail_get(entry_id: str, img_api: str = '') -> dict:
     ns = _ns()
     m = ns.GetItemFromID(entry_id)
     html = m.HTMLBody or ''
-    html = re.sub(r'charset=[^"\';\s]+', 'charset=utf-8', html, flags=re.IGNORECASE)
+    html = re.sub(r'charset\s*=\s*["\']?[\w-]+["\']?', 'charset=utf-8', html, flags=re.IGNORECASE)
 
     if img_api:
         try:
@@ -217,13 +217,13 @@ def _process_images(mail_item, html: str, img_api: str) -> str:
             tmp.close()
             with open(tmp.name, 'rb') as f:
                 resp = requests.post(
-                    f'{img_api.rstrip("/")}/api/email/upload_image',
+                    f'{img_api.rstrip("/")}/api/image/upload',
                     files={'file': (att.FileName, f)},
                     timeout=30, verify=False,
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                url = data.get('Url') or data.get('url') or data.get('URL')
+                url = data.get('url')
                 if url:
                     cid_map[cid] = url
         except Exception:
