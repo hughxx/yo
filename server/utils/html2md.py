@@ -8,7 +8,6 @@ def html2md(html_content):
 
     # 创建 html2text 对象
     text_maker = html2text.HTML2Text()
-    text_maker.encoding = 'utf-8'
 
     # --- 基础配置 ---
     text_maker.ignore_links = False
