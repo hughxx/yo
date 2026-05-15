@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+from datetime import datetime
 
 import requests
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -51,7 +52,8 @@ def fetch_recent_conversations(count: int = 50) -> list:
 
 
 class AutoReplyMonitor(QThread):
-    log_signal = pyqtSignal(str)
+    log_signal  = pyqtSignal(str)
+    poll_signal = pyqtSignal(str, str)   # key ('g:{id}' | 'u:{acc}'), 'HH:MM:SS'
 
     def __init__(self, groups: list, users: list, rules: list,
                  backend_base: str, poll_interval: int = 5, parent=None):
@@ -174,6 +176,7 @@ class AutoReplyMonitor(QThread):
         if not account:
             return
 
+        self.poll_signal.emit(f'u:{account}', datetime.now().strftime('%H:%M:%S'))
         msgs = self._user_msgs(account, 5)
         if not msgs:
             self._log(f'[私聊][{account}] 无消息')
@@ -210,6 +213,7 @@ class AutoReplyMonitor(QThread):
         if not group_id:
             return
 
+        self.poll_signal.emit(f'g:{group_id}', datetime.now().strftime('%H:%M:%S'))
         grp_cfg    = self._groups.get(group_id, {})
         group_name = grp_cfg.get('name', conv.get('group_name', group_id))
         at_only    = grp_cfg.get('at_only', True)  # 未配置群默认仅@我
