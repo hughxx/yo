@@ -1,10 +1,13 @@
 import asyncio
 import json
+import logging
 from typing import AsyncGenerator, Union
 
 import httpx
 
 from server.utils.settings import LLM_BASE_URL, LLM_API_KEY, LLM_MODEL_ID
+
+logger = logging.getLogger(__name__)
 
 
 async def chat_with_tools(
@@ -30,9 +33,17 @@ async def chat_with_tools(
 
     async with httpx.AsyncClient(proxy=None, trust_env=False, verify=False) as client:
         resp = await client.post(url, headers=headers, json=payload, timeout=999.0)
-        resp.raise_for_status()
-        data = resp.json()
 
+    logger.info("chat_with_tools status=%s body_len=%d body_preview=%r",
+                resp.status_code, len(resp.content), resp.text[:500])
+
+    resp.raise_for_status()
+
+    raw = resp.text.strip()
+    if not raw:
+        raise ValueError(f"chat_with_tools: empty response body (status={resp.status_code})")
+
+    data = json.loads(raw)
     return data["choices"][0]["message"]
 
 
