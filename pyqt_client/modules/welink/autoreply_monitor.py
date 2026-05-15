@@ -176,12 +176,14 @@ class AutoReplyMonitor(QThread):
 
         msgs = self._user_msgs(account, 5)
         if not msgs:
+            self._log(f'[私聊][{account}] 无消息')
             return
 
         lm  = msgs[0]
         lid = int(lm.get('msgId', 0))
 
         if self._last_ids.get(account) is None:
+            self._log(f'[私聊][{account}] 首次记录 msgId={lid}')
             self._last_ids[account] = lid
             return
         if lid == self._last_ids[account]:
@@ -189,11 +191,14 @@ class AutoReplyMonitor(QThread):
         self._last_ids[account] = lid
 
         content = _norm(lm.get('content', ''))
+        self._log(f'[私聊][{account}] 新消息: {content[:60]}')
         if not content or _is_trivial(content):
+            self._log(f'[私聊][{account}] 跳过（空/无效内容）')
             return
 
         rule = self._match_rule(content)
         if not rule:
+            self._log(f'[私聊][{account}] 无匹配规则')
             return
 
         sender = lm.get('sender', account)
@@ -211,6 +216,7 @@ class AutoReplyMonitor(QThread):
 
         msgs = self._group_msgs(group_id, 5)
         if not msgs:
+            self._log(f'[群聊][{group_name}] 无消息')
             return
 
         lm  = msgs[0]
@@ -218,6 +224,7 @@ class AutoReplyMonitor(QThread):
         key = f'g:{group_id}'
 
         if self._last_ids.get(key) is None:
+            self._log(f'[群聊][{group_name}] 首次记录 msgId={lid}')
             self._last_ids[key] = lid
             return
         if lid == self._last_ids[key]:
@@ -225,15 +232,19 @@ class AutoReplyMonitor(QThread):
         self._last_ids[key] = lid
 
         at_list = lm.get('atAccountList', []) or []
+        content = _norm(lm.get('content', ''))
+        self._log(f'[群聊][{group_name}] 新消息: sender={lm.get("sender","")} at={at_list} content={content[:60]}')
+
         if at_only and not at_list:
+            self._log(f'[群聊][{group_name}] 跳过（仅@我 但未被@）')
             return
 
-        content = _norm(lm.get('content', ''))
         if not content:
             return
 
         rule = self._match_rule(content)
         if rule is None:
+            self._log(f'[群聊][{group_name}] 无匹配规则，关键词={[r["keywords"] for r in self._rules]}')
             return
 
         sender = lm.get('sender', group_id)
