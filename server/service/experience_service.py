@@ -5,12 +5,12 @@ import uuid
 
 import requests as req_lib
 
-from server.db.models.email import Collection, Email, EmailNamespace
+from server.db.models.email import Email, EmailNamespace
 from server.db.db import SessionLocal
 from server.utils.html2md import html2md
 from server.utils.llm import chat
 from server.utils.img import ocr
-from server.utils.settings import EXPERIENCE_ENGINE_URL
+from server.utils.engine import push_experience
 
 logger = logging.getLogger(__name__)
 
@@ -96,26 +96,6 @@ def _make_doc_id(conversation_topic: str) -> str:
     return uuid.uuid5(uuid.NAMESPACE_DNS, conversation_topic).hex
 
 
-def _push_to_engine(result: dict, user_id: str, namespace_id: int, namespace_name: str, doc_id: str) -> None:
-    if not EXPERIENCE_ENGINE_URL:
-        logger.warning("EXPERIENCE_ENGINE_URL not configured, skipping push")
-        return
-    body = {
-        "doc_id":          doc_id,
-        "scene_id":        "421",
-        "scene":           "邮件问题定位经验",
-        "user_id":         user_id,
-        "title":           result.get("title", ""),
-        "summary":         result.get("summary", ""),
-        "experience":      result.get("experience", ""),
-        "rag_search_text": result.get("rag_search_text", ""),
-    }
-    resp = req_lib.post(EXPERIENCE_ENGINE_URL, json=body, timeout=60, verify=False)
-    logger.info(
-        "experience engine: doc_id=%s status=%s body=%s",
-        doc_id, resp.status_code, resp.text[:200],
-    )
-
 
 def _update_ns_status(conversation_topic: str, namespace_id: int, status: str) -> None:
     if not namespace_id:
@@ -163,7 +143,7 @@ async def process_email(
         logger.info("html2md: %d chars", len(markdown))
         markdown = await _enrich_with_ocr(markdown)
         result   = await _call_llm(markdown)
-        _push_to_engine(result, user_id, namespace_id, namespace_name, doc_id)
+        push_experience(result, user_id, doc_id)
         _update_ns_status(conversation_topic, namespace_id, "done")
         logger.info("process_email done: subject=%r", subject)
     except Exception:

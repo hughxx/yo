@@ -11,7 +11,7 @@ from server.db.db import SessionLocal
 from server.utils.html2md import html2md
 from server.utils.llm import chat, chat_with_tools
 from server.utils.img import ocr
-from server.utils.settings import EXPERIENCE_ENGINE_URL
+from server.utils.engine import push_experience
 from server.utils.um_content import replace_um_images
 
 logger = logging.getLogger(__name__)
@@ -98,26 +98,6 @@ def _make_doc_id(chat_id: str) -> str:
     return uuid.uuid5(uuid.NAMESPACE_DNS, chat_id).hex
 
 
-def _push_to_engine(result: dict, user_id: str, doc_id: str) -> None:
-    if not EXPERIENCE_ENGINE_URL:
-        logger.warning("EXPERIENCE_ENGINE_URL not configured, skipping push")
-        return
-    body = {
-        "doc_id":          doc_id,
-        "scene_id":        "421",
-        "scene":           "邮件问题定位经验",
-        "user_id":         user_id,
-        "title":           result.get("title", ""),
-        "summary":         result.get("summary", ""),
-        "experience":      result.get("experience", ""),
-        "rag_search_text": result.get("rag_search_text", ""),
-    }
-    resp = req_lib.post(EXPERIENCE_ENGINE_URL, json=body, timeout=60, verify=False)
-    logger.info(
-        "experience engine: doc_id=%s status=%s body=%s",
-        doc_id, resp.status_code, resp.text[:200],
-    )
-
 
 def _update_status(chat_id: str, status: str) -> None:
     db = SessionLocal()
@@ -162,7 +142,7 @@ async def process_chatlog(
         markdown = await _enrich_with_ocr(markdown)
         result   = await _call_llm(markdown)
 
-        _push_to_engine(result, upload_by, doc_id)
+        push_experience(result, upload_by, doc_id)
         _update_status(chat_id, "done")
         logger.info("process_chatlog done: group=%r chat_id=%r", group_name, chat_id)
     except Exception:
@@ -372,7 +352,7 @@ async def _process_daily_chatlog(
         for i, exp in enumerate(experiences):
             doc_id = _make_doc_id(f'{chat_id}_{i}')
             try:
-                _push_to_engine(exp, upload_by, doc_id)
+                push_experience(exp, upload_by, doc_id)
                 logger.info("daily exp[%d] pushed: doc_id=%s title=%r",
                             i, doc_id, exp.get("title"))
             except Exception:
