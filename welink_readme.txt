@@ -9,6 +9,111 @@ welink-cli im query-history-message --user-account "a0012345" --query-count 20
 welink-cli im query-history-message --group-id "1234567891011" --query-count 20
 
 
+help说明
+Usage: welink-cli im [OPTIONS] SUBCOMMAND
+
+Options:
+  -h,--help                   Print this help message and exit
+
+Subcommands:
+  send-to-user                Send message to user
+
+                              Description:
+                                Send a text message to a single user. Currently supports sending to only
+                                one user at a time.
+
+                              Options:
+                                --receiver: User account in format of pinyin initials + employee number
+                                            (e.g., a0012345). Wrap in double quotes. If unsure of the
+                                            account, use 'welink-cli search person' to find it and take
+                                            the 'welinkid' field from the result.
+                                --text:     Message text content. Wrap in double quotes.
+
+                              Example:
+                                welink-cli im send-to-user --receiver "a0012345" --text "hi"
+  send-to-group               Send message to group
+
+                              Description:
+                                Send a text message to a single group. Currently supports sending to only
+                                one group at a time.
+
+                              Options:
+                                --group-id: Group ID (numeric string). Wrap in double quotes.
+                                --text:     Message text content. Wrap in double quotes.
+
+                              Example:
+                                welink-cli im send-to-group --group-id "1234567891011" --text "hi"
+  create-group                Create a new group
+
+                              Description:
+                                Create a new group with specified members and settings.
+
+                              Options:
+                                --name:         Group name. Wrap in double quotes.
+                                --user-account: Group member account(s) to add. Format: pinyin initials +
+                                                employee number (e.g., a0012345). Wrap each account in
+                                                double quotes. Separate multiple accounts with spaces.
+                                --notice:     Group announcement/notice. Wrap in double quotes.
+                                --type:         Group type (0: normal group, 1: discuss group). Default: 0.
+
+                              Example:
+                                welink-cli im create-group --name "test create group" --user-account "a0012345" "b0067890" --notice "test" --type 0
+  query-recent-conversation   Query recent conversations
+
+                              Description:
+                                Query the most recent conversations for the current user.
+
+                              Options:
+                                --count: Number of recent conversations to query (1-50). Default: 10.
+
+                              Example:
+                                welink-cli im query-recent-conversation --count 20
+  query-group-member          Query group members
+
+                              Description:
+                                Query the member list of a specific group.
+
+                              Options:
+                                --group-id: Group ID (numeric string). Wrap in double quotes.
+
+                              Example:
+                                welink-cli im query-group-member --group-id "1234567891011"
+  query-history-message       Query message history
+
+                              Description:
+                                Query message history for a group or a user.
+
+                              Options:
+                                --group-id:     Group ID (for group chat). Wrap in double quotes.
+                                --user-account: User account (for p2p chat). Format: pinyin initials +
+                                                employee number (e.g., a0012345). Wrap in double quotes.
+                                --query-count:  Number of messages to query (1-100). Default: 20.
+                                --message-id:   Starting message ID. Default: 0.
+                                --query-direction: Query direction (0: newer, 1: older). Default: 0.
+
+                              Note: --group-id and --user-account are mutually exclusive. Specify one.
+
+                              Examples:
+                                welink-cli im query-history-message --user-account "a0012345"
+                                welink-cli im query-history-message --group-id "1234567891011"
+  add-group-member            Add members to the group
+
+                              Description:
+                                Add specified members to the group.
+
+                              Options:
+                                --group-id: Group ID (numeric string). Wrap in double quotes.
+                                --user-account: Group member account(s) to add. Format: pinyin initials +
+                                                employee number (e.g., a0012345). Wrap each account in
+                                                double quotes. Separate multiple accounts with spaces.
+
+                              Example:
+                                welink-cli im add-group-member --group-id "1234567891011" --user-account "a0012345" "b0067890"
+
+
+
+实例
+
 C:\Users\w00899061>welink-cli im query-history-message --group-id "964044813181789425" --query-count 20
 {
   "respData": {

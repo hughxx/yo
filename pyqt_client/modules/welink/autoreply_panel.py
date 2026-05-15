@@ -126,6 +126,7 @@ class AutoReplyPanel(QWidget):
         super().__init__(parent)
         self._monitor  = None
         self._rules    = []
+        self._workers  = []             # 保持 Worker 引用，防止 GC 销毁运行中线程
         self._updating = False          # 防止 itemChanged 误触发
         # 合并后的数据（special + recent）
         self._grp_rows = []             # [{id, name, at_only, special}]
@@ -402,6 +403,7 @@ class AutoReplyPanel(QWidget):
         w.ok.connect(_done)
         w.err.connect(lambda e: self._append_log(f'刷新最近会话失败: {e}'))
         w.start()
+        self._workers.append(w)
 
     def _rebuild_grp_table(self):
         self._updating = True

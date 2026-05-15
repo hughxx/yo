@@ -1,0 +1,16 @@
+{
+  "backendUrl": "https://coreinsight-beta.rnd.huawei.com/collection",
+  "userId": "",
+  "namespace": "",
+  "scanIntervalMinutes": 60,
+  "customJsonConfig": "{}",
+  "scanFolders": [],
+  "welinkStartCmd": "@云见 开始定位",
+  "welinkEndCmd": "@云见 结束定位",
+  "welinkSummaryCmd": "@云见 总结经验",
+  "welinkUserId": "",
+  "welinkPollInterval": 3,
+  "welinkDailyRecord": false,
+  "welinkDailyTime": "01:00",
+  "lastSyncTime": ""
+}
