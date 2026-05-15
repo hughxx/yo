@@ -1,9 +1,16 @@
 """入口"""
+import ctypes
 import sys
 import traceback
 from pathlib import Path
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QMessageBox
 from shell import MainShell, QSS
+
+_MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, 'Global\\FuyaoCollectionApp')
+if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+    _app = QApplication(sys.argv)
+    QMessageBox.warning(None, '已在运行', '程序已经在运行，请勿重复启动。')
+    sys.exit(0)
 
 _LOG = (Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent) / 'error.log'
 
