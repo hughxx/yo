@@ -522,7 +522,7 @@ class WelinkDailyWorker(QThread):
         group_id   = str(rule['group_id'])
         group_name = rule.get('group_name') or group_id
 
-        msgs, err = _get_messages(group_id, 200)
+        msgs, err = _get_messages(group_id, 100)
         if err or not msgs:
             self._log(f'[{group_name}] 获取消息失败: {err}，跳过')
             return
