@@ -201,10 +201,6 @@ class AutoReplyMonitor(QThread):
             return
         self._last_ids[account] = lid
 
-        if lm.get('sender') != account:
-            self._log(f'[私聊][{account}] 跳过（自己发的消息）')
-            return
-
         content = _norm(lm.get('content', '')).strip()
         self._log(f'[私聊][{account}] 新消息: {content[:60]}')
         if not content:
