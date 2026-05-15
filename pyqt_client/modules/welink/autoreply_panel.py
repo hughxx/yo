@@ -426,7 +426,7 @@ class AutoReplyPanel(QWidget):
 
     def _refresh_recent(self):
         def _work():
-            return fetch_recent_conversations(50)
+            return fetch_recent_conversations(8)
 
         def _done(convs):
             grp_seen, usr_seen = set(), set()

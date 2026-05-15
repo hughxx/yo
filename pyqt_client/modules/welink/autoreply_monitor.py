@@ -100,7 +100,7 @@ class AutoReplyMonitor(QThread):
             return {}
 
     def _recent_conversations(self) -> list:
-        data = self._run_cli('query-recent-conversation', '--count', '20')
+        data = self._run_cli('query-recent-conversation', '--count', '8')
         return data.get('conversation_info', [])
 
     def _user_msgs(self, account: str, count: int = 5) -> list:
