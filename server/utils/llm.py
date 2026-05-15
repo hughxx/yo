@@ -24,6 +24,7 @@ async def chat_with_tools(
         "temperature":  temperature,
         "tools":        tools,
         "tool_choice":  "auto",
+        "stream":       False,
     }
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
