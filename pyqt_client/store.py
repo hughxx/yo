@@ -26,6 +26,7 @@ DEFAULT = {
     'welinkUserId':        '',
     'welinkPollInterval':  3,
     'welinkDailyRecord':   False,
+    'welinkDailyTime':     '01:00',
     'lastSyncTime':        '',
 }
 

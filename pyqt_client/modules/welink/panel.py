@@ -3,9 +3,9 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QMessageBox, QPlainTextEdit, QSplitter,
-    QFormLayout, QDialog, QCheckBox,
+    QFormLayout, QDialog, QCheckBox, QTimeEdit,
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QTime
 
 import backend
 import store
@@ -107,13 +107,27 @@ class WelinkPanel(QWidget):
         )
         _usage.setTextFormat(2)  # Qt.RichText
         _usage.setStyleSheet('font-size:10px')
-        self._chk_daily = QCheckBox('按天自动记录（每日凌晨 1 点归档全天记录）')
+        self._chk_daily = QCheckBox('按天自动记录，每日')
+        self._time_edit = QTimeEdit()
+        self._time_edit.setDisplayFormat('HH:mm')
+        self._time_edit.setFixedWidth(64)
+        self._time_edit.setToolTip('触发时间')
+        _daily_lbl = QLabel('归档全天记录')
+        _daily_row = QWidget()
+        _daily_lay = QHBoxLayout(_daily_row)
+        _daily_lay.setContentsMargins(0, 0, 0, 0)
+        _daily_lay.setSpacing(4)
+        _daily_lay.addWidget(self._chk_daily)
+        _daily_lay.addWidget(self._time_edit)
+        _daily_lay.addWidget(_daily_lbl)
+        _daily_lay.addStretch()
         form.addRow('开始命令:', self._start_cmd_edit)
         form.addRow('结束命令:', self._end_cmd_edit)
         form.addRow('总结命令:', self._summary_cmd_edit)
         form.addRow('', _usage)
-        form.addRow('', self._chk_daily)
+        form.addRow('', _daily_row)
         self._chk_daily.stateChanged.connect(self._on_daily_changed)
+        self._time_edit.timeChanged.connect(self._on_daily_time_changed)
         root.addWidget(_cmd_widget)
 
         _sep = QLabel()
@@ -191,6 +205,8 @@ class WelinkPanel(QWidget):
         self._end_cmd_edit.setText(s.get('welinkEndCmd',     '@云见 结束定位'))
         self._summary_cmd_edit.setText(s.get('welinkSummaryCmd', '@云见 总结经验'))
         self._chk_daily.setChecked(bool(s.get('welinkDailyRecord', False)))
+        t = QTime.fromString(s.get('welinkDailyTime', '01:00'), 'HH:mm')
+        self._time_edit.setTime(t if t.isValid() else QTime(1, 0))
         self._schedule_daily_timer()
 
     def _save_config(self):
@@ -199,6 +215,7 @@ class WelinkPanel(QWidget):
         s['welinkEndCmd']      = self._end_cmd_edit.text().strip()
         s['welinkSummaryCmd']  = self._summary_cmd_edit.text().strip()
         s['welinkDailyRecord'] = self._chk_daily.isChecked()
+        s['welinkDailyTime']   = self._time_edit.time().toString('HH:mm')
         store.save_settings(s)
 
     # ── daily record timer ────────────────────────────────────────
@@ -209,17 +226,28 @@ class WelinkPanel(QWidget):
         store.save_settings(s)
         self._schedule_daily_timer()
 
+    def _on_daily_time_changed(self):
+        s = store.load_settings()
+        s['welinkDailyTime'] = self._time_edit.time().toString('HH:mm')
+        store.save_settings(s)
+        self._schedule_daily_timer()
+
     def _schedule_daily_timer(self):
         if not hasattr(self, '_daily_timer'):
             self._daily_timer = QTimer(self)
             self._daily_timer.setSingleShot(True)
             self._daily_timer.timeout.connect(self._on_daily_tick)
-        if not store.load_settings().get('welinkDailyRecord', False):
+        s = store.load_settings()
+        if not s.get('welinkDailyRecord', False):
             self._daily_timer.stop()
             return
         from datetime import datetime, timedelta
+        try:
+            hh, mm = map(int, s.get('welinkDailyTime', '01:00').split(':'))
+        except Exception:
+            hh, mm = 1, 0
         now    = datetime.now()
-        target = now.replace(hour=1, minute=0, second=0, microsecond=0)
+        target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
         if target <= now:
             target += timedelta(days=1)
         ms = int((target - now).total_seconds() * 1000)
