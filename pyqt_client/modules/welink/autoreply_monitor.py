@@ -23,7 +23,7 @@ NON_QUESTION_PATTERNS = [
     "赞", "点赞", "优秀", "6666", "可以的", "行", "okk", "收到啦", "好哒",
 ]
 
-_UNICODE_SPACES = re.compile(r'[ -​　\xa0]')
+_UNICODE_SPACES = re.compile('[ ​　]')
 
 
 def _norm(text: str) -> str:
