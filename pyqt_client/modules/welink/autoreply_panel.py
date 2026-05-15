@@ -171,7 +171,7 @@ class AutoReplyPanel(QWidget):
         g_lay = QVBoxLayout(grp_box)
         g_lay.setContentsMargins(0, 0, 0, 0)
         g_lay.setSpacing(4)
-        lbl_grp = QLabel('特别关注群组（该群组所有消息都将监听）')
+        lbl_grp = QLabel('特别关注群组（该群组所有消息都将监听，否则只监听@实际工号的消息）')
         lbl_grp.setStyleSheet('font-size:11px')
         g_lay.addWidget(lbl_grp)
 
