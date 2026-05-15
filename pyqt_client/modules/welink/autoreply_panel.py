@@ -703,16 +703,10 @@ class AutoReplyPanel(QWidget):
     def _start_monitor(self):
         self._save_config()
         s = store.load_settings()
-        # 合并特别关注 + 最近会话，去重
-        seen_grp = {}
-        for g in self._special_grp_rows + self._recent_grp_rows:
-            seen_grp[g['id']] = g
+        # 仅监听手动添加的特别关注
         groups = [{'id': g['id'], 'name': g['name'], 'at_only': g.get('at_only', True)}
-                  for g in seen_grp.values()]
-        seen_usr = {}
-        for u in self._special_usr_rows + self._recent_usr_rows:
-            seen_usr[u['account']] = u
-        users = list(seen_usr.keys())
+                  for g in self._special_grp_rows]
+        users  = [u['account'] for u in self._special_usr_rows]
 
         self._monitor = AutoReplyMonitor(
             groups        = groups,

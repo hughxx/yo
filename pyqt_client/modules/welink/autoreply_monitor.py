@@ -270,41 +270,17 @@ class AutoReplyMonitor(QThread):
     # ── main loop ─────────────────────────────────────────────────
 
     def _poll_once(self):
-        checked = set()
-
-        # 1. 直接轮询已配置的群组（不管 recent-conversation 有没有它）
         for gid, cfg in self._groups.items():
             if not self._running:
                 return
-            self._handle_group({'group_id': gid, 'group_name': cfg['name'],
-                                 'recent_conversation_type': 'CHAT_TYPE_GROUP_MSG'})
-            checked.add(('g', gid))
+            self._handle_group({'group_id': gid, 'group_name': cfg['name']})
             time.sleep(1.0)
 
-        # 2. 直接轮询已配置的特别关注用户
         for acc in self._users:
             if not self._running:
                 return
-            self._handle_p2p({'target_account': acc,
-                               'recent_conversation_type': 'CHAT_TYPE_P2P_MSG'})
-            checked.add(('u', acc))
+            self._handle_p2p({'target_account': acc})
             time.sleep(1.0)
-
-        # 3. recent-conversation 捕捉新冒出的会话（新好友/新群）
-        for conv in self._recent_conversations():
-            if not self._running:
-                return
-            ctype = conv.get('recent_conversation_type', '')
-            if ctype == 'CHAT_TYPE_P2P_MSG':
-                acc = conv.get('target_account', '')
-                if acc and ('u', acc) not in checked:
-                    self._handle_p2p(conv)
-                    time.sleep(1.0)
-            elif ctype == 'CHAT_TYPE_GROUP_MSG':
-                gid = str(conv.get('group_id', ''))
-                if gid and ('g', gid) not in checked:
-                    self._handle_group(conv)
-                    time.sleep(1.0)
 
     def run(self):
         self._running = True
