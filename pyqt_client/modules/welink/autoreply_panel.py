@@ -714,6 +714,7 @@ class AutoReplyPanel(QWidget):
             rules         = self._rules,
             backend_base  = s.get('backendUrl', 'http://localhost:8023'),
             poll_interval = s.get('welinkPollInterval', 5),
+            self_account  = s.get('welinkUserId', ''),
         )
         self._monitor.log_signal.connect(self._append_log)
         self._monitor.poll_signal.connect(self._on_poll_update)

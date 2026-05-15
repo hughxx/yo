@@ -56,20 +56,22 @@ class AutoReplyMonitor(QThread):
     poll_signal = pyqtSignal(str, str)   # key ('g:{id}' | 'u:{acc}'), 'HH:MM:SS'
 
     def __init__(self, groups: list, users: list, rules: list,
-                 backend_base: str, poll_interval: int = 5, parent=None):
+                 backend_base: str, poll_interval: int = 5,
+                 self_account: str = '', parent=None):
         """
         groups: [{id, name, at_only}]  — 已配置的群（含 at_only 设置）
-        users:  [account_str, ...]     — 已配置的特别关注用户（仅用于初始化；P2P全量处理）
+        users:  [account_str, ...]     — 已配置的特别关注用户
+        self_account: 登录用户自己的工号，用于过滤自己发的消息
         """
         super().__init__(parent)
-        # group_id -> at_only（仅存配置，未配置群默认 at_only=True）
-        self._groups   = {g['id']: {'name': g.get('name', g['id']), 'at_only': g.get('at_only', True)}
-                          for g in groups}
-        self._users    = set(users)   # 保留备用，实际 P2P 全量处理
-        self._rules    = rules
-        self._backend  = backend_base.rstrip('/')
-        self._interval = poll_interval
-        self._running  = False
+        self._groups       = {g['id']: {'name': g.get('name', g['id']), 'at_only': g.get('at_only', True)}
+                              for g in groups}
+        self._users        = set(users)
+        self._rules        = rules
+        self._backend      = backend_base.rstrip('/')
+        self._interval     = poll_interval
+        self._self_account = self_account
+        self._running      = False
         self._last_ids = {}
 
     def stop(self):
@@ -250,9 +252,14 @@ class AutoReplyMonitor(QThread):
             return
         self._last_ids[key] = lid
 
+        sender = lm.get('sender', '')
+        if self._self_account and sender == self._self_account:
+            self._log(f'[群聊][{group_name}] 跳过（自己发的消息）')
+            return
+
         at_list = lm.get('atAccountList', []) or []
         content = _norm(lm.get('content', '')).strip()
-        self._log(f'[群聊][{group_name}] 新消息: sender={lm.get("sender","")} at={at_list} content={content[:60]}')
+        self._log(f'[群聊][{group_name}] 新消息: sender={sender} at={at_list} content={content[:60]}')
 
         if at_only and not at_list:
             self._log(f'[群聊][{group_name}] 跳过（仅@我 但未被@）')
