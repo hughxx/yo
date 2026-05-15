@@ -7,7 +7,6 @@ import uuid
 import requests as req_lib
 
 from server.db.models.welink import WelinkChatlog
-from server.db.models.email import Collection
 from server.db.db import SessionLocal
 from server.utils.html2md import html2md
 from server.utils.llm import chat, chat_with_tools
@@ -99,23 +98,14 @@ def _make_doc_id(chat_id: str) -> str:
     return uuid.uuid5(uuid.NAMESPACE_DNS, chat_id).hex
 
 
-def _get_or_create_collection(db, name: str) -> int:
-    col = db.query(Collection).filter_by(name=name).first()
-    if col is None:
-        col = Collection(name=name, description="")
-        db.add(col)
-        db.flush()
-    return col.id
-
-
-def _push_to_engine(result: dict, user_id: str, scene_id: int, scene: str, doc_id: str) -> None:
+def _push_to_engine(result: dict, user_id: str, doc_id: str) -> None:
     if not EXPERIENCE_ENGINE_URL:
         logger.warning("EXPERIENCE_ENGINE_URL not configured, skipping push")
         return
     body = {
         "doc_id":          doc_id,
-        "scene_id":        scene_id,
-        "scene":           scene,
+        "scene_id":        "421",
+        "scene":           "邮件问题定位经验",
         "user_id":         user_id,
         "title":           result.get("title", ""),
         "summary":         result.get("summary", ""),
@@ -172,14 +162,7 @@ async def process_chatlog(
         markdown = await _enrich_with_ocr(markdown)
         result   = await _call_llm(markdown)
 
-        db = SessionLocal()
-        try:
-            scene_id = _get_or_create_collection(db, group_name)
-            db.commit()
-        finally:
-            db.close()
-
-        _push_to_engine(result, upload_by, scene_id, group_name, doc_id)
+        _push_to_engine(result, upload_by, doc_id)
         _update_status(chat_id, "done")
         logger.info("process_chatlog done: group=%r chat_id=%r", group_name, chat_id)
     except Exception:
@@ -386,17 +369,10 @@ async def _process_daily_chatlog(
                 len(experiences), group_id, date_str)
 
     if experiences:
-        db = SessionLocal()
-        try:
-            scene_id = _get_or_create_collection(db, group_name)
-            db.commit()
-        finally:
-            db.close()
-
         for i, exp in enumerate(experiences):
             doc_id = _make_doc_id(f'{chat_id}_{i}')
             try:
-                _push_to_engine(exp, upload_by, scene_id, group_name, doc_id)
+                _push_to_engine(exp, upload_by, doc_id)
                 logger.info("daily exp[%d] pushed: doc_id=%s title=%r",
                             i, doc_id, exp.get("title"))
             except Exception:
