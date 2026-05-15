@@ -18,8 +18,28 @@ logger = logging.getLogger(__name__)
 
 _IMAGE_RE = re.compile(r'(!\[[^\]]*\]\((https?://[^)\s]+)\))')
 
+_CHUNK = 300   # 每次 read_content 最多返回的行数
+
 _SYSTEM_PROMPT = """\
-你是一个专业的技术知识整理专家。请将下面的邮件线程整理成一条结构化经验文档，存入知识库供后续检索和学习。
+你是一个专业的技术知识整理专家。请将邮件线程整理成一条结构化经验文档，存入知识库供后续检索和学习。
+
+## 阅读方式
+
+邮件内容可能较长，已分行编号供你按需读取。
+你可以多次调用 read_content 工具获取指定行范围的内容，读完后直接输出最终 JSON。
+
+## 输出要求
+
+严格输出以下 JSON，不要有任何额外说明：
+
+```json
+{
+  "title": "简洁的经验标题（不超过50字）",
+  "summary": "问题背景与最终结论的简短总结（不超过200字）",
+  "experience": "详细经验正文（Markdown格式，见下方说明）",
+  "rag_search_text": "用于检索的关键词与关键短语，空格分隔，覆盖问题特征、技术术语、接口名称、模块名等"
+}
+```
 
 ## experience 字段写作规则
 
@@ -39,44 +59,20 @@ _SYSTEM_PROMPT = """\
 
 邮件中的图片已附加 OCR 识别文字（标注在图片下方），供你理解图片内容，
 但在 experience 中请使用 `![](url)` 原始格式，而非 OCR 文字块。
-
-仔细阅读邮件内容后，调用 create_experience 工具保存整理好的经验。
 """
 
-_CREATE_EXPERIENCE_TOOL = {
+_READ_CONTENT_TOOL = {
     "type": "function",
     "function": {
-        "name": "create_experience",
-        "description": "保存一条从邮件线程整理出的技术问题定位经验",
+        "name": "read_content",
+        "description": "读取邮件内容的指定行范围（行号从 1 开始，含两端）",
         "parameters": {
             "type": "object",
             "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "简洁的经验标题，不超过 50 字",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "问题背景与最终结论的简短总结，不超过 200 字",
-                },
-                "experience": {
-                    "type": "string",
-                    "description": (
-                        "详细经验正文（Markdown 格式）。"
-                        "包含章节：## 问题背景、## 问题现象、## 分析过程、## 根因、"
-                        "## 解决方案、## 讨论摘要。"
-                        "保留图片 ![](url)、代码块、接口路径、错误日志等技术细节。"
-                        "讨论摘要按时间顺序列出关键回复，每条格式为一行：真实姓名（YYYY-MM-DD HH:MM）：内容。"
-                        "必须使用邮件中的真实发件人姓名，不得写'发件人'等占位词。"
-                        "示例：张三（2026-04-29 16:46）：问题复现了，日志如下…"
-                    ),
-                },
-                "rag_search_text": {
-                    "type": "string",
-                    "description": "检索用关键词，空格分隔，覆盖技术术语、接口名、模块名等",
-                },
+                "start_line": {"type": "integer", "description": "起始行号（≥1）"},
+                "end_line":   {"type": "integer", "description": "结束行号（含）"},
             },
-            "required": ["title", "summary", "experience", "rag_search_text"],
+            "required": ["start_line", "end_line"],
         },
     },
 }
@@ -108,24 +104,34 @@ async def _enrich_with_ocr(markdown: str) -> str:
     return enriched
 
 
-async def _run_agent(markdown: str) -> dict | None:
-    logger.info("LLM agent: sending %d chars", len(markdown))
-    tools    = [_CREATE_EXPERIENCE_TOOL]
+async def _call_llm(markdown: str) -> dict:
+    lines = markdown.splitlines()
+    total = len(lines)
+    logger.info("LLM: total %d lines", total)
+
+    initial_chunk = "\n".join(lines[:_CHUNK])
+    intro = (
+        f"邮件内容共 {total} 行。以下是第 1-{min(_CHUNK, total)} 行，"
+        f"如需读取后续内容请调用 read_content 工具，读完后直接输出 JSON。\n\n"
+        f"{initial_chunk}"
+    )
+
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user",   "content": markdown},
+        {"role": "user",   "content": intro},
     ]
-    result = None
+    tools   = [_READ_CONTENT_TOOL]
+    content = ""
 
-    for _turn in range(5):
+    for _turn in range(20):
         assistant_msg = await chat_with_tools(messages, tools)
         tool_calls    = assistant_msg.get("tool_calls") or []
 
         if not tool_calls:
+            content = assistant_msg.get("content", "")
             break
 
         messages.append(assistant_msg)
-
         for tc in tool_calls:
             fn   = tc.get("function", {})
             name = fn.get("name", "")
@@ -135,20 +141,26 @@ async def _run_agent(markdown: str) -> dict | None:
             except Exception:
                 args = {}
 
-            if name == "create_experience":
-                if result is None:
-                    result = args
-                    logger.info("LLM agent: got title=%r", args.get("title"))
-                tool_result = "已保存"
+            if name == "read_content":
+                s   = max(0, args.get("start_line", 1) - 1)
+                e   = min(total, args.get("end_line", s + _CHUNK))
+                result = "\n".join(lines[s:e])
+                logger.info("read_content: lines %d-%d", s + 1, e)
             else:
-                tool_result = "unknown tool"
+                result = "unknown tool"
 
             messages.append({
                 "role":         "tool",
                 "tool_call_id": tid,
-                "content":      tool_result,
+                "content":      result,
             })
 
+    raw = content.strip()
+    fence = re.search(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", raw)
+    if fence:
+        raw = fence.group(1)
+    result = json.loads(raw)
+    logger.info("LLM: got title=%r", result.get("title"))
     return result
 
 
@@ -202,12 +214,7 @@ async def process_email(
         logger.info("html2md: %d chars", len(markdown))
         markdown = await asyncio.to_thread(replace_um_images, markdown)
         markdown = await _enrich_with_ocr(markdown)
-        result   = await _run_agent(markdown)
-        if result is None:
-            logger.warning("process_email: agent returned no experience, subject=%r", subject)
-            _update_ns_status(conversation_topic, namespace_id, "failed")
-            return
-
+        result   = await _call_llm(markdown)
         push_experience(result, user_id, doc_id)
         _update_ns_status(conversation_topic, namespace_id, "done")
         logger.info("process_email done: subject=%r", subject)
