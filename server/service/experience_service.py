@@ -102,8 +102,8 @@ def _push_to_engine(result: dict, user_id: str, namespace_id: int, namespace_nam
         return
     body = {
         "doc_id":          doc_id,
-        "scene_id":        namespace_id,
-        "scene":           namespace_name,
+        "scene_id":        "421",
+        "scene":           "邮件问题定位经验",
         "user_id":         user_id,
         "title":           result.get("title", ""),
         "summary":         result.get("summary", ""),
