@@ -2,23 +2,16 @@ import logging
 
 import requests
 
-from server.utils.settings import (
-    EXPERIENCE_ENGINE_URL,
-    EXPERIENCE_SCENE_ID,
-    EXPERIENCE_SCENE_NAME,
-)
+from server.utils.settings import EXPERIENCE_ENGINE_URL
 
 logger = logging.getLogger(__name__)
 
 
 def push_experience(result: dict, user_id: str, doc_id: str) -> None:
-    if not EXPERIENCE_ENGINE_URL:
-        logger.warning("EXPERIENCE_ENGINE_URL not configured, skipping push")
-        return
     body = {
         "doc_id":          doc_id,
-        "scene_id":        EXPERIENCE_SCENE_ID,
-        "scene":           EXPERIENCE_SCENE_NAME,
+        "scene_id":        "251",
+        "scene":           "邮件问题定位经验",
         "user_id":         user_id,
         "title":           result.get("title", ""),
         "summary":         result.get("summary", ""),
