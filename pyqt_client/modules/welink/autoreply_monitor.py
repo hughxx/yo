@@ -1,4 +1,4 @@
-"""自动回复监听线程：已配群全量、未配群仅@、私聊全量，关键词规则驱动。"""
+"""自动回复监听线程：特别关注群全量监听，关键词规则驱动。"""
 import json
 import re
 import subprocess
@@ -37,25 +37,12 @@ def _is_trivial(content: str) -> bool:
     return False
 
 
-def _run_cli(*args) -> dict:
-    cmd = ['welink-cli', 'im'] + list(args)
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True,
-                                timeout=15, encoding='utf-8', errors='ignore',
-                                startupinfo=_STARTUPINFO)
-        return json.loads(result.stdout or '{}')
-    except Exception:
-        return {}
-
-
 class AutoReplyMonitor(QThread):
     log_signal = pyqtSignal(str)
 
-    def __init__(self, bot_id: str, groups: list, rules: list,
+    def __init__(self, groups: list, rules: list,
                  backend_base: str, poll_interval: int = 5, parent=None):
         super().__init__(parent)
-        self._bot_id   = bot_id.strip()
-        # 已配置全量监听的 group_id 集合
         self._cfg_groups = {str(g['id']) for g in groups}
         self._rules    = rules
         self._backend  = backend_base.rstrip('/')
@@ -71,25 +58,44 @@ class AutoReplyMonitor(QThread):
 
     # ── welink-cli ────────────────────────────────────────────────
 
+    def _run_cli(self, *args) -> dict:
+        cmd = ['welink-cli', 'im'] + list(args)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    timeout=15, encoding='utf-8', errors='ignore',
+                                    startupinfo=_STARTUPINFO)
+            if result.stderr and result.stderr.strip():
+                self._log(f'[CLI stderr] {result.stderr.strip()[:200]}')
+            if not result.stdout or not result.stdout.strip():
+                self._log(f'[CLI] 无输出: {" ".join(cmd[2:])}')
+                return {}
+            return json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            self._log(f'[CLI] JSON解析失败: {e} stdout={result.stdout[:100]}')
+            return {}
+        except Exception as e:
+            self._log(f'[CLI] 执行失败: {e}')
+            return {}
+
     def _recent_conversations(self) -> list:
-        data = _run_cli('query-recent-conversation', '--count', '20')
+        data = self._run_cli('query-recent-conversation', '--count', '20')
         return data.get('conversation_info', [])
 
     def _user_msgs(self, account: str, count: int = 10) -> list:
-        data = _run_cli('query-history-message',
-                        '--user-account', account, '--query-count', str(count))
+        data = self._run_cli('query-history-message',
+                             '--user-account', account, '--query-count', str(count))
         return (data.get('respData') or {}).get('chatInfo', [])
 
     def _group_msgs(self, group_id: str, count: int = 10) -> list:
-        data = _run_cli('query-history-message',
-                        '--group-id', group_id, '--query-count', str(count))
+        data = self._run_cli('query-history-message',
+                             '--group-id', group_id, '--query-count', str(count))
         return (data.get('respData') or {}).get('chatInfo', [])
 
     def _send_user(self, account: str, text: str):
-        _run_cli('send-to-user', '--receiver', account, '--text', text)
+        self._run_cli('send-to-user', '--receiver', account, '--text', text)
 
     def _send_group(self, group_id: str, text: str):
-        _run_cli('send-to-group', '--group-id', group_id, '--text', text)
+        self._run_cli('send-to-group', '--group-id', group_id, '--text', text)
 
     # ── rule matching ─────────────────────────────────────────────
 
@@ -164,11 +170,6 @@ class AutoReplyMonitor(QThread):
         if lid == self._last_ids[account]:
             return
 
-        sender = lm.get('sender', '')
-        if sender != account:          # 跳过自己发的消息
-            self._last_ids[account] = lid
-            return
-
         self._last_ids[account] = lid
 
         content = _norm(lm.get('content', ''))
@@ -179,13 +180,14 @@ class AutoReplyMonitor(QThread):
         if not rule:
             return
 
-        self._log(f'[私聊][{account}] 命中「{rule["keywords"][0]}」 {content[:40]}')
+        sender = lm.get('sender', account)
+        self._log(f'[私聊][{sender}] 命中「{rule["keywords"][0]}」 {content[:40]}')
         self._process(rule, account, content, msgs, is_group=False)
 
     def _handle_group(self, conv: dict):
         group_id   = str(conv.get('group_id', ''))
         group_name = conv.get('group_name', group_id)
-        if not group_id:
+        if not group_id or group_id not in self._cfg_groups:
             return
 
         msgs = self._group_msgs(group_id, 5)
@@ -202,19 +204,6 @@ class AutoReplyMonitor(QThread):
         if lid == self._last_ids[key]:
             return
 
-        sender = lm.get('sender', '')
-        if sender == self._bot_id:     # 跳过自己发的消息
-            self._last_ids[key] = lid
-            return
-
-        is_configured = group_id in self._cfg_groups
-        at_me = self._bot_id in lm.get('atAccountList', [])
-
-        # 未配置的群：只响应 @ 我
-        if not is_configured and not at_me:
-            self._last_ids[key] = lid
-            return
-
         self._last_ids[key] = lid
 
         content = _norm(lm.get('content', ''))
@@ -222,13 +211,10 @@ class AutoReplyMonitor(QThread):
             return
 
         rule = self._match_rule(content)
-
-        # 已配置群且没命中关键词但被 @ 了：兜底提示
         if rule is None:
-            if at_me:
-                self._log(f'[群聊][{group_name}] @ 我但无匹配规则，跳过')
             return
 
+        sender = lm.get('sender', group_id)
         self._log(f'[群聊][{group_name}] 命中「{rule["keywords"][0]}」 {content[:40]}')
         self._process(rule, sender, content, msgs, is_group=True, group_id=group_id)
 

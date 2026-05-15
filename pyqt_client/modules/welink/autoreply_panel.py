@@ -158,15 +158,6 @@ class AutoReplyPanel(QWidget):
         hdr.addWidget(self._btn_toggle)
         root.addLayout(hdr)
 
-        # ── 机器人工号 ──
-        form = QFormLayout()
-        form.setSpacing(4)
-        form.setContentsMargins(0, 0, 0, 0)
-        self._bot_id_edit = QLineEdit()
-        self._bot_id_edit.setPlaceholderText('机器人自身工号（群聊 @ 检测 & 过滤自发消息）')
-        form.addRow('机器人工号:', self._bot_id_edit)
-        root.addLayout(form)
-
         _sep = QLabel()
         _sep.setFixedHeight(1)
         _sep.setStyleSheet('background:#ddd;margin:2px 0')
@@ -175,12 +166,12 @@ class AutoReplyPanel(QWidget):
         # ── 上下分区 ──
         splitter = QSplitter(Qt.Vertical)
 
-        # ── 配置群组（全量监听）──
+        # ── 特别关注群组 ──
         grp_box = QWidget()
         g_lay = QVBoxLayout(grp_box)
         g_lay.setContentsMargins(0, 0, 0, 0)
         g_lay.setSpacing(4)
-        lbl_grp = QLabel('全量监听群组（未在此列表的群仅响应 @ 我）')
+        lbl_grp = QLabel('特别关注群组（该群组所有消息都将监听）')
         lbl_grp.setStyleSheet('font-size:11px')
         g_lay.addWidget(lbl_grp)
 
@@ -278,7 +269,6 @@ class AutoReplyPanel(QWidget):
 
     def _load_config(self):
         cfg = _load_cfg()
-        self._bot_id_edit.setText(cfg.get('botId', ''))
 
         self._grp_table.setRowCount(0)
         for g in cfg.get('groups', []):
@@ -295,7 +285,6 @@ class AutoReplyPanel(QWidget):
                 'name': self._grp_table.item(row, 1).text(),
             })
         return {
-            'botId':  self._bot_id_edit.text().strip(),
             'groups': groups,
             'rules':  self._rules,
         }
@@ -384,7 +373,6 @@ class AutoReplyPanel(QWidget):
         s   = store.load_settings()
 
         self._monitor = AutoReplyMonitor(
-            bot_id        = cfg.get('botId', ''),
             groups        = cfg.get('groups', []),
             rules         = cfg.get('rules', []),
             backend_base  = s.get('backendUrl', 'http://localhost:8023'),
@@ -402,7 +390,6 @@ class AutoReplyPanel(QWidget):
         self._set_running(False)
 
     def _set_running(self, running: bool):
-        self._bot_id_edit.setEnabled(not running)
         if running:
             self._dot.setStyleSheet('color:#008C64;font-size:14px')
             self._status_lbl.setText('监听中')
