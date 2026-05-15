@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from server.db.models import Base, _now
@@ -12,13 +12,6 @@ class Collection(Base):
     name        = Column(String(200), nullable=False, unique=True, index=True)
     description = Column(String(500), default="")
     created_at  = Column(DateTime, default=_now)
-
-    email_namespaces = relationship(
-        "EmailNamespace",
-        backref="collection",
-        lazy="dynamic",
-        cascade="all, delete-orphan",
-    )
 
 
 class Email(Base):
@@ -34,21 +27,14 @@ class Email(Base):
     created_at         = Column(DateTime, default=_now)
     updated_at         = Column(DateTime, default=_now, onupdate=_now)
 
-    namespaces = relationship(
-        "EmailNamespace",
-        backref="email",
-        lazy="dynamic",
-        cascade="all, delete-orphan",
-    )
-
 
 class EmailNamespace(Base):
     __tablename__  = "t_collection_email_namespaces"
     __table_args__ = (UniqueConstraint("email_id", "namespace_id", name="uq_email_namespace"),)
 
     id           = Column(Integer, primary_key=True, autoincrement=True)
-    email_id     = Column(Integer, ForeignKey("t_collection_emails.id"), nullable=False, index=True)
-    namespace_id = Column(Integer, ForeignKey("t_collection_namespaces.id"), nullable=False, index=True)
+    email_id     = Column(Integer, nullable=False, index=True)
+    namespace_id = Column(Integer, nullable=False, index=True)
     status       = Column(String(20), default="pending")   # pending / done / failed
 
 
@@ -56,7 +42,7 @@ class EmailRule(Base):
     __tablename__ = "t_collection_email_rules"
 
     id            = Column(Integer, primary_key=True, autoincrement=True)
-    namespace_id  = Column(Integer, ForeignKey("t_collection_namespaces.id"), nullable=False, index=True)
+    namespace_id  = Column(Integer, nullable=False, index=True)
     name          = Column(String(200), nullable=False)
     keywords      = Column(Text, default="[]")   # JSON 数组
     body_keywords = Column(Text, default="[]")   # JSON 数组
