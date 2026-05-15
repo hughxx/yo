@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -11,6 +12,7 @@ from server.utils.html2md import html2md
 from server.utils.llm import chat
 from server.utils.img import ocr
 from server.utils.engine import push_experience
+from server.utils.um_content import replace_um_images
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +81,13 @@ async def _enrich_with_ocr(markdown: str) -> str:
     return enriched
 
 
+_MAX_CHARS = 40000
+
+
 async def _call_llm(markdown: str) -> dict:
+    if len(markdown) > _MAX_CHARS:
+        logger.warning("LLM: truncating markdown %d → %d chars", len(markdown), _MAX_CHARS)
+        markdown = markdown[:_MAX_CHARS]
     logger.info("LLM: sending %d chars", len(markdown))
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
@@ -144,6 +152,7 @@ async def process_email(
             return
 
         logger.info("html2md: %d chars", len(markdown))
+        markdown = await asyncio.to_thread(replace_um_images, markdown)
         markdown = await _enrich_with_ocr(markdown)
         result   = await _call_llm(markdown)
         push_experience(result, user_id, doc_id)
