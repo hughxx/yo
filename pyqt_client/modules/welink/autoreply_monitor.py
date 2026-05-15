@@ -193,10 +193,13 @@ class AutoReplyMonitor(QThread):
             return
         self._last_ids[account] = lid
 
-        content = _norm(lm.get('content', ''))
+        content = _norm(lm.get('content', '')).strip()
         self._log(f'[私聊][{account}] 新消息: {content[:60]}')
-        if not content or _is_trivial(content):
-            self._log(f'[私聊][{account}] 跳过（空/无效内容）')
+        if not content:
+            self._log(f'[私聊][{account}] 内容为空，消息字段: {list(lm.keys())} raw={repr(lm.get("content",""))[:80]}')
+            return
+        if _is_trivial(content):
+            self._log(f'[私聊][{account}] 跳过（无效内容）')
             return
 
         rule = self._match_rule(content)
@@ -236,7 +239,7 @@ class AutoReplyMonitor(QThread):
         self._last_ids[key] = lid
 
         at_list = lm.get('atAccountList', []) or []
-        content = _norm(lm.get('content', ''))
+        content = _norm(lm.get('content', '')).strip()
         self._log(f'[群聊][{group_name}] 新消息: sender={lm.get("sender","")} at={at_list} content={content[:60]}')
 
         if at_only and not at_list:
@@ -244,6 +247,7 @@ class AutoReplyMonitor(QThread):
             return
 
         if not content:
+            self._log(f'[群聊][{group_name}] 内容为空，消息字段: {list(lm.keys())} raw={repr(lm.get("content",""))[:80]}')
             return
 
         rule = self._match_rule(content)
@@ -267,7 +271,7 @@ class AutoReplyMonitor(QThread):
             self._handle_group({'group_id': gid, 'group_name': cfg['name'],
                                  'recent_conversation_type': 'CHAT_TYPE_GROUP_MSG'})
             checked.add(('g', gid))
-            time.sleep(0.3)
+            time.sleep(1.0)
 
         # 2. 直接轮询已配置的特别关注用户
         for acc in self._users:
@@ -276,7 +280,7 @@ class AutoReplyMonitor(QThread):
             self._handle_p2p({'target_account': acc,
                                'recent_conversation_type': 'CHAT_TYPE_P2P_MSG'})
             checked.add(('u', acc))
-            time.sleep(0.3)
+            time.sleep(1.0)
 
         # 3. recent-conversation 捕捉新冒出的会话（新好友/新群）
         for conv in self._recent_conversations():
@@ -287,12 +291,12 @@ class AutoReplyMonitor(QThread):
                 acc = conv.get('target_account', '')
                 if acc and ('u', acc) not in checked:
                     self._handle_p2p(conv)
-                    time.sleep(0.3)
+                    time.sleep(1.0)
             elif ctype == 'CHAT_TYPE_GROUP_MSG':
                 gid = str(conv.get('group_id', ''))
                 if gid and ('g', gid) not in checked:
                     self._handle_group(conv)
-                    time.sleep(0.3)
+                    time.sleep(1.0)
 
     def run(self):
         self._running = True
