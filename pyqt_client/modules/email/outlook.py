@@ -174,7 +174,7 @@ def mail_get(entry_id: str, img_api: str = '') -> dict:
     ns = _ns()
     m = ns.GetItemFromID(entry_id)
     html = m.HTMLBody or ''
-    html = re.sub(r'charset\s*=\s*["\']?[\w-]+["\']?', 'charset=utf-8', html, flags=re.IGNORECASE)
+    html = html.replace('<head>', '<head><meta charset="utf-8">', 1)
 
     if img_api:
         try:
