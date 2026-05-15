@@ -80,24 +80,32 @@ class AutoReplyMonitor(QThread):
 
     # ── welink-cli ────────────────────────────────────────────────
 
-    def _run_cli(self, *args) -> dict:
+    def _run_cli(self, *args, _retries: int = 3) -> dict:
         cmd = ['welink-cli', 'im'] + list(args)
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True,
-                                    timeout=15, encoding='utf-8', errors='ignore',
-                                    startupinfo=_STARTUPINFO)
-            if result.stderr and result.stderr.strip():
-                self._log(f'[CLI stderr] {result.stderr.strip()[:200]}')
-            if not result.stdout or not result.stdout.strip():
-                self._log(f'[CLI] 无输出: {" ".join(cmd[2:])}')
+        for attempt in range(_retries):
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True,
+                                        timeout=15, encoding='utf-8', errors='ignore',
+                                        startupinfo=_STARTUPINFO)
+                stderr = (result.stderr or '').strip()
+                if stderr:
+                    self._log(f'[CLI stderr] {stderr[:200]}')
+                    if '429' in stderr:
+                        wait = 2 ** attempt + 1   # 2s, 3s, 5s
+                        self._log(f'[CLI] 429 限速，{wait}s 后重试（{attempt+1}/{_retries}）')
+                        time.sleep(wait)
+                        continue
+                if not result.stdout or not result.stdout.strip():
+                    self._log(f'[CLI] 无输出: {" ".join(cmd[2:])}')
+                    return {}
+                return json.loads(result.stdout)
+            except json.JSONDecodeError as e:
+                self._log(f'[CLI] JSON解析失败: {e}')
                 return {}
-            return json.loads(result.stdout)
-        except json.JSONDecodeError as e:
-            self._log(f'[CLI] JSON解析失败: {e}')
-            return {}
-        except Exception as e:
-            self._log(f'[CLI] 执行失败: {e}')
-            return {}
+            except Exception as e:
+                self._log(f'[CLI] 执行失败: {e}')
+                return {}
+        return {}
 
     def _recent_conversations(self) -> list:
         data = self._run_cli('query-recent-conversation', '--count', '8')
