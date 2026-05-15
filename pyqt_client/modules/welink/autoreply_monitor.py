@@ -253,23 +253,52 @@ class AutoReplyMonitor(QThread):
 
     # ── main loop ─────────────────────────────────────────────────
 
+    def _poll_once(self):
+        checked = set()
+
+        # 1. 直接轮询已配置的群组（不管 recent-conversation 有没有它）
+        for gid, cfg in self._groups.items():
+            if not self._running:
+                return
+            self._handle_group({'group_id': gid, 'group_name': cfg['name'],
+                                 'recent_conversation_type': 'CHAT_TYPE_GROUP_MSG'})
+            checked.add(('g', gid))
+            time.sleep(0.3)
+
+        # 2. 直接轮询已配置的特别关注用户
+        for acc in self._users:
+            if not self._running:
+                return
+            self._handle_p2p({'target_account': acc,
+                               'recent_conversation_type': 'CHAT_TYPE_P2P_MSG'})
+            checked.add(('u', acc))
+            time.sleep(0.3)
+
+        # 3. recent-conversation 捕捉新冒出的会话（新好友/新群）
+        for conv in self._recent_conversations():
+            if not self._running:
+                return
+            ctype = conv.get('recent_conversation_type', '')
+            if ctype == 'CHAT_TYPE_P2P_MSG':
+                acc = conv.get('target_account', '')
+                if acc and ('u', acc) not in checked:
+                    self._handle_p2p(conv)
+                    time.sleep(0.3)
+            elif ctype == 'CHAT_TYPE_GROUP_MSG':
+                gid = str(conv.get('group_id', ''))
+                if gid and ('g', gid) not in checked:
+                    self._handle_group(conv)
+                    time.sleep(0.3)
+
     def run(self):
         self._running = True
-        self._log(f'监听启动：{len(self._groups)} 个群组，{len(self._users)} 个用户')
+        self._log(f'监听启动：{len(self._groups)} 个群组，{len(self._users)} 个特别关注用户')
 
         while self._running:
             try:
-                for conv in self._recent_conversations():
-                    if not self._running:
-                        break
-                    ctype = conv.get('recent_conversation_type', '')
-                    if ctype == 'CHAT_TYPE_P2P_MSG':
-                        self._handle_p2p(conv)
-                    elif ctype == 'CHAT_TYPE_GROUP_MSG':
-                        self._handle_group(conv)
+                self._poll_once()
             except Exception as e:
                 self._log(f'轮询出错: {e}')
-
             time.sleep(self._interval)
 
         self._log('自动回复监听已停止')
