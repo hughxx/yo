@@ -56,23 +56,27 @@ class AutoReplyMonitor(QThread):
     poll_signal = pyqtSignal(str, str)   # key ('g:{id}' | 'u:{acc}'), 'HH:MM:SS'
 
     def __init__(self, groups: list, users: list, rules: list,
-                 backend_base: str, poll_interval: int = 5,
+                 pinned_count: int = 0,
+                 backend_base: str = '', poll_interval: int = 5,
                  self_account: str = '', parent=None):
         """
-        groups: [{id, name, at_only}]  — 已配置的群（含 at_only 设置）
-        users:  [account_str, ...]     — 已配置的特别关注用户
-        self_account: 登录用户自己的工号，用于过滤自己发的消息
+        groups:       [{id, name, at_only}]  — 手动配置的群
+        users:        [account_str, ...]     — 手动配置的用户
+        pinned_count: 查询最近会话时跳过前 N 个置顶会话
         """
         super().__init__(parent)
-        self._groups       = {g['id']: {'name': g.get('name', g['id']), 'at_only': g.get('at_only', True)}
-                              for g in groups}
-        self._users        = set(users)
-        self._rules        = rules
-        self._backend      = backend_base.rstrip('/')
-        self._interval     = poll_interval
-        self._self_account = self_account
-        self._running      = False
-        self._last_ids = {}
+        self._groups        = {g['id']: {'name': g.get('name', g['id']), 'at_only': g.get('at_only', True)}
+                               for g in groups}
+        self._users         = set(users)
+        self._rules         = rules
+        self._pinned_count  = pinned_count
+        self._backend       = backend_base.rstrip('/')
+        self._interval      = poll_interval
+        self._self_account  = self_account
+        self._running       = False
+        self._last_ids      = {}
+        self._dynamic_groups = {}   # gid -> {name, at_only}  从最近会话动态发现
+        self._dynamic_users  = set()
 
     def stop(self):
         self._running = False
@@ -280,14 +284,48 @@ class AutoReplyMonitor(QThread):
 
     # ── main loop ─────────────────────────────────────────────────
 
+    def _refresh_dynamic(self):
+        """从最近会话中动态发现需要监听的群/用户（跳过置顶部分）。"""
+        count = self._pinned_count + 10
+        data  = self._run_cli('query-recent-conversation', '--count', str(count))
+        convs = data.get('conversation_info', [])
+
+        new_grps = {}
+        new_usrs = set()
+        skipped  = 0
+        for conv in convs:
+            ctype = conv.get('recent_conversation_type', '')
+            if ctype not in ('CHAT_TYPE_GROUP_MSG', 'CHAT_TYPE_P2P_MSG'):
+                continue
+            if skipped < self._pinned_count:
+                skipped += 1
+                continue
+            if ctype == 'CHAT_TYPE_GROUP_MSG':
+                gid = str(conv.get('group_id', ''))
+                if gid and gid not in self._groups:
+                    new_grps[gid] = {'name': conv.get('group_name', gid), 'at_only': True}
+            else:
+                acc = conv.get('target_account', '')
+                if acc and acc not in self._users:
+                    new_usrs.add(acc)
+
+        added_g = set(new_grps) - set(self._dynamic_groups)
+        added_u = new_usrs - self._dynamic_users
+        self._dynamic_groups = new_grps
+        self._dynamic_users  = new_usrs
+        if added_g or added_u:
+            self._log(f'[最近会话] 新增 {len(added_g)} 群 / {len(added_u)} 用户')
+
     def _poll_once(self):
-        for gid, cfg in self._groups.items():
+        all_groups = {**self._groups, **self._dynamic_groups}
+        for gid, cfg in all_groups.items():
             if not self._running:
                 return
             self._handle_group({'group_id': gid, 'group_name': cfg['name']})
             time.sleep(1.0)
 
-        for acc in self._users:
+        all_users = self._users | self._dynamic_users
+        for acc in all_users:
             if not self._running:
                 return
             self._handle_p2p({'target_account': acc})
@@ -295,10 +333,16 @@ class AutoReplyMonitor(QThread):
 
     def run(self):
         self._running = True
-        self._log(f'监听启动：{len(self._groups)} 个群组，{len(self._users)} 个特别关注用户')
+        self._log(f'监听启动：{len(self._groups)} 个配置群组，{len(self._users)} 个配置用户')
+
+        refresh_every = max(1, 60 // max(1, self._interval))  # 约每 60s 刷新一次最近会话
+        cycle = 0
 
         while self._running:
             try:
+                if cycle % refresh_every == 0:
+                    self._refresh_dynamic()
+                cycle += 1
                 self._poll_once()
             except Exception as e:
                 self._log(f'轮询出错: {e}')
