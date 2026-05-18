@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QPlainTextEdit, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView, QDialog, QRadioButton,
-    QButtonGroup, QMessageBox, QSplitter, QTabWidget,
+    QButtonGroup, QMessageBox, QSplitter, QTabWidget, QSpinBox,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
@@ -118,17 +118,40 @@ class _RuleDialog(QDialog):
             return {'keywords': kws, 'action': 'fixed', 'reply':  content}
 
 
-# ── 主面板 ────────────────────────────────────────────────────────
+# ── 表格列定义 ────────────────────────────────────────────────────
 
-_GRP_COLS = ['名称', 'ID', '仅@我', '上次监听']
-_USR_COLS = ['工号', '名称', '上次监听']
+_SPECIAL_GRP_COLS = ['名称', 'ID', '仅@我', '置顶', '上次监听']
+_RECENT_GRP_COLS  = ['名称', 'ID', '仅@我', '上次监听']
+_SPECIAL_USR_COLS = ['工号', '名称', '置顶', '上次监听']
+_RECENT_USR_COLS  = ['工号', '名称', '上次监听']
+
 _COLOR_SPECIAL = QColor('#008C64')
 _COLOR_TS      = QColor('#aaa')
 
 
-def _make_grp_table() -> QTableWidget:
+def _make_special_grp_table() -> QTableWidget:
+    t = QTableWidget(0, 5)
+    t.setHorizontalHeaderLabels(_SPECIAL_GRP_COLS)
+    t.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+    t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+    t.setColumnWidth(1, 140)
+    t.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+    t.setColumnWidth(2, 50)
+    t.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+    t.setColumnWidth(3, 44)
+    t.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+    t.setColumnWidth(4, 72)
+    t.setSelectionBehavior(QAbstractItemView.SelectRows)
+    t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+    t.verticalHeader().setVisible(False)
+    t.verticalHeader().setDefaultSectionSize(22)
+    t.setAlternatingRowColors(True)
+    return t
+
+
+def _make_recent_grp_table() -> QTableWidget:
     t = QTableWidget(0, 4)
-    t.setHorizontalHeaderLabels(_GRP_COLS)
+    t.setHorizontalHeaderLabels(_RECENT_GRP_COLS)
     t.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
     t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
     t.setColumnWidth(1, 140)
@@ -144,9 +167,27 @@ def _make_grp_table() -> QTableWidget:
     return t
 
 
-def _make_usr_table() -> QTableWidget:
+def _make_special_usr_table() -> QTableWidget:
+    t = QTableWidget(0, 4)
+    t.setHorizontalHeaderLabels(_SPECIAL_USR_COLS)
+    t.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+    t.setColumnWidth(0, 120)
+    t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+    t.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+    t.setColumnWidth(2, 44)
+    t.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+    t.setColumnWidth(3, 72)
+    t.setSelectionBehavior(QAbstractItemView.SelectRows)
+    t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+    t.verticalHeader().setVisible(False)
+    t.verticalHeader().setDefaultSectionSize(22)
+    t.setAlternatingRowColors(True)
+    return t
+
+
+def _make_recent_usr_table() -> QTableWidget:
     t = QTableWidget(0, 3)
-    t.setHorizontalHeaderLabels(_USR_COLS)
+    t.setHorizontalHeaderLabels(_RECENT_USR_COLS)
     t.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
     t.setColumnWidth(0, 120)
     t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
@@ -167,11 +208,28 @@ class AutoReplyPanel(QWidget):
         self._rules    = []
         self._workers  = []
         self._updating = False
-        self._special_grp_rows = []   # [{id, name, at_only}]
+
+        self._special_grp_rows = []   # [{id, name, at_only, pinned}]
         self._recent_grp_rows  = []   # [{id, name, at_only}]
-        self._special_usr_rows = []   # [{account, name}]
+        self._special_usr_rows = []   # [{account, name, pinned}]
         self._recent_usr_rows  = []   # [{account, name}]
         self._last_poll        = {}   # 'g:{gid}' | 'u:{acc}' -> 'HH:MM:SS'
+
+        # manually added (★ 特别关注)
+        self._manual_grp_ids  = set()
+        self._manual_usr_accs = set()
+        self._special_grp_map = {}    # id  -> name
+        self._special_usr_map = {}    # acc -> name
+        self._grp_at_only     = {}    # id  -> bool
+
+        # pinned (从置顶会话自动加入)
+        self._pinned_grp_ids  = set()
+        self._pinned_usr_accs = set()
+
+        # user explicitly unchecked 置顶
+        self._excluded_pinned_grp_ids  = set()
+        self._excluded_pinned_usr_accs = set()
+
         self._build_ui()
         self._load_config()
         self._refresh_recent()
@@ -185,6 +243,20 @@ class AutoReplyPanel(QWidget):
 
         # 状态行
         hdr = QHBoxLayout()
+
+        pin_lbl = QLabel('置顶会话数:')
+        pin_lbl.setStyleSheet('color:#888;font-size:11px')
+        self._pinned_count_spin = QSpinBox()
+        self._pinned_count_spin.setRange(0, 20)
+        self._pinned_count_spin.setValue(0)
+        self._pinned_count_spin.setFixedWidth(52)
+        self._pinned_count_spin.setToolTip(
+            '查询最近会话时跳过前 N 个置顶会话，并将其自动加入特别关注'
+        )
+        self._pinned_count_spin.valueChanged.connect(self._on_pinned_count_changed)
+        hdr.addWidget(pin_lbl)
+        hdr.addWidget(self._pinned_count_spin)
+
         hdr.addStretch()
         self._dot = QLabel('●')
         self._dot.setStyleSheet('color:#ccc;font-size:14px')
@@ -226,7 +298,7 @@ class AutoReplyPanel(QWidget):
         sp_g_lbl = QLabel('★ 特别关注')
         sp_g_lbl.setStyleSheet('color:#008C64;font-weight:bold;font-size:11px;padding:2px 0')
         sp_g_lay.addWidget(sp_g_lbl)
-        self._special_grp_table = _make_grp_table()
+        self._special_grp_table = _make_special_grp_table()
         self._special_grp_table.itemChanged.connect(
             lambda item: self._on_grp_item_changed(self._special_grp_table, item)
         )
@@ -241,7 +313,7 @@ class AutoReplyPanel(QWidget):
         rc_g_lbl = QLabel('最近会话')
         rc_g_lbl.setStyleSheet('color:#888;font-size:11px;padding:2px 0')
         rc_g_lay.addWidget(rc_g_lbl)
-        self._recent_grp_table = _make_grp_table()
+        self._recent_grp_table = _make_recent_grp_table()
         self._recent_grp_table.itemChanged.connect(
             lambda item: self._on_grp_item_changed(self._recent_grp_table, item)
         )
@@ -292,7 +364,8 @@ class AutoReplyPanel(QWidget):
         sp_u_lbl = QLabel('★ 特别关注')
         sp_u_lbl.setStyleSheet('color:#008C64;font-weight:bold;font-size:11px;padding:2px 0')
         sp_u_lay.addWidget(sp_u_lbl)
-        self._special_usr_table = _make_usr_table()
+        self._special_usr_table = _make_special_usr_table()
+        self._special_usr_table.itemChanged.connect(self._on_special_usr_item_changed)
         sp_u_lay.addWidget(self._special_usr_table)
         u_inner.addWidget(sp_usr_box)
 
@@ -304,7 +377,7 @@ class AutoReplyPanel(QWidget):
         rc_u_lbl = QLabel('最近会话')
         rc_u_lbl.setStyleSheet('color:#888;font-size:11px;padding:2px 0')
         rc_u_lay.addWidget(rc_u_lbl)
-        self._recent_usr_table = _make_usr_table()
+        self._recent_usr_table = _make_recent_usr_table()
         rc_u_lay.addWidget(self._recent_usr_table)
         u_inner.addWidget(rc_usr_box)
 
@@ -324,11 +397,15 @@ class AutoReplyPanel(QWidget):
         btn_udel = QPushButton('删除')
         btn_udel.setFixedWidth(48)
         btn_udel.clicked.connect(self._del_user)
+        btn_uref = QPushButton('刷新')
+        btn_uref.setFixedWidth(48)
+        btn_uref.clicked.connect(self._refresh_recent)
         u_btn.addWidget(self._usr_acc_edit)
         u_btn.addWidget(self._usr_name_edit)
         u_btn.addWidget(btn_uadd)
         u_btn.addWidget(btn_udel)
         u_btn.addStretch()
+        u_btn.addWidget(btn_uref)
         u_lay.addLayout(u_btn)
         tabs.addTab(usr_w, '用户')
 
@@ -397,24 +474,32 @@ class AutoReplyPanel(QWidget):
 
     def _load_config(self):
         cfg = _load_cfg()
-        self._special_grp_ids  = {g['id']      for g in cfg.get('special_groups', [])}
-        self._special_usr_accs = {u['account'] for u in cfg.get('special_users',  [])}
-        self._special_grp_map  = {g['id']: g.get('name', g['id']) for g in cfg.get('special_groups', [])}
-        self._special_usr_map  = {u['account']: u.get('name', u['account']) for u in cfg.get('special_users', [])}
-        self._grp_at_only      = cfg.get('group_at_only', {})
-        self._rules            = cfg.get('rules', [])
+        self._pinned_count_spin.blockSignals(True)
+        self._pinned_count_spin.setValue(cfg.get('pinned_count', 0))
+        self._pinned_count_spin.blockSignals(False)
+        self._manual_grp_ids  = {g['id']      for g in cfg.get('special_groups', [])}
+        self._manual_usr_accs = {u['account'] for u in cfg.get('special_users',  [])}
+        self._special_grp_map = {g['id']: g.get('name', g['id']) for g in cfg.get('special_groups', [])}
+        self._special_usr_map = {u['account']: u.get('name', u['account']) for u in cfg.get('special_users', [])}
+        self._grp_at_only     = cfg.get('group_at_only', {})
+        self._excluded_pinned_grp_ids  = set(cfg.get('excluded_pinned_groups', []))
+        self._excluded_pinned_usr_accs = set(cfg.get('excluded_pinned_users',  []))
+        self._rules = cfg.get('rules', [])
         self._refresh_rule_table()
 
     def _collect_config(self) -> dict:
         return {
+            'pinned_count': self._pinned_count_spin.value(),
             'special_groups': [
                 {'id': gid, 'name': self._special_grp_map.get(gid, gid)}
-                for gid in self._special_grp_ids
+                for gid in self._manual_grp_ids
             ],
             'special_users': [
                 {'account': acc, 'name': self._special_usr_map.get(acc, acc)}
-                for acc in self._special_usr_accs
+                for acc in self._manual_usr_accs
             ],
+            'excluded_pinned_groups': list(self._excluded_pinned_grp_ids),
+            'excluded_pinned_users':  list(self._excluded_pinned_usr_accs),
             'group_at_only': self._grp_at_only,
             'rules': self._rules,
         }
@@ -422,35 +507,79 @@ class AutoReplyPanel(QWidget):
     def _save_config(self):
         _save_cfg(self._collect_config())
 
+    def _on_pinned_count_changed(self, _value):
+        self._save_config()
+        self._refresh_recent()
+
     # ── recent conversations ──────────────────────────────────────
 
     def _refresh_recent(self):
+        pinned_count = self._pinned_count_spin.value()
+        fetch_count  = max(pinned_count + 8, 8)
+
         def _work():
-            return fetch_recent_conversations(8)
+            return fetch_recent_conversations(fetch_count)
 
         def _done(convs):
+            pinned_convs = convs[:pinned_count]
+            rest_convs   = convs[pinned_count:]
+
+            # 计算本次置顶集合
+            new_pinned_grps = {}   # id  -> name
+            new_pinned_usrs = {}   # acc -> name
+            for conv in pinned_convs:
+                ctype = conv.get('recent_conversation_type', '')
+                if ctype == 'CHAT_TYPE_GROUP_MSG':
+                    gid = str(conv.get('group_id', ''))
+                    if gid and gid not in self._excluded_pinned_grp_ids:
+                        new_pinned_grps[gid] = conv.get('group_name', gid)
+                elif ctype == 'CHAT_TYPE_P2P_MSG':
+                    acc = conv.get('target_account', '')
+                    if acc and acc not in self._excluded_pinned_usr_accs:
+                        new_pinned_usrs[acc] = conv.get('target_name', acc)
+
+            self._pinned_grp_ids  = set(new_pinned_grps)
+            self._pinned_usr_accs = set(new_pinned_usrs)
+
             grp_seen, usr_seen = set(), set()
 
+            # 特别关注：手动添加优先，其次置顶
             special_grps = []
-            for gid in self._special_grp_ids:
+            for gid in self._manual_grp_ids:
                 special_grps.append({
                     'id':      gid,
                     'name':    self._special_grp_map.get(gid, gid),
                     'at_only': self._grp_at_only.get(gid, True),
+                    'pinned':  gid in self._pinned_grp_ids,
                 })
                 grp_seen.add(gid)
+            for gid, name in new_pinned_grps.items():
+                if gid not in grp_seen:
+                    special_grps.append({
+                        'id':      gid,
+                        'name':    name,
+                        'at_only': self._grp_at_only.get(gid, True),
+                        'pinned':  True,
+                    })
+                    grp_seen.add(gid)
 
             special_usrs = []
-            for acc in self._special_usr_accs:
+            for acc in self._manual_usr_accs:
                 special_usrs.append({
                     'account': acc,
                     'name':    self._special_usr_map.get(acc, acc),
+                    'pinned':  acc in self._pinned_usr_accs,
                 })
                 usr_seen.add(acc)
+            for acc, name in new_pinned_usrs.items():
+                if acc not in usr_seen:
+                    special_usrs.append({'account': acc, 'name': name, 'pinned': True})
+                    usr_seen.add(acc)
 
+            # 最近会话：跳过置顶部分
             recent_grps = []
             recent_usrs = []
-            for conv in convs:
+            for conv in rest_convs:
                 ctype = conv.get('recent_conversation_type', '')
                 if ctype == 'CHAT_TYPE_GROUP_MSG':
                     gid  = str(conv.get('group_id', ''))
@@ -488,16 +617,50 @@ class AutoReplyPanel(QWidget):
         self._updating = True
         self._special_grp_table.setRowCount(0)
         for g in self._special_grp_rows:
-            self._insert_grp_row(self._special_grp_table, g, special=True)
+            self._insert_special_grp_row(self._special_grp_table, g)
         self._recent_grp_table.setRowCount(0)
         for g in self._recent_grp_rows:
-            self._insert_grp_row(self._recent_grp_table, g, special=False)
+            self._insert_recent_grp_row(self._recent_grp_table, g)
         self._updating = False
 
-    def _insert_grp_row(self, table: QTableWidget, g: dict, special: bool):
+    def _insert_special_grp_row(self, table: QTableWidget, g: dict):
         key = f'g:{g["id"]}'
         row = table.rowCount()
         table.insertRow(row)
+
+        name_item = QTableWidgetItem(g['name'])
+        name_item.setForeground(_COLOR_SPECIAL)
+        id_item = QTableWidgetItem(g['id'])
+        id_item.setForeground(_COLOR_SPECIAL)
+
+        at_item = QTableWidgetItem()
+        at_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+        at_item.setCheckState(Qt.Checked if g.get('at_only', True) else Qt.Unchecked)
+
+        is_pinned = g.get('pinned', False)
+        pin_item = QTableWidgetItem()
+        if is_pinned:
+            pin_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+            pin_item.setCheckState(Qt.Checked)
+        else:
+            pin_item.setFlags(Qt.ItemIsEnabled)
+            pin_item.setCheckState(Qt.Unchecked)
+
+        ts_item = QTableWidgetItem(self._last_poll.get(key, ''))
+        ts_item.setTextAlignment(Qt.AlignCenter)
+        ts_item.setForeground(_COLOR_TS)
+
+        table.setItem(row, 0, name_item)
+        table.setItem(row, 1, id_item)
+        table.setItem(row, 2, at_item)
+        table.setItem(row, 3, pin_item)
+        table.setItem(row, 4, ts_item)
+
+    def _insert_recent_grp_row(self, table: QTableWidget, g: dict):
+        key = f'g:{g["id"]}'
+        row = table.rowCount()
+        table.insertRow(row)
+
         name_item = QTableWidgetItem(g['name'])
         id_item   = QTableWidgetItem(g['id'])
         at_item   = QTableWidgetItem()
@@ -506,9 +669,7 @@ class AutoReplyPanel(QWidget):
         ts_item   = QTableWidgetItem(self._last_poll.get(key, ''))
         ts_item.setTextAlignment(Qt.AlignCenter)
         ts_item.setForeground(_COLOR_TS)
-        if special:
-            name_item.setForeground(_COLOR_SPECIAL)
-            id_item.setForeground(_COLOR_SPECIAL)
+
         table.setItem(row, 0, name_item)
         table.setItem(row, 1, id_item)
         table.setItem(row, 2, at_item)
@@ -518,24 +679,51 @@ class AutoReplyPanel(QWidget):
         self._updating = True
         self._special_usr_table.setRowCount(0)
         for u in self._special_usr_rows:
-            self._insert_usr_row(self._special_usr_table, u, special=True)
+            self._insert_special_usr_row(self._special_usr_table, u)
         self._recent_usr_table.setRowCount(0)
         for u in self._recent_usr_rows:
-            self._insert_usr_row(self._recent_usr_table, u, special=False)
+            self._insert_recent_usr_row(self._recent_usr_table, u)
         self._updating = False
 
-    def _insert_usr_row(self, table: QTableWidget, u: dict, special: bool):
+    def _insert_special_usr_row(self, table: QTableWidget, u: dict):
         key = f'u:{u["account"]}'
         row = table.rowCount()
         table.insertRow(row)
+
+        acc_item  = QTableWidgetItem(u['account'])
+        acc_item.setForeground(_COLOR_SPECIAL)
+        name_item = QTableWidgetItem(u['name'])
+        name_item.setForeground(_COLOR_SPECIAL)
+
+        is_pinned = u.get('pinned', False)
+        pin_item  = QTableWidgetItem()
+        if is_pinned:
+            pin_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+            pin_item.setCheckState(Qt.Checked)
+        else:
+            pin_item.setFlags(Qt.ItemIsEnabled)
+            pin_item.setCheckState(Qt.Unchecked)
+
+        ts_item = QTableWidgetItem(self._last_poll.get(key, ''))
+        ts_item.setTextAlignment(Qt.AlignCenter)
+        ts_item.setForeground(_COLOR_TS)
+
+        table.setItem(row, 0, acc_item)
+        table.setItem(row, 1, name_item)
+        table.setItem(row, 2, pin_item)
+        table.setItem(row, 3, ts_item)
+
+    def _insert_recent_usr_row(self, table: QTableWidget, u: dict):
+        key = f'u:{u["account"]}'
+        row = table.rowCount()
+        table.insertRow(row)
+
         acc_item  = QTableWidgetItem(u['account'])
         name_item = QTableWidgetItem(u['name'])
         ts_item   = QTableWidgetItem(self._last_poll.get(key, ''))
         ts_item.setTextAlignment(Qt.AlignCenter)
         ts_item.setForeground(_COLOR_TS)
-        if special:
-            acc_item.setForeground(_COLOR_SPECIAL)
-            name_item.setForeground(_COLOR_SPECIAL)
+
         table.setItem(row, 0, acc_item)
         table.setItem(row, 1, name_item)
         table.setItem(row, 2, ts_item)
@@ -547,10 +735,11 @@ class AutoReplyPanel(QWidget):
         if key.startswith('g:'):
             gid = key[2:]
             for tbl in (self._special_grp_table, self._recent_grp_table):
+                ts_col = 4 if tbl is self._special_grp_table else 3
                 for row in range(tbl.rowCount()):
                     id_item = tbl.item(row, 1)
                     if id_item and id_item.text() == gid:
-                        ts_item = tbl.item(row, 3)
+                        ts_item = tbl.item(row, ts_col)
                         if ts_item:
                             self._updating = True
                             ts_item.setText(ts)
@@ -559,10 +748,11 @@ class AutoReplyPanel(QWidget):
         elif key.startswith('u:'):
             acc = key[2:]
             for tbl in (self._special_usr_table, self._recent_usr_table):
+                ts_col = 3 if tbl is self._special_usr_table else 2
                 for row in range(tbl.rowCount()):
                     acc_item = tbl.item(row, 0)
                     if acc_item and acc_item.text() == acc:
-                        ts_item = tbl.item(row, 2)
+                        ts_item = tbl.item(row, ts_col)
                         if ts_item:
                             self._updating = True
                             ts_item.setText(ts)
@@ -572,31 +762,58 @@ class AutoReplyPanel(QWidget):
     # ── group operations ─────────────────────────────────────────
 
     def _on_grp_item_changed(self, table: QTableWidget, item):
+        if self._updating:
+            return
+        col = item.column()
+
+        if col == 2:  # at_only
+            gid_cell = table.item(item.row(), 1)
+            if not gid_cell:
+                return
+            group_id = gid_cell.text()
+            if item.checkState() == Qt.Unchecked:
+                ret = QMessageBox.warning(
+                    self, '提示',
+                    '群聊消息过多时会占用系统资源，请谨慎选择。\n确定取消"仅@我"限制？',
+                    QMessageBox.Ok | QMessageBox.Cancel,
+                )
+                if ret != QMessageBox.Ok:
+                    self._updating = True
+                    item.setCheckState(Qt.Checked)
+                    self._updating = False
+                    return
+            at_only = item.checkState() == Qt.Checked
+            self._grp_at_only[group_id] = at_only
+            for lst in (self._special_grp_rows, self._recent_grp_rows):
+                for g in lst:
+                    if g['id'] == group_id:
+                        g['at_only'] = at_only
+                        break
+            self._save_config()
+
+        elif col == 3 and table is self._special_grp_table:  # 置顶
+            if item.checkState() == Qt.Unchecked:
+                gid_item = table.item(item.row(), 1)
+                if not gid_item:
+                    return
+                group_id = gid_item.text()
+                self._excluded_pinned_grp_ids.add(group_id)
+                self._pinned_grp_ids.discard(group_id)
+                self._save_config()
+                self._refresh_recent()
+
+    def _on_special_usr_item_changed(self, item):
         if self._updating or item.column() != 2:
             return
-        gid_cell = table.item(item.row(), 1)
-        if not gid_cell:
-            return
-        group_id = gid_cell.text()
         if item.checkState() == Qt.Unchecked:
-            ret = QMessageBox.warning(
-                self, '提示',
-                '群聊消息过多时会占用系统资源，请谨慎选择。\n确定取消"仅@我"限制？',
-                QMessageBox.Ok | QMessageBox.Cancel,
-            )
-            if ret != QMessageBox.Ok:
-                self._updating = True
-                item.setCheckState(Qt.Checked)
-                self._updating = False
+            acc_item = self._special_usr_table.item(item.row(), 0)
+            if not acc_item:
                 return
-        at_only = item.checkState() == Qt.Checked
-        self._grp_at_only[group_id] = at_only
-        for lst in (self._special_grp_rows, self._recent_grp_rows):
-            for g in lst:
-                if g['id'] == group_id:
-                    g['at_only'] = at_only
-                    break
-        self._save_config()
+            account = acc_item.text()
+            self._excluded_pinned_usr_accs.add(account)
+            self._pinned_usr_accs.discard(account)
+            self._save_config()
+            self._refresh_recent()
 
     def _add_special_group(self):
         gid   = self._grp_id_edit.text().strip()
@@ -604,7 +821,7 @@ class AutoReplyPanel(QWidget):
         if not gid:
             QMessageBox.warning(self, '提示', '群组 ID 不能为空')
             return
-        self._special_grp_ids.add(gid)
+        self._manual_grp_ids.add(gid)
         self._special_grp_map[gid] = gname
         self._grp_id_edit.clear()
         self._grp_name_edit.clear()
@@ -620,8 +837,10 @@ class AutoReplyPanel(QWidget):
             gid_item = self._special_grp_table.item(r, 1)
             if gid_item:
                 gid = gid_item.text()
-                self._special_grp_ids.discard(gid)
+                self._manual_grp_ids.discard(gid)
                 self._special_grp_map.pop(gid, None)
+                self._pinned_grp_ids.discard(gid)
+                self._excluded_pinned_grp_ids.add(gid)
         self._save_config()
         self._refresh_recent()
 
@@ -633,7 +852,7 @@ class AutoReplyPanel(QWidget):
         if not acc:
             QMessageBox.warning(self, '提示', '工号不能为空')
             return
-        self._special_usr_accs.add(acc)
+        self._manual_usr_accs.add(acc)
         self._special_usr_map[acc] = name
         self._usr_acc_edit.clear()
         self._usr_name_edit.clear()
@@ -649,8 +868,10 @@ class AutoReplyPanel(QWidget):
             acc_item = self._special_usr_table.item(r, 0)
             if acc_item:
                 acc = acc_item.text()
-                self._special_usr_accs.discard(acc)
+                self._manual_usr_accs.discard(acc)
                 self._special_usr_map.pop(acc, None)
+                self._pinned_usr_accs.discard(acc)
+                self._excluded_pinned_usr_accs.add(acc)
         self._save_config()
         self._refresh_recent()
 
@@ -703,7 +924,6 @@ class AutoReplyPanel(QWidget):
     def _start_monitor(self):
         self._save_config()
         s = store.load_settings()
-        # 仅监听手动添加的特别关注
         groups = [{'id': g['id'], 'name': g['name'], 'at_only': g.get('at_only', True)}
                   for g in self._special_grp_rows]
         users  = [u['account'] for u in self._special_usr_rows]
