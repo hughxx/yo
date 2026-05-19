@@ -336,7 +336,6 @@ CLOUDDRIVE_PASSWORD = "your_robot_password"
 cd server
 pip install -r requirements.txt
 python -m server
-# 默认监听 0.0.0.0:8023
 ```
 
-启动后在客户端「设置 → 服务器地址」中填写 `http://<your-ip>:8023`，点击「测试连接」验证。
+启动后在客户端「设置 → 服务器地址」中填写服务器地址，点击「测试连接」验证。
