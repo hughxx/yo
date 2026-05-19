@@ -11,13 +11,13 @@ def set_base(url: str):
 
 def ping() -> bool:
     try:
-        return requests.get(f'{_base}/api/email/ping', timeout=5, verify=False).ok
+        return requests.get(f'{_base}/api/config/ping', timeout=5, verify=False).ok
     except Exception:
         return False
 
 def get_namespaces() -> list:
     try:
-        r = requests.get(f'{_base}/api/email/namespaces', timeout=10, verify=False)
+        r = requests.get(f'{_base}/api/config/namespaces', timeout=10, verify=False)
         r.raise_for_status()
         return r.json()
     except Exception:
@@ -66,7 +66,7 @@ def delete_cloud_rule(rule_id: int) -> dict:
 
 def get_userinfo(query: str) -> list:
     try:
-        r = requests.get(f'{_base}/api/email/userinfo', params={'info': query}, timeout=10, verify=False)
+        r = requests.get(f'{_base}/api/config/userinfo', params={'info': query}, timeout=10, verify=False)
         r.raise_for_status()
         return r.json()
     except Exception:

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from server.db.models import _now
 from server.db.models.email import Collection, Email, EmailNamespace
+from server.service.config_service import get_or_create_collection
 
 
 # ==================== 时间处理 ====================
@@ -41,18 +42,6 @@ def parse_time(value):
 
 def _normalize_time(value):
     return value.replace(microsecond=0) if value else None
-
-
-# ==================== 命名空间 ====================
-
-def get_or_create_collection(db, name: str):
-    """按名称查找 Collection，不存在则自动创建。"""
-    col = db.query(Collection).filter_by(name=name).first()
-    if col is None:
-        col = Collection(name=name, description="")
-        db.add(col)
-        db.flush()
-    return col
 
 
 # ==================== 邮件业务 ====================

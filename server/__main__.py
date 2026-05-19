@@ -7,6 +7,7 @@ from server.router.email import router as email_router
 from server.router.welink import router as welink_router
 from server.router.ai import router as ai_router
 from server.router.image import router as image_router
+from server.router.config import router as config_router
 from server.db.db import init_db
 
 logging.basicConfig(
@@ -28,6 +29,7 @@ app.include_router(email_router)
 app.include_router(welink_router)
 app.include_router(ai_router)
 app.include_router(image_router)
+app.include_router(config_router)
 
 
 @app.on_event("startup")

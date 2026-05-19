@@ -17,10 +17,10 @@ _API_DOC = """\
 自定义服务器须实现以下 HTTP 接口（基础路径 /api/email/）：
 
 ━━ 必需接口 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-GET  /api/email/ping
+GET  /api/config/ping
   响应: {"Success": true, "Message": "pong"}
 
-GET  /api/email/namespaces
+GET  /api/config/namespaces
   响应: [{"id": int, "name": str, "description": str}, ...]
 
 POST /api/email/receive
@@ -50,7 +50,7 @@ PUT    /api/email/rules/{id}
 DELETE /api/email/rules/{id}
 
 ━━ 必需接口（用户搜索）━━━━━━━━━━━━━━━━━━━━━━
-GET /api/email/userinfo?info=xxx
+GET /api/config/userinfo?info=xxx
   响应: [{"label": "姓名", "value": "账号"}, ...]
   说明: 工号必须从此接口返回值中选择，不支持自由输入
 """

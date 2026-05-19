@@ -13,11 +13,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/welink")
 
 
-@router.get("/ping")
-def ping():
-    return {"Success": True, "Message": "pong"}
-
-
 # ── 群聊规则 CRUD ──────────────────────────────────────────────
 
 @router.get("/rules")

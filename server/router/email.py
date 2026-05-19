@@ -1,23 +1,18 @@
 import json
 import logging
 
-import requests
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 
 from server.db.models.email import Collection, Email, EmailNamespace, EmailRule
-from server.service.email_service import get_or_create_collection, upsert_email
+from server.service.email_service import upsert_email
+from server.service.config_service import get_or_create_collection
 from server.service.experience_service import process_email
 from server.db.db import get_db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/email")
-
-
-@router.get("/ping")
-def ping():
-    return {"Success": True, "Message": "pong"}
 
 
 @router.post("/receive")
@@ -43,12 +38,6 @@ async def receive_email(
         logger.info("no background_task: ok=%s msg=%r", ok, msg)
 
     return {"Success": ok, "Message": msg}
-
-
-@router.get("/namespaces")
-def list_namespaces(db: Session = Depends(get_db)):
-    rows = db.query(Collection).order_by(Collection.name).all()
-    return [{"id": r.id, "name": r.name, "description": r.description} for r in rows]
 
 
 @router.post("/parse_status")
@@ -140,23 +129,5 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db)):
         db.commit()
     return {"success": True}
 
-
-# ── 用户信息搜索 ──────────────────────────────────────────
-
-_HW_USERINFO_URL = "https://fuyao.rnd.huawei.com/config-service/config-center/hw-userinfo"
-
-
-@router.get("/userinfo")
-def search_userinfo(info: str = ""):
-    if not info.strip():
-        return []
-    try:
-        resp = requests.get(_HW_USERINFO_URL, params={"info": info}, timeout=10, verify=False)
-        resp.raise_for_status()
-        rows = resp.json().get("data", [])
-        return [{"label": r.get("name", ""), "value": r.get("sAMAccountName", "")} for r in rows]
-    except Exception:
-        logger.warning("userinfo search failed for info=%r", info, exc_info=True)
-        return []
 
 
