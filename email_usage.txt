@@ -1,0 +1,231 @@
+邮件命令使用示例：
+
+mail autodiscover — 执行 Autodiscover（首次必须先执行autoDiscover）
+用途：通过邮箱地址发现 Exchange 服务器域名
+
+参数：
+
+选项	必填	说明
+--email	是	用户邮箱地址
+输出：
+
+成功：Discovered EWS URL: https://imailcn55.email.huawei.com/EWS/Exchange.asmx
+mail list — 查询邮件列表
+用途：查询指定文件夹的邮件列表，支持多种筛选条件。
+
+参数：
+
+选项	默认值	必填	说明
+--folder-id	inbox	否	文件夹 ID。推荐：先用 mail folders 拿到实际 FolderId（base64 长串）后填入。也支持常用简称：inbox / sentitems / drafts / deleteditems / calendar。不支持中文别名（收件箱 等会报 ErrorInvalidIdMalformed）
+--max	10	否	最大返回数（0-500）
+--offset	0	否	分页偏移量，用于翻页
+--is-read	-1	否	已读状态筛选：0=未读、1=已读、-1=全部
+--from		否	按发件人筛选（模糊匹配）
+--subject		否	按主题筛选（模糊匹配）
+--start		否	起始日期，包含当天（格式：YYYY-MM-DD）
+--end		否	结束日期，不包含当天（格式：YYYY-MM-DD，等价于 YYYY-MM-DDT00:00:00）。例如查 2026-05-08 单天的邮件，要写 --end 2026-05-09；要覆盖整个 4 月，要写 --end 2026-05-01
+--query		否	KQL 查询字符串（高级语法，详见下方说明）
+输出字段（table 格式）：
+
+字段	说明
+#	序号
+Read	已读状态（Y/N）
+From	发件人
+Subject	主题
+Date	接收时间
+ItemId	邮件唯一标识，用于 mail get、mail attachment 等后续命令
+示例：
+
+# 翻页查看第 11-20 封邮件
+welink-cli mail list --max 10 --offset 10
+
+# 查找某人在 4/1 ~ 4/10（含 4/10 当天）发的未读邮件
+# 注意：--end 是不含的边界。要覆盖到 4/10 当天，必须传 4/11
+welink-cli mail list --from zhang@example.com --is-read 0 \
+  --start 2026-04-01 --end 2026-04-11
+
+# 查询单天（5/8 当天的邮件）— 同样要把 --end 写成次日
+welink-cli mail list --start 2026-05-08 --end 2026-05-09
+
+# 用 mail folders 拿到真实 FolderId 后查询自定义文件夹（推荐）
+welink-cli mail folders          # 找到目标行的 FolderId
+welink-cli mail list --folder-id AAMkADQ3...folder-id...
+--query（KQL 高级语法）
+--query 把字符串原样透传给 Exchange 服务端的 KQL（Keyword Query Language）解析器， 功能强大但写错时报错信息晦涩。日常筛选优先使用 --from / --subject / --start / --end 等专用选项， 仅在专用选项不够用（如同时模糊匹配多个字段、按附件名搜索等）时再考虑 KQL：
+
+
+# 字段限定（多关键词默认 AND 关系）
+welink-cli mail list --query "from:zhang subject:周报"
+完整 KQL 语法见 Microsoft 官方文档：Keyword Query Language reference。
+
+mail get — 获取邮件详情
+用途：获取单封邮件的完整内容，包括正文、收件人、附件列表等。
+
+前置条件：需要先通过 mail list 获取邮件的 ItemId。
+
+参数：
+
+选项	默认值	必填	说明
+--item-id		是	邮件的 ItemId（从 mail list 输出获取）
+--body-type	Text	否	正文格式：Text（纯文本）/ HTML
+输出字段：
+
+字段	说明
+Subject	主题
+From	发件人姓名及邮箱
+Date	接收时间
+Read	已读状态
+Importance	重要程度（Low/Normal/High）
+To	收件人列表
+CC	抄送列表（有则显示）
+Categories	分类标签（有则显示）
+Attachments	是否有附件（Yes/No）
+附件详情	每个附件显示：名称、类型、大小、附件 ID（用于 mail attachment 下载）
+ItemId	邮件唯一标识
+Body	正文内容
+示例：
+
+welink-cli mail get --item-id AAMkADQ3...
+
+# 输出示例：
+# Subject:     周报
+# From:        张三 <zhang@example.com>
+# Date:        2026-04-10T09:30:00Z
+# Read:        Yes
+# Importance:  Normal
+# To:          team@example.com
+# Attachments: Yes
+#   - 周报.xlsx (application/vnd.openxmlformats...) [45.2 KB]
+#     ID: AAMkADQ3...attachment-id...
+# ItemId:      AAMkADQ3...
+#
+# --- Body (Text) ---
+# 本周工作内容如下...
+mail folders — 列出邮件文件夹
+用途：列出所有邮件文件夹及其统计信息。
+
+参数：无额外参数。
+
+输出字段（table 格式）：
+
+字段	说明
+Name	文件夹显示名称
+Total	邮件总数
+Unread	未读数
+FolderId	文件夹 ID，可用于 mail list --folder-id
+使用场景：当内置名称（inbox、sentitems）不满足需求时，通过此命令获取自定义文件夹的实际 ID。
+
+mail send — 发送邮件
+用途：发送邮件，支持多收件人、抄送、密送、HTML 正文和文件附件。
+
+参数：
+
+选项	必填	说明
+--to	是	收件人邮箱。支持逗号分隔（"a@x.com,b@x.com"）或重复指定（--to a --to b）
+--subject	是	邮件主题
+--body	否	邮件正文。纯文本时直接写文字；启用 --html 时改为 HTML 标记字符串（如 "<p>Hi</p>"）
+--cc	否	抄送，格式同 --to
+--bcc	否	密送，格式同 --to
+--html	否	标记 --body 内容为 HTML 格式（flag，无需赋值）。不启用时 --body 按纯文本发送，HTML 标签会被原样显示而不渲染
+--attachment, -a	否	附件文件路径，可重复指定多个
+发送机制：
+
+无附件时：直接发送
+有附件时：自动执行三步协议（创建草稿 → 上传附件 → 发送），无需手动操作
+输出：
+
+成功：Mail sent successfully 或 Mail sent successfully (N attachment(s))
+失败：抛出错误信息
+mail attachment — 下载附件
+用途：下载邮件附件到本地。
+
+前置条件：需要先通过 mail get 获取附件的 AttachmentId。
+
+参数：
+
+选项	必填	说明
+--attachment-id	是	附件 ID（从 mail get 附件详情获取）
+--path	是	保存路径。为目录时使用原始文件名，为文件路径时使用指定文件名
+输出：
+
+成功：Attachment saved to <path>
+失败：抛出错误信息
+示例：
+
+# 步骤 1：查看邮件详情，获取附件 ID
+welink-cli mail get --item-id AAMkADQ3...
+
+# 输出中的附件信息：
+#   - 周报.xlsx (application/vnd.openxmlformats...) [45.2 KB]
+#     ID: AAMkADQ3...attachment-id...
+
+# 步骤 2：下载附件到目录（保留原始文件名）
+welink-cli mail attachment --attachment-id AAMkADQ3...attachment-id... --path ./downloads/
+
+# 步骤 2（替代）：下载附件到指定文件名
+welink-cli mail attachment --attachment-id AAMkADQ3...attachment-id... --path report.xlsx
+
+
+### mail get返回
+
+welink-cli mail get --item-id AAMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgBGAAAAAABufcTys97BTIrdysfwdwYnBwDEabo10MSnS72V8VP8x9F8AAAAAAEMAADEabo10MSnS72V8VP8x9F8AAGQ7KTOAAA=
+Subject:     补充附件  //回复: 5月参加
+From:        name <name@email.com>
+Date:        2026-05-13T21:15:31+08:00
+Read:        Yes
+Importance:  Normal
+Attachments: Yes
+  • 方案二 安动.docx (application/vnd.openxmlformats-officedocument.wordprocessingml.document) [676.5 KB]
+
+    ID: AAMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgBGAAAAAABufcTys97BTIrdysfwdwYnBwDEabo10MSnS72V8VP8x9F8AAAAAAEMAADEabo10MSnS72V8VP8x9F8AAGQ7KTOAAABEgAQAKUgmgA0L0pPvr0qpyLrom0=
+  • 方案一 太湖景.docx (application/vnd.openxmlformats-officedocument.wordprocessingml.document) [2.5 MB]
+
+    ID: AAMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgBGAAAAAABufcTys97BTIrdysfwdwYnBwDEabo10MSnS72V8VP8x9F8AAAAAAEMAADEabo10MSnS72V8VP8x9F8AAGQ7KTOAAABEgAQAGZZaJaEDHVJkxF3x/sN4NA=
+  • image001.jpg (image/jpeg) [134.5 KB]
+
+    ID: AAMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgBGAAAAAABufcTys97BTIrdysfwdwYnBwDEabo10MSnS72V8VP8x9F8AAAAAAEMAADEabo10MSnS72V8VP8x9F8AAGQ7KTOAAABEgAQAJKrJslhkN1CiaOAaMIqtTQ=
+ItemId:      AAMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgBGAAAAAABufcTys97BTIrdysfwdwYnBwDEabo10MSnS72V8VP8x9F8AAAAAAEMAADEabo10MSnS72V8VP8x9F8AAGQ7KTOAAA=
+
+--- Body (Text) ---
+
+
+发件人: name <name@email.com>
+发送时间: 2026年5月13日 21:12
+主题: 5月参加
+
+各位！
+
+为加酒店。
+
+时间：5月23~24日
+里，安排住宿1晚
+
+报名方式（截止时间本周五17：00）：
+
+1)     点击链接：https://isurveC-cPk6bQ
+
+2)     扫码：
+
+[cid:image001.jpg@01DCE31D.9026F060]
+
+
+C:\Users\w00899061>welink-cli mail list
+#   Read  From          Subject                                                                                                                                                                                               Date                       ItemId                                                                                                         
+--  ----  ------------  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------  -------------------------  --------------------------------------------------------------------------------------------------------------------------------------------------------
+1   Y     tianmengqiao  【CoreOreOps数据库切换rreOps数据库reOps数据库切换通。                                                                                                      2026-05-22T11:05:06+08:00  AAMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgBGAAAAAABufcTys97BTIrdysfwdwYnBwDEabo10MSnS72V8VP8x9F8AAAAAAEMAADEabo10MSnS72V8VP8x9F8AAGQ7KThAAA=
+
+C:\Users\w00899061>welink-cli mail folders
+Name          Total  Unread  FolderId                                                                                   
+------------  -----  ------  ------------------------------------------------------------------------------------------------------------------------
+mergeRequest  2      0       AAMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAuAAAAAABufcTys97BTIrdysfwdwYnAQDEabo10MSnS72V8VP8x9F8AAAkYU4/AAA=
+草稿          0      0       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBDwAAAA==
+对话历史记录  0      0       AAMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAuAAAAAABufcTys97BTIrdysfwdwYnAQDEabo10MSnS72V8VP8x9F8AAGQ7MaYAAA=
+发件箱        0      0       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBCwAAAA==
+垃圾邮件      0      0       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBIgAAAA==
+收件箱        373    324     AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBDAAAAA==
+同步问题      0      0       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBVwAAAA==
+本地故障      0      0       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBWQAAAA==
+冲突          0      0       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBWAAAAA==
+服务器故障    0      0       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBWgAAAA==
+已发送邮件    7      0       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBCQAAAA==
+已删除邮件    12     5       AQMkAGU1OGM1MWJhLTZiMDYtNDVmNi04YzgzLWQ4NDY1ZTM2ZmNiYgAALgAAA259xPKz3sFMit3Kx/B3BicBAMRpujXQxKdLvZXxU/zH0XwAAAIBCgAAAA==
