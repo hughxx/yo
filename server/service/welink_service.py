@@ -13,6 +13,7 @@ from server.utils.llm import chat, chat_with_tools
 from server.utils.img import ocr
 from server.utils.engine import push_experience
 from server.utils.um_content import replace_um_images
+from server.service.log_service import log_process_error
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,13 @@ async def process_chatlog(
     is_daily:   bool = False,
 ) -> None:
     if is_daily:
-        await _process_daily_chatlog(html_body, group_id, group_name, chat_id, upload_by)
+        try:
+            await _process_daily_chatlog(html_body, group_id, group_name, chat_id, upload_by)
+        except Exception as e:
+            logger.exception("process_daily_chatlog failed: group=%r chat_id=%r",
+                             group_name, chat_id)
+            _update_status(chat_id, "failed")
+            log_process_error("welink_daily", chat_id, group_name, e)
         return
 
     doc_id = _make_doc_id(chat_id)
@@ -148,9 +155,10 @@ async def process_chatlog(
         push_experience(result, upload_by, doc_id)
         _update_status(chat_id, "done")
         logger.info("process_chatlog done: group=%r chat_id=%r", group_name, chat_id)
-    except Exception:
+    except Exception as e:
         logger.exception("process_chatlog failed: group=%r chat_id=%r", group_name, chat_id)
         _update_status(chat_id, "failed")
+        log_process_error("welink", chat_id, group_name, e)
 
 
 # ── 按天归档：Agent 定义 ──────────────────────────────────────────

@@ -6,8 +6,9 @@ from sqlalchemy.orm import sessionmaker
 
 from server.utils.settings import DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER
 from server.db.models import Base
-import server.db.models.email   # noqa: F401 — registers Collection/Email/EmailNamespace/EmailRule
-import server.db.models.welink  # noqa: F401 — registers WelinkChatlog
+import server.db.models.email        # noqa: F401 — registers Collection/Email/EmailNamespace/EmailRule
+import server.db.models.welink       # noqa: F401 — registers WelinkChatlog
+import server.db.models.process_log  # noqa: F401 — registers ProcessLog
 
 DATABASE_URL = (
     f"mysql+pymysql://{DB_USER}:{quote_plus(DB_PASSWORD)}"

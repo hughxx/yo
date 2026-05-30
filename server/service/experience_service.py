@@ -13,6 +13,7 @@ from server.utils.llm import chat_with_tools
 from server.utils.img import ocr
 from server.utils.engine import push_experience
 from server.utils.um_content import replace_um_images
+from server.service.log_service import log_process_error
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,8 @@ async def process_email(
         push_experience(result, user_id, doc_id)
         _update_ns_status(conversation_topic, namespace_id, "done")
         logger.info("process_email done: subject=%r", subject)
-    except Exception:
-        logger.exception("process_email failed: subject=%r", subject)
+    except Exception as e:
+        logger.exception("process_email failed: topic=%r subject=%r",
+                         conversation_topic[:60], subject)
         _update_ns_status(conversation_topic, namespace_id, "failed")
+        log_process_error("email", conversation_topic, namespace_name, e)
