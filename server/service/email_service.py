@@ -56,6 +56,7 @@ def upsert_email(db, data: dict, force: bool = False):
     namespace_name = (data.get("Namespace") or "").strip()
     received_time  = parse_time(data.get("ReceivedTime"))
     html_body      = data.get("HtmlBody", "")
+    markdown_body  = data.get("MarkdownBody", "")
     subject        = data.get("Subject", "")
 
     should_process  = False
@@ -69,6 +70,7 @@ def upsert_email(db, data: dict, force: bool = False):
             sender_name        = data.get("SenderName", ""),
             received_time      = received_time,
             html_body          = html_body,
+            markdown_body      = markdown_body,
             upload_by          = user_id,
         )
         db.add(email)
@@ -78,6 +80,7 @@ def upsert_email(db, data: dict, force: bool = False):
         email.subject       = subject
         email.sender_name   = data.get("SenderName", "")
         email.html_body     = html_body
+        email.markdown_body = markdown_body
         email.upload_by     = user_id
         email.updated_at    = _now()
         content_updated     = True
@@ -87,6 +90,7 @@ def upsert_email(db, data: dict, force: bool = False):
         email.sender_name   = data.get("SenderName", "")
         email.received_time = received_time
         email.html_body     = html_body
+        email.markdown_body = markdown_body
         email.upload_by     = user_id
         email.updated_at    = _now()
         content_updated     = True
@@ -113,9 +117,10 @@ def upsert_email(db, data: dict, force: bool = False):
     db.commit()
 
     process_kwargs = None
-    if should_process and html_body:
+    if should_process and (markdown_body or html_body):
         process_kwargs = {
             "html_body":          html_body,
+            "markdown_body":      markdown_body,
             "subject":            subject,
             "user_id":            user_id,
             "namespace_id":       namespace_id,

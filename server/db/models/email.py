@@ -23,6 +23,7 @@ class Email(Base):
     sender_name        = Column(String(500), default="")
     received_time      = Column(DateTime)
     html_body          = Column(Text(4294967295), default="")   # LONGTEXT
+    markdown_body      = Column(Text(4294967295), default="")   # LONGTEXT，客户端直传的 markdown（有则服务端不再转）
     upload_by          = Column(String(100), default="")
     created_at         = Column(DateTime, default=_now)
     updated_at         = Column(DateTime, default=_now, onupdate=_now)

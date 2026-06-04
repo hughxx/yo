@@ -200,6 +200,7 @@ async def process_email(
     namespace_id:       int,
     namespace_name:     str,
     conversation_topic: str,
+    markdown_body:      str = "",
 ) -> None:
     doc_id = _make_doc_id(conversation_topic)
     logger.info(
@@ -207,12 +208,17 @@ async def process_email(
         subject, user_id, namespace_id, namespace_name, doc_id,
     )
     try:
-        markdown = html2md(html_body)
+        # 客户端直传 markdown 时直接采用，省去 html2md；否则按旧逻辑从 html 转换
+        if markdown_body and markdown_body.strip():
+            markdown = markdown_body
+            logger.info("markdown from client: %d chars", len(markdown))
+        else:
+            markdown = html2md(html_body)
+            logger.info("html2md: %d chars", len(markdown))
+
         if not markdown.strip():
             logger.info("process_email: empty markdown, skip")
             return
-
-        logger.info("html2md: %d chars", len(markdown))
         markdown = await asyncio.to_thread(replace_um_images, markdown)
         markdown = await _enrich_with_ocr(markdown)
         result   = await _call_llm(markdown)
