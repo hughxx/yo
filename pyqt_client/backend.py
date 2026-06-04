@@ -77,6 +77,21 @@ def receive_welink_chatlog(payload: dict) -> dict:
     r.raise_for_status()
     return r.json()
 
+def upload_image(file_bytes: bytes, filename: str):
+    """上传图片到文件服务器，返回公开 URL；失败返回 None。"""
+    try:
+        r = requests.post(
+            f'{_base}/api/image/upload',
+            files={'file': (filename, file_bytes)},
+            data={'filename': filename},
+            timeout=30, verify=False,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data.get('url') if data.get('success') else None
+    except Exception:
+        return None
+
 def get_welink_rules() -> list:
     try:
         r = requests.get(f'{_base}/api/welink/rules', timeout=10, verify=False)
