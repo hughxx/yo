@@ -70,6 +70,44 @@ def _get_folder(ns, path: str):
     raise FileNotFoundError(f'找不到文件夹: {path}')
 
 
+# ── PST 挂载 ──────────────────────────────────────────────
+
+def add_pst(path: str) -> str:
+    """把 .pst 挂载到当前 Outlook profile，返回新挂载 store 的显示名。
+
+    挂载后该 store 会出现在 folder_list() / mail_list() 的遍历里，无需额外改动。
+    若该 PST 已挂载，AddStore 不会新增 store，返回空串（调用方据此提示“已挂载”）。
+    """
+    with _session() as ns:
+        before = set()
+        for st in ns.Stores:
+            try:
+                before.add(st.StoreID)
+            except Exception:
+                pass
+        ns.AddStore(path)
+        for st in ns.Stores:
+            try:
+                if st.StoreID not in before:
+                    return st.DisplayName or ''
+            except Exception:
+                continue
+        return ''
+
+
+def remove_pst(display_name: str) -> bool:
+    """按显示名卸载已挂载的 PST（不会删除磁盘文件）。"""
+    with _session() as ns:
+        for st in ns.Stores:
+            try:
+                if st.DisplayName == display_name:
+                    ns.RemoveStore(st.GetRootFolder())
+                    return True
+            except Exception:
+                continue
+    return False
+
+
 # ── 正文搜索 ──────────────────────────────────────────────
 
 _BODY_FIELD = '"urn:schemas:httpmail:textdescription"'
@@ -209,6 +247,68 @@ def mail_get(entry_id: str, img_api: str = '') -> dict:
             'sender_email':       m.SenderEmailAddress or '',
             'received_time':      m.ReceivedTime.strftime('%Y-%m-%dT%H:%M:%S'),
             'conversation_topic': m.ConversationTopic or '',
+            'html_body':          html,
+        }
+
+
+def msg_get(path: str, img_api: str = '') -> dict:
+    """读取磁盘上的 .msg 文件为邮件详情，字段与 mail_get 一致。
+
+    .msg 不在任何 store 里，用 Namespace.OpenSharedItem 打开成 MailItem，
+    EntryID 通常为空，回退为按文件路径生成的合成 ID；ConversationTopic 为空时
+    回退为主题、再回退为文件名，保证服务端 upsert 的必填键不为空。
+    """
+    import re
+    import os as _os
+    import hashlib
+
+    with _session() as ns:
+        m = ns.OpenSharedItem(path)
+
+        try:
+            html = m.HTMLBody or ''
+        except Exception:
+            html = ''
+        html = html.replace('<head>', '<head><meta charset="utf-8">', 1)
+        if img_api:
+            try:
+                html = _process_images(m, html, img_api)
+            except Exception:
+                pass
+        html = re.sub(r'src=["\']cid:[^"\']*["\']', 'src=""', html)
+
+        subject = getattr(m, 'Subject', '') or ''
+        stem    = _os.path.splitext(_os.path.basename(path))[0]
+        topic   = (getattr(m, 'ConversationTopic', '') or '') or subject or stem
+
+        rt = None
+        for attr in ('ReceivedTime', 'SentOn'):
+            try:
+                v = getattr(m, attr, None)
+                if v:
+                    rt = v
+                    break
+            except Exception:
+                pass
+        try:
+            rt_str = rt.strftime('%Y-%m-%dT%H:%M:%S') if rt else ''
+        except Exception:
+            rt_str = ''
+
+        try:
+            entry = getattr(m, 'EntryID', '') or ''
+        except Exception:
+            entry = ''
+        if not entry:
+            entry = 'msg_' + hashlib.md5(path.encode('utf-8', 'ignore')).hexdigest()[:16]
+
+        return {
+            'item_id':            entry,
+            'subject':            subject,
+            'sender_name':        getattr(m, 'SenderName', '') or '',
+            'sender_email':       getattr(m, 'SenderEmailAddress', '') or '',
+            'received_time':      rt_str or '1970-01-01T00:00:00',
+            'conversation_topic': topic,
             'html_body':          html,
         }
 

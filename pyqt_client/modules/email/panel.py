@@ -140,6 +140,7 @@ class EmailPanel(QWidget):
         self._btn_more.setStyleSheet('QToolButton::menu-indicator { image: none; width: 0; }')
         _more_menu = QMenu(self._btn_more)
         _more_menu.addAction('强制重推').triggered.connect(self._do_force_push)
+        _more_menu.addAction('导入 .msg 文件…').triggered.connect(self._do_import_msg)
         self._btn_more.setMenu(_more_menu)
         self._btn_more.setPopupMode(QToolButton.InstantPopup)
         lay.addWidget(self._btn_more)
@@ -313,6 +314,76 @@ class EmailPanel(QWidget):
         ) != QMessageBox.Yes:
             return
         self._start_sync(force=True)
+
+    # ── 导入 .msg 文件 ────────────────────────────────────
+    def _do_import_msg(self):
+        if self._loading or self._syncing:
+            return
+        if not (self._settings.get('userId') and self._settings.get('namespace')):
+            QMessageBox.warning(self, '提示', '请先在设置中配置工号与命名空间')
+            return
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, '选择 .msg 文件（可多选）', '', 'Outlook 邮件 (*.msg)')
+        if not paths:
+            return
+        self._set_busy(syncing=True)
+        self._set_status(f'导入 .msg... (0/{len(paths)})', 'darkcyan')
+        self._import_msg_batch(paths, 0, 0, 0)
+
+    def _import_msg_batch(self, paths, offset, success, failed):
+        BATCH = 5
+        if offset >= len(paths):
+            self._set_status(
+                f'导入完成：{len(paths)} 个，成功 {success}，失败 {failed}',
+                'red' if failed else 'green')
+            self._set_busy()
+            self._do_refresh()
+            return
+
+        self._set_status(f'导入 .msg... ({offset}/{len(paths)})', 'darkcyan')
+        chunk    = paths[offset:offset + BATCH]
+        img_api  = self._settings.get('backendUrl', '')
+        settings = self._settings
+
+        def _work():
+            s = f = 0
+            for p in chunk:
+                try:
+                    item = outlook.msg_get(p, img_api)
+                    extra = {}
+                    try: extra = json.loads(settings.get('customJsonConfig', '{}'))
+                    except Exception: pass
+                    backend.receive_email({
+                        'EmailId':           item['item_id'],
+                        'ConversationTopic': item.get('conversation_topic', ''),
+                        'Subject':           item.get('subject', ''),
+                        'SenderName':        item.get('sender_name', ''),
+                        'SenderEmail':       item.get('sender_email', ''),
+                        'ReceivedTime':      item.get('received_time', ''),
+                        'HtmlBody':          item.get('html_body', ''),
+                        'MatchedRuleName':   '手动导入',
+                        'UserId':            settings.get('userId', ''),
+                        'Namespace':         settings.get('namespace', ''),
+                        'ExtraInfo':         extra,
+                        'Force':             False,
+                    })
+                    s += 1
+                except Exception:
+                    f += 1
+            return s, f
+
+        def _done(res):
+            s, f = res
+            self._import_msg_batch(paths, offset + BATCH, success + s, failed + f)
+
+        def _fail(_msg):
+            self._import_msg_batch(paths, offset + BATCH, success, failed + len(chunk))
+
+        w = Worker(_work)
+        w.ok.connect(_done)
+        w.err.connect(_fail)
+        w.start()
+        self._workers.append(w)
 
     def _start_sync(self, force: bool):
         if self._loading or self._syncing:
