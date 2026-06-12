@@ -2,7 +2,8 @@
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QStackedWidget, QSizePolicy,
-    QSystemTrayIcon, QMenu, QAction, QApplication
+    QSystemTrayIcon, QMenu, QAction, QApplication,
+    QDialog, QFormLayout, QLineEdit, QDialogButtonBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QPixmap, QPainter
@@ -34,9 +35,46 @@ def _app_icon() -> QIcon:
 
 from modules.email.panel import EmailPanel
 from modules.welink.container import WelinkContainer
-from modules.email.dialogs import SetupDialog
 import store
 import backend
+
+
+class OfflineSetupDialog(QDialog):
+    def __init__(self, settings: dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('离线版初始化配置')
+        self.setFixedWidth(360)
+        self._s = dict(settings)
+
+        self._user_id = QLineEdit(self._s.get('userId', ''))
+        self._user_id.setPlaceholderText('本地工号或用户名')
+        self._namespace = QLineEdit(self._s.get('namespace', 'local') or 'local')
+
+        form = QFormLayout()
+        form.addRow('工号/用户:', self._user_id)
+        form.addRow('本地命名空间:', self._namespace)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Save)
+        btns.button(QDialogButtonBox.Save).setText('保存')
+        btns.accepted.connect(self._save)
+        btns.rejected.connect(self.reject)
+
+        lay = QVBoxLayout(self)
+        lay.addLayout(form)
+        lay.addWidget(btns)
+
+    def _save(self):
+        user_id = self._user_id.text().strip()
+        if not user_id:
+            self._user_id.setFocus()
+            return
+        self._s['backendUrl'] = ''
+        self._s['userId'] = user_id
+        self._s['namespace'] = self._namespace.text().strip() or 'local'
+        self.accept()
+
+    def get_settings(self) -> dict:
+        return self._s
 
 # ── 样式表 ────────────────────────────────────────────────
 QSS = """
@@ -299,7 +337,7 @@ class MainShell(QMainWindow):
         if self._setup_dlg and self._setup_dlg.isVisible():
             self._setup_dlg.raise_()
             return
-        dlg = SetupDialog(s, parent=self)
+        dlg = OfflineSetupDialog(s, parent=self)
         dlg.accepted.connect(lambda: self._on_setup_accepted(dlg))
         dlg.show()
         self._setup_dlg = dlg
@@ -307,16 +345,16 @@ class MainShell(QMainWindow):
     def _on_setup_accepted(self, dlg):
         s = dlg.get_settings()
         store.save_settings(s)
-        backend.set_base(s['backendUrl'])
+        backend.set_base(s.get('backendUrl', ''))
         self._notify_settings_changed(s)
 
     def _open_settings(self):
         s = store.load_settings()
-        dlg = SetupDialog(s, parent=self)
-        if dlg.exec_() == SetupDialog.Accepted:
+        dlg = OfflineSetupDialog(s, parent=self)
+        if dlg.exec_() == OfflineSetupDialog.Accepted:
             s = dlg.get_settings()
             store.save_settings(s)
-            backend.set_base(s['backendUrl'])
+            backend.set_base(s.get('backendUrl', ''))
             self._notify_settings_changed(s)
 
     def _notify_settings_changed(self, s: dict):
