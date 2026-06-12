@@ -1,0 +1,600 @@
+"""WeLink 群聊录制监听线程"""
+import json
+import subprocess
+import sys
+import time
+from datetime import datetime
+from html import escape
+from pathlib import Path
+
+import requests
+import urllib3
+
+urllib3.disable_warnings()
+
+import backend
+import local_archive
+from PyQt5.QtCore import QThread, pyqtSignal
+
+
+def _app_dir() -> Path:
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent.parent.parent
+
+
+_STATE_FILE   = _app_dir() / '.welink_last_ids.json'
+_SESSION_FILE = _app_dir() / '.welink_sessions.json'
+
+# Windows 下隐藏 subprocess 弹出的黑框
+_STARTUPINFO = None
+if sys.platform == 'win32':
+    _STARTUPINFO = subprocess.STARTUPINFO()
+    _STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+
+def _run_cli(args: list):
+    """返回 (parsed_json_or_None, error_str_or_None)"""
+    try:
+        r = subprocess.run(
+            ['welink-cli'] + args,
+            capture_output=True, text=True,
+            encoding='utf-8', errors='ignore',
+            timeout=30,
+            startupinfo=_STARTUPINFO,
+        )
+        out = r.stdout.strip()
+        if not out:
+            stderr = r.stderr.strip()[:200] if r.stderr else '(无输出)'
+            return None, f'CLI 无输出 (stderr: {stderr})'
+        return json.loads(out), None
+    except json.JSONDecodeError as e:
+        return None, f'JSON解析失败: {e}'
+    except Exception as e:
+        return None, str(e)
+
+
+def _get_messages(group_id: str, count: int = 20):
+    """返回 (messages: list, error: str | None)"""
+    d, err = _run_cli(['im', 'query-history-message',
+                       '--group-id', group_id, '--query-count', str(count)])
+    if err:
+        return [], err
+    if not d:
+        return [], 'CLI 无返回'
+    if d.get('resultCode') != '0':
+        return [], f'resultCode={d.get("resultCode")} context={d.get("resultContext", "")}'
+    return d.get('respData', {}).get('chatInfo', []), None
+
+
+def _load(path: Path, default):
+    try:
+        if path.exists():
+            return json.loads(path.read_text('utf-8'))
+    except Exception:
+        pass
+    return default
+
+
+def _save(path: Path, obj):
+    try:
+        path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), 'utf-8')
+    except Exception:
+        pass
+
+
+def _normalize(text: str) -> str:
+    """WeLink @提及后跟的 Unicode 空格（如 ）归一化为普通空格。"""
+    for cp in (
+        ' ', ' ', ' ', ' ', ' ', ' ',
+        ' ', ' ', ' ', ' ', ' ', ' ',
+        ' ', ' ', ' ', '　',
+    ):
+        text = text.replace(cp, ' ')
+    return text
+
+
+
+def _parse_summary_cmd(prefix: str, norm: str):
+    """解析总结命令参数：
+      4 params: 名1 工号1 YYYY-MM-DD HH:MM          → 结束点为总结命令本身
+      8 params: 名1 工号1 date time 名2 工号2 date time → 自动容错顺序写反
+    返回 (name1, id1, dt1, name2_or_None, id2_or_None, dt2_or_None) 或 None。"""
+    if prefix not in norm:
+        return None
+    rest = norm[norm.index(prefix) + len(prefix):].strip()
+    parts = rest.split()
+    try:
+        if len(parts) >= 8:
+            dt_a = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
+            dt_b = datetime.strptime(f'{parts[6]} {parts[7]}', '%Y-%m-%d %H:%M')
+            if dt_a <= dt_b:
+                return parts[0], parts[1], dt_a, parts[4], parts[5], dt_b
+            else:
+                return parts[4], parts[5], dt_b, parts[0], parts[1], dt_a
+        elif len(parts) >= 4:
+            dt_a = datetime.strptime(f'{parts[2]} {parts[3]}', '%Y-%m-%d %H:%M')
+            return parts[0], parts[1], dt_a, None, None, None
+    except ValueError:
+        pass
+    return None
+
+
+def _parse_um_content(content: str):
+    """解析 /:um_begin{URL|Type|Size|FileName|0|W;H;extraction_code|...}/:um_end
+    返回 (download_url, file_name, extraction_code) 或 (None, None, None)"""
+    prefix, suffix = '/:um_begin{', '}/:um_end'
+    if not (content.startswith(prefix) and content.endswith(suffix)):
+        return None, None, None
+    inner = content[len(prefix):-len(suffix)]
+    parts = inner.split('|')
+    if len(parts) < 6:
+        return None, None, None
+    download_url = parts[0]
+    file_name    = parts[3]
+    field5       = parts[5].split(';')
+    extraction_code = field5[2] if len(field5) > 2 else ''
+    return download_url, file_name, extraction_code
+
+
+def _one_box_download(download_url: str, extraction_code: str):
+    """从 onebox/clouddrive 下载文件，返回 (bytes_or_None, error_str_or_None)"""
+    try:
+        r = requests.get(download_url,
+                         params={'extractionCode': extraction_code},
+                         timeout=30, verify=False)
+        if r.ok and r.content:
+            return r.content, None
+        return None, f'HTTP {r.status_code}'
+    except Exception as e:
+        return None, str(e)
+
+
+def _msgs_to_html(msgs: list) -> str:
+    def fmt(ms):
+        return datetime.fromtimestamp(ms / 1000).strftime('%Y-%m-%d %H:%M:%S') if ms else ''
+
+    rows = []
+    for m in msgs:
+        sender = escape(m.get('sender', ''))
+        ct     = m.get('contentType', '')
+        raw    = m.get('content', '')
+        t      = fmt(m.get('serverSendTime', 0))
+
+        if ct in ('PICTURE_MSG', 'FILE_MSG'):
+            img_url  = m.get('_img_url')
+            img_name = escape(m.get('_img_name', ''))
+            if ct == 'PICTURE_MSG' and img_url:
+                body = (f'<img src="{img_url}" style="max-width:480px;display:block">'
+                        f'<small style="color:#888">{img_name}</small>')
+            elif ct == 'FILE_MSG' and img_url:
+                body = f'<a href="{img_url}">[文件] {img_name}</a>'
+            else:
+                body = f'<em>[{"图片" if ct == "PICTURE_MSG" else "文件"}] {img_name}</em>'
+        elif ct == 'CARD_MSG':
+            body = '<em>[卡片消息]</em>'
+        elif ct == 'NOTICE_MSG':
+            body = f'<em>[系统通知] {escape(raw)}</em>'
+        else:
+            body = raw if raw.strip().startswith('<') else escape(raw).replace('\n', '<br>')
+
+        rows.append(
+            f'<div style="margin:6px 0;padding:6px 10px;background:#f5f5f5;border-radius:4px;">'
+            f'<span style="font-weight:bold;color:#1a73e8">{sender}</span>'
+            f'<span style="font-size:11px;color:#aaa;margin-left:8px">{t}</span>'
+            f'<div style="margin-top:4px">{body}</div></div>'
+        )
+
+    return (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        '<style>body{font-family:Arial,sans-serif;font-size:13px;color:#222;'
+        'max-width:860px;margin:20px auto;padding:0 16px}</style></head><body>'
+        + ''.join(rows)
+        + '</body></html>'
+    )
+
+
+class WelinkMonitor(QThread):
+    log_signal      = pyqtSignal(str)
+    uploaded_signal = pyqtSignal(dict)
+
+    def __init__(self, backend_base: str, start_cmd: str, end_cmd: str,
+                 summary_cmd: str, user_id: str, poll_interval: int = 3):
+        super().__init__()
+        self._backend_base  = backend_base.rstrip('/')
+        self._start_cmd     = start_cmd
+        self._end_cmd       = end_cmd
+        self._summary_cmd   = summary_cmd
+        self._user_id       = user_id
+        self._poll_interval = max(1, poll_interval)
+        self._running       = False
+
+    def stop(self):
+        self._running = False
+
+    def run(self):
+        self._running = True
+        self._log('WeLink 监听已启动')
+
+        last_ids:  dict = _load(_STATE_FILE, {})
+        recording: dict = _load(_SESSION_FILE, {})
+
+        rules_cache: list = []
+        rules_ts = 0.0
+
+        while self._running:
+            try:
+                now = time.time()
+                if now - rules_ts > 60:
+                    rules_cache = self._fetch_rules()
+                    rules_ts    = now
+                    if rules_cache:
+                        names = ', '.join(r.get('group_name') or r['group_id'] for r in rules_cache)
+                        self._log(f'已加载 {len(rules_cache)} 条规则: {names}')
+                    else:
+                        self._log('未找到启用的群聊规则，请在规则列表中添加')
+
+                for rule in rules_cache:
+                    if not self._running:
+                        break
+                    group_id   = str(rule['group_id'])
+                    group_name = rule.get('group_name') or group_id
+
+                    msgs, err = _get_messages(group_id, 20)
+                    if err:
+                        if '429' in err:
+                            time.sleep(5)  # 限流，等待后继续
+                        else:
+                            self._log(f'[{group_name}] 拉取消息失败: {err}')
+                        continue
+                    if not msgs:
+                        continue
+
+                    last_seen = last_ids.get(group_id)
+                    new_count = sum(1 for m in msgs if m.get('msgId') and int(m['msgId']) > (last_seen or 0))
+                    self._log(f'[{group_name}] 拉取 {len(msgs)} 条，last_seen={last_seen}，新消息 {new_count} 条')
+
+                    for msg in reversed(msgs):  # oldest first
+                        msg_id = msg.get('msgId')
+                        if msg_id is None:
+                            continue
+                        msg_id = int(msg_id)
+
+                        if last_seen is None:
+                            last_ids[group_id] = msg_id
+                            _save(_STATE_FILE, last_ids)
+                            break
+
+                        if msg_id <= last_seen:
+                            continue
+
+                        content = msg.get('content', '')
+                        norm = _normalize(content)
+
+                        if self._start_cmd in norm:
+                            recording[group_id] = {
+                                'start_msg_id': msg_id,
+                                'start_time':   msg.get('serverSendTime', 0),
+                                'group_name':   group_name,
+                            }
+                            _save(_SESSION_FILE, recording)
+                            self._log(f'[{group_name}] 开始录制 (msgId={msg_id})')
+
+                        elif self._end_cmd in norm and group_id in recording:
+                            rec = recording.pop(group_id)
+                            _save(_SESSION_FILE, recording)
+                            self._log(f'[{group_name}] 结束录制，正在上传…')
+                            self._finish(group_id, group_name, rec,
+                                         msg_id, msg.get('serverSendTime', 0))
+
+                        elif self._summary_cmd and self._summary_cmd in norm:
+                            parsed = _parse_summary_cmd(self._summary_cmd, norm)
+                            if parsed:
+                                sn, si, s_dt, en, ei, e_dt = parsed
+                                self._log(f'[{group_name}] 收到总结命令，定位消息范围…')
+                                self._finish_summary(
+                                    group_id, group_name,
+                                    msg_id, msg.get('serverSendTime', 0),
+                                    sn, si, s_dt, en, ei, e_dt,
+                                )
+                            else:
+                                self._log(
+                                    f'[{group_name}] 总结命令格式错误，期望: '
+                                    f'{self._summary_cmd} 张三 00123456 2026-01-01 00:00 李四 0054321 2026-01-01 01:00'
+                                )
+
+                        last_ids[group_id] = msg_id
+                        _save(_STATE_FILE, last_ids)
+
+            except Exception as e:
+                self._log(f'轮询异常: {e}')
+
+            time.sleep(self._poll_interval)
+
+        self._log('WeLink 监听已停止')
+
+    # ── finish recording ──────────────────────────────────────────
+
+    def _finish(self, group_id: str, group_name: str, rec: dict,
+                end_msg_id: int, end_time: int):
+        start_msg_id = rec['start_msg_id']
+        start_time   = rec['start_time']
+
+        # welink-cli 单次最多支持 100 条，分两次取保险
+        all_msgs, err = _get_messages(group_id, 100)
+        if err:
+            self._log(f'[{group_name}] 获取消息失败: {err}，放弃上传')
+            return
+        if not all_msgs:
+            self._log(f'[{group_name}] 获取到 0 条消息，放弃上传')
+            return
+
+        in_range = [
+            m for m in all_msgs
+            if start_msg_id <= int(m.get('msgId', 0)) <= end_msg_id
+        ]
+        in_range.sort(key=lambda m: m.get('serverSendTime', 0))
+
+        self._log(f'[{group_name}] 共拉取 {len(all_msgs)} 条，范围内 {len(in_range)} 条')
+        self._enrich_images(in_range, group_name)
+
+        chat_id = f'{group_id}_{start_msg_id}'
+        self._upload_chatlog(chat_id, group_id, group_name,
+                             start_time, end_time, in_range)
+
+    # ── finish summary ────────────────────────────────────────────
+
+    def _finish_summary(self, group_id: str, group_name: str,
+                        summary_msg_id: int, summary_time: int,
+                        start_name: str, start_id: str, start_dt: datetime,
+                        end_name: str, end_id: str, end_dt: datetime):
+        all_msgs, err = _get_messages(group_id, 100)
+        if err or not all_msgs:
+            self._log(f'[{group_name}] 获取消息失败: {err}，放弃总结')
+            return
+
+        sorted_msgs = sorted(all_msgs, key=lambda x: x.get('serverSendTime', 0))
+
+        def find_msg(name, eid, dt):
+            ms = int(dt.timestamp() * 1000)
+            for m in sorted_msgs:
+                if ms <= m.get('serverSendTime', 0) < ms + 60_000:
+                    sender = m.get('sender', '')
+                    if eid in sender or sender in eid:
+                        return m
+            return None
+
+        start_msg = find_msg(start_name, start_id, start_dt)
+        if start_msg is None:
+            self._log(f'[{group_name}] 未找到起始消息: {start_name}/{start_id} {start_dt.strftime("%H:%M")}')
+            return
+
+        if end_name and end_dt:
+            end_msg = find_msg(end_name, end_id, end_dt)
+            if end_msg is None:
+                self._log(f'[{group_name}] 未找到结束消息: {end_name}/{end_id} {end_dt.strftime("%H:%M")}，将截取至总结命令前')
+        else:
+            end_msg = None
+
+        start_msg_id    = int(start_msg.get('msgId', 0))
+        end_msg_id      = int(end_msg.get('msgId', 0)) if end_msg else summary_msg_id - 1
+        actual_end_time = end_msg.get('serverSendTime', 0) if end_msg else summary_time
+
+        in_range = [
+            m for m in all_msgs
+            if start_msg_id <= int(m.get('msgId', 0)) <= end_msg_id
+        ]
+        in_range.sort(key=lambda m: m.get('serverSendTime', 0))
+        self._log(f'[{group_name}] 总结范围 {len(in_range)} 条，正在上传…')
+        self._enrich_images(in_range, group_name)
+
+        chat_id = f'{group_id}_{start_msg_id}_s'
+        self._upload_chatlog(chat_id, group_id, group_name,
+                             start_msg.get('serverSendTime', 0), actual_end_time, in_range)
+
+    # ── helpers ───────────────────────────────────────────────────
+
+    def _enrich_images(self, msgs: list, group_name: str):
+        _enrich_images_inplace(msgs, self._backend_base, self._log)
+
+    def _upload_chatlog(self, chat_id: str, group_id: str, group_name: str,
+                        start_time: int, end_time: int, msgs: list):
+        html_body = _msgs_to_html(msgs)
+        try:
+            result = backend.receive_welink_chatlog({
+                'ChatId':       chat_id,
+                'GroupId':      group_id,
+                'GroupName':    group_name,
+                'StartTime':    start_time,
+                'EndTime':      end_time,
+                'HtmlBody':     html_body,
+                'MarkdownBody': local_archive.html_to_markdown(html_body),
+                'UploadBy':     self._user_id,
+            })
+            dup = result.get('Duplicate', False)
+            if dup:
+                self._log(f'[{group_name}] 已存在，跳过')
+            else:
+                self._log(f'[{group_name}] 上传成功 ({len(msgs)} 条)')
+            self.uploaded_signal.emit({
+                'group_name': group_name,
+                'chat_id':    chat_id,
+                'count':      len(msgs),
+                'duplicate':  dup,
+            })
+        except Exception as e:
+            self._log(f'[{group_name}] 上传失败: {e}')
+
+    def _upload_image(self, file_bytes: bytes, file_name: str):
+        try:
+            r = requests.post(
+                f'{self._backend_base}/api/email/upload_image',
+                files={'file': (file_name, file_bytes)},
+                data={'filename': file_name},
+                timeout=30, verify=False,
+            )
+            r.raise_for_status()
+            return r.json().get('Url')
+        except Exception:
+            return None
+
+    def _fetch_rules(self) -> list:
+        try:
+            return [row for row in backend.get_welink_rules() if row.get('enabled', True)]
+        except Exception as e:
+            self._log(f'获取规则失败: {e}')
+            return []
+
+    def _log(self, msg: str):
+        ts = datetime.now().strftime('%H:%M:%S')
+        self.log_signal.emit(f'[{ts}] {msg}')
+
+
+# ── 模块级共享工具 ────────────────────────────────────────────────
+
+def _enrich_images_inplace(msgs: list, backend_base: str, log_fn) -> None:
+    """通过后端代理下载图片并上传，写入公开 URL 供 HTML 渲染。"""
+    for m in msgs:
+        ct = m.get('contentType', '')
+        if ct in ('PICTURE_MSG', 'FILE_MSG'):
+            raw = m.get('content', '')
+            dl_url, fname, extraction_code = _parse_um_content(raw)
+            if dl_url and fname:
+                m['_img_name'] = fname
+                data, err = _one_box_download(dl_url, extraction_code)
+                if err:
+                    log_fn(f'  image download failed: {fname} ({err})')
+                    continue
+                url = backend.upload_image(data, fname)
+                if url:
+                    m['_img_url'] = url
+                else:
+                    log_fn(f'  image upload failed: {fname}')
+                continue
+                try:
+                    resp = requests.post(
+                        f'{backend_base}/api/image/proxy',
+                        json={
+                            'download_url':    dl_url,
+                            'extraction_code': extraction_code,
+                            'file_name':       fname,
+                        },
+                        timeout=60,
+                        verify=False,
+                    )
+                    data = resp.json()
+                    if data.get('success') and data.get('url'):
+                        m['_img_url'] = data['url']
+                    else:
+                        log_fn(f'  图片下载失败: {fname} ({data.get("message")})')
+                except Exception as e:
+                    log_fn(f'  图片请求失败: {fname} ({e})')
+
+
+# ── 按天自动归档 Worker ───────────────────────────────────────────
+
+class WelinkDailyWorker(QThread):
+    log_signal = pyqtSignal(str)
+
+    def __init__(self, backend_base: str, user_id: str, date_str: str):
+        super().__init__()
+        self._backend_base = backend_base.rstrip('/')
+        self._user_id      = user_id
+        self._date_str     = date_str
+
+    def run(self):
+        self._log(f'按天记录开始: {self._date_str}')
+        try:
+            day_start_ms, day_end_ms = self._day_range_ms(self._date_str)
+            rules = self._fetch_rules()
+            if not rules:
+                self._log('未找到群聊规则，按天记录跳过')
+                return
+            for rule in rules:
+                self._process_group(rule, day_start_ms, day_end_ms)
+        except Exception as e:
+            self._log(f'按天记录异常: {e}')
+        self._log(f'按天记录完成: {self._date_str}')
+
+    def _day_range_ms(self, date_str: str):
+        from datetime import datetime, timedelta
+        day_start = datetime.strptime(date_str, '%Y-%m-%d')
+        day_end   = day_start + timedelta(days=1)
+        return int(day_start.timestamp() * 1000), int(day_end.timestamp() * 1000)
+
+    def _process_group(self, rule: dict, day_start_ms: int, day_end_ms: int):
+        group_id   = str(rule['group_id'])
+        group_name = rule.get('group_name') or group_id
+
+        msgs, err = _get_messages(group_id, 100)
+        if err or not msgs:
+            self._log(f'[{group_name}] 获取消息失败: {err}，跳过')
+            return
+
+        day_msgs = [
+            m for m in msgs
+            if day_start_ms <= m.get('serverSendTime', 0) < day_end_ms
+        ]
+        if not day_msgs:
+            self._log(f'[{group_name}] {self._date_str} 无消息，跳过')
+            return
+
+        day_msgs.sort(key=lambda m: m.get('serverSendTime', 0))
+        self._log(f'[{group_name}] {self._date_str} 共 {len(day_msgs)} 条，正在处理图片并上传...')
+        _enrich_images_inplace(day_msgs, self._backend_base, self._log)
+
+        chat_id    = f'{group_id}_{self._date_str}_daily'
+        start_time = day_msgs[0].get('serverSendTime', 0)
+        end_time   = day_msgs[-1].get('serverSendTime', 0)
+        html_body  = _msgs_to_html(day_msgs)
+
+        try:
+            result = backend.receive_welink_chatlog({
+                'ChatId':       chat_id,
+                'GroupId':      group_id,
+                'GroupName':    group_name,
+                'StartTime':    start_time,
+                'EndTime':      end_time,
+                'HtmlBody':     html_body,
+                'MarkdownBody': local_archive.html_to_markdown(html_body),
+                'UploadBy':     self._user_id,
+                'IsDaily':      True,
+            })
+            if result.get('Duplicate'):
+                self._log(f'[{group_name}] local daily record already exists')
+            else:
+                self._log(f'[{group_name}] local daily record saved ({len(day_msgs)})')
+            return
+            r = requests.post(
+                f'{self._backend_base}/api/welink/receive',
+                json={
+                    'ChatId':    chat_id,
+                    'GroupId':   group_id,
+                    'GroupName': group_name,
+                    'StartTime': start_time,
+                    'EndTime':   end_time,
+                    'HtmlBody':  html_body,
+                    'UploadBy':  self._user_id,
+                    'IsDaily':   True,
+                },
+                timeout=60, verify=False,
+            )
+            r.raise_for_status()
+            result = r.json()
+            if result.get('Duplicate'):
+                self._log(f'[{group_name}] 今日记录已存在，跳过')
+            else:
+                self._log(f'[{group_name}] 按天记录上传成功 ({len(day_msgs)} 条)')
+        except Exception as e:
+            self._log(f'[{group_name}] 按天记录上传失败: {e}')
+
+    def _fetch_rules(self) -> list:
+        try:
+            return [row for row in backend.get_welink_rules() if row.get('enabled', True)]
+        except Exception as e:
+            self._log(f'获取规则失败: {e}')
+            return []
+
+    def _log(self, msg: str):
+        ts = datetime.now().strftime('%H:%M:%S')
+        self.log_signal.emit(f'[{ts}] {msg}')
