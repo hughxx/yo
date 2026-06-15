@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/* Tailwind v4 主题（CSS-first 配置） */
+@theme {
+  --color-brand: #008c64;
+  --color-brand-fg: #ffffff;
+  --color-danger: #b71c1c;
+  --font-sans: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  color: #222;
+  background: #f5f6f8;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 允许在输入框/正文预览里选择文本 */
+input,
+textarea,
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}

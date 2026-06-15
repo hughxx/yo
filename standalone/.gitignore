@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+
+# tauri / rust
+src-tauri/target/
+src-tauri/gen/
+
+# python sidecar build
+sidecar/outlook_cli/build/
+sidecar/outlook_cli/dist/
+sidecar/outlook_cli/__pycache__/
+*.spec
+
+# scratch / 验证用临时 crate
+scratch/
+
+# misc
+*.log
+src-tauri/test_out.txt
+.DS_Store
+next-env.d.ts

@@ -1,0 +1,60 @@
+$brand: #008c64;
+$border: #e3e5e9;
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px 0;
+  background: #fff;
+  border-bottom: 1px solid $border;
+
+  .tab {
+    padding: 8px 16px;
+    font-size: 14px;
+    color: #555;
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+
+    &:hover {
+      color: $brand;
+    }
+
+    &.active {
+      color: $brand;
+      font-weight: 600;
+      background: #f5f6f8;
+      border-color: $border;
+    }
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .title {
+    font-size: 12px;
+    color: #aaa;
+  }
+}
+
+.body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+.placeholder {
+  color: #888;
+  font-size: 13px;
+  line-height: 1.8;
+}

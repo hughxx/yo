@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "默认能力集",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "dialog:default",
+    "fs:default",
+    "os:default",
+    "notification:default",
+    "clipboard-manager:default",
+    "shell:default"
+  ]
+}
