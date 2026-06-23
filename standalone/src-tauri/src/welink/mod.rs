@@ -1,7 +1,9 @@
 //! WeLink 流：轮询 → 命令录制 / 按天归档 → HTML/MD → 落盘（DESIGN.md §5.2）。
 //! 移植自旧 pyqt_client/modules/welink/monitor.py，去掉服务器上传，改为本地落盘。
 
+mod chatlog;
 mod cli;
+pub mod collect;
 mod image;
 mod render;
 
@@ -12,12 +14,13 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use chrono::{Local, NaiveDate, TimeZone, Timelike};
+use chrono::{Local, TimeZone};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
 use crate::events::emit_log;
+use crate::images::process_email_html;
 use crate::settings::{Settings, SettingsState};
 use crate::{htmlmd, output};
 
@@ -72,11 +75,13 @@ fn normalize(text: &str) -> String {
     s
 }
 
-struct SummaryArgs {
-    name1: String,
-    id1: String,
-    dt1_ms: i64,
-    end: Option<(String, String, i64)>,
+enum SummaryMode {
+    /// 用法③：不带时间 → 截止 = 这条总结命令自己的时间
+    ToNow,
+    /// 用法①：一个时间 → 截止 = 指定消息的时间
+    ToMessage { id: String, dt_ms: i64 },
+    /// 用法②：两个时间 → 显式区间
+    Range { start_id: String, start_dt: i64, end_id: String, end_dt: i64 },
 }
 
 fn local_ms(date: &str, time: &str) -> Option<i64> {
@@ -84,31 +89,48 @@ fn local_ms(date: &str, time: &str) -> Option<i64> {
     Local.from_local_datetime(&dt).single().map(|d| d.timestamp_millis())
 }
 
-/// 解析总结命令：4 段（单点）或 8 段（区间，自动容错顺序）。
-fn parse_summary_cmd(prefix: &str, norm: &str) -> Option<SummaryArgs> {
-    let idx = norm.find(prefix)?;
+/// 解析总结命令：8 段（区间）/ 4 段（单点）/ 其余（无时间，截止到命令本身）。
+fn parse_summary_cmd(prefix: &str, norm: &str) -> SummaryMode {
+    let Some(idx) = norm.find(prefix) else {
+        return SummaryMode::ToNow;
+    };
     let rest = norm[idx + prefix.len()..].trim();
     let parts: Vec<&str> = rest.split_whitespace().collect();
+
     if parts.len() >= 8 {
-        let a = local_ms(parts[2], parts[3])?;
-        let b = local_ms(parts[6], parts[7])?;
-        if a <= b {
-            Some(SummaryArgs {
-                name1: parts[0].into(), id1: parts[1].into(), dt1_ms: a,
-                end: Some((parts[4].into(), parts[5].into(), b)),
-            })
-        } else {
-            Some(SummaryArgs {
-                name1: parts[4].into(), id1: parts[5].into(), dt1_ms: b,
-                end: Some((parts[0].into(), parts[1].into(), a)),
-            })
+        if let (Some(a), Some(b)) = (local_ms(parts[2], parts[3]), local_ms(parts[6], parts[7])) {
+            // 自动容错顺序写反
+            let (sid, sdt, eid, edt) = if a <= b {
+                (parts[1], a, parts[5], b)
+            } else {
+                (parts[5], b, parts[1], a)
+            };
+            return SummaryMode::Range {
+                start_id: sid.into(),
+                start_dt: sdt,
+                end_id: eid.into(),
+                end_dt: edt,
+            };
         }
-    } else if parts.len() >= 4 {
-        let a = local_ms(parts[2], parts[3])?;
-        Some(SummaryArgs { name1: parts[0].into(), id1: parts[1].into(), dt1_ms: a, end: None })
-    } else {
-        None
     }
+    if parts.len() >= 4 {
+        if let Some(a) = local_ms(parts[2], parts[3]) {
+            return SummaryMode::ToMessage { id: parts[1].into(), dt_ms: a };
+        }
+    }
+    SummaryMode::ToNow
+}
+
+/// 该消息是否为系统命令（开始/结束/总结），抓取时应剔除。
+fn is_system_cmd(settings: &Settings, content: &str) -> bool {
+    let n = normalize(content);
+    [
+        &settings.welink_start_cmd,
+        &settings.welink_end_cmd,
+        &settings.welink_summary_cmd,
+    ]
+    .iter()
+    .any(|c| !c.is_empty() && n.contains(c.as_str()))
 }
 
 // ── 持久化状态 ──────────────────────────────────────────────
@@ -126,13 +148,11 @@ struct WelinkState {
     last_ids: HashMap<String, i64>,
     #[serde(default)]
     sessions: HashMap<String, Session>,
-    /// 手动录制的时间区间（毫秒），按天归档时据此剔除已覆盖片段。
+    /// 每群「上次抓取结束点」时间戳（毫秒）。开始/结束、总结(一个时间)、总结(两个时间)三种都更新它。
     #[serde(default)]
-    manual_intervals: HashMap<String, Vec<(i64, i64)>>,
+    last_captured: HashMap<String, i64>,
     #[serde(default)]
     saved_chat_ids: HashSet<String>,
-    #[serde(default)]
-    last_daily_date: String,
 }
 
 fn state_path(app: &AppHandle) -> Option<PathBuf> {
@@ -221,11 +241,6 @@ fn monitor_loop(app: AppHandle, stop: Arc<AtomicBool>) {
     while !stop.load(Ordering::SeqCst) {
         let settings = current_settings(&app);
 
-        // 按天归档触发检查
-        if settings.welink_daily_record {
-            maybe_run_daily(&app, &settings, &mut st);
-        }
-
         let groups: Vec<_> = settings.welink_groups.iter().filter(|g| g.enabled).collect();
         for g in &groups {
             if stop.load(Ordering::SeqCst) {
@@ -288,13 +303,9 @@ fn poll_group(app: &AppHandle, settings: &Settings, group_id: &str, group_name: 
             emit_log(app, format!("[{group_name}] 结束录制，正在导出…"));
             finish(app, settings, group_id, group_name, &rec, msg_id, m.server_send_time, st);
         } else if !settings.welink_summary_cmd.is_empty() && norm.contains(&settings.welink_summary_cmd) {
-            match parse_summary_cmd(&settings.welink_summary_cmd, &norm) {
-                Some(sa) => {
-                    emit_log(app, format!("[{group_name}] 收到总结命令，定位范围…"));
-                    finish_summary(app, settings, group_id, group_name, msg_id, m.server_send_time, &sa, st);
-                }
-                None => emit_log(app, format!("[{group_name}] 总结命令格式错误")),
-            }
+            let mode = parse_summary_cmd(&settings.welink_summary_cmd, &norm);
+            emit_log(app, format!("[{group_name}] 收到总结命令，定位范围…"));
+            finish_summary(app, settings, group_id, group_name, msg_id, m.server_send_time, mode, st);
         }
 
         st.last_ids.insert(group_id.to_string(), msg_id);
@@ -319,18 +330,18 @@ fn finish(app: &AppHandle, settings: &Settings, group_id: &str, group_name: &str
     let mut in_range: Vec<WlMessage> = all.into_iter()
         .filter(|m| rec.start_msg_id <= m.msg_id && m.msg_id <= end_msg_id)
         .collect();
+    // ③ 剔除开始/结束/总结等系统命令，只保留核心记录
+    in_range.retain(|m| !is_system_cmd(settings, &m.content));
     in_range.sort_by_key(|m| m.server_send_time);
 
     let chat_id = format!("{group_id}_{}", rec.start_msg_id);
-    // 记录手动区间供按天归档剔除
-    st.manual_intervals.entry(group_id.to_string()).or_default()
-        .push((rec.start_time, end_time));
-
     save_chatlog(app, settings, group_name, &chat_id, rec.start_time, &mut in_range, st);
+    // 更新「上次抓取点」
+    st.last_captured.insert(group_id.to_string(), end_time);
 }
 
 fn finish_summary(app: &AppHandle, settings: &Settings, group_id: &str, group_name: &str,
-                  summary_msg_id: i64, summary_time: i64, sa: &SummaryArgs, st: &mut WelinkState) {
+                  _summary_msg_id: i64, summary_time: i64, mode: SummaryMode, st: &mut WelinkState) {
     let all = fetch_100(settings, group_id);
     if all.is_empty() {
         emit_log(app, format!("[{group_name}] 获取消息失败，放弃总结"));
@@ -339,126 +350,108 @@ fn finish_summary(app: &AppHandle, settings: &Settings, group_id: &str, group_na
     let mut sorted = all.clone();
     sorted.sort_by_key(|m| m.server_send_time);
 
-    let find = |name_id: &str, dt_ms: i64| -> Option<&WlMessage> {
+    let find = |id: &str, dt_ms: i64| -> Option<&WlMessage> {
         sorted.iter().find(|m| {
             dt_ms <= m.server_send_time && m.server_send_time < dt_ms + 60_000
-                && (m.sender.contains(name_id) || name_id.contains(&m.sender))
+                && (m.sender.contains(id) || id.contains(&m.sender))
         })
     };
+    let last = st.last_captured.get(group_id).copied().unwrap_or(0);
+    // 抓「上次抓取点 → 截止」之间、未抓过的（用法① / ③ 共用）
+    let to_cutoff = |all: &[WlMessage], end_t: i64| -> (Vec<WlMessage>, i64) {
+        let r: Vec<WlMessage> = all
+            .iter()
+            .filter(|m| m.server_send_time > last && m.server_send_time <= end_t)
+            .cloned()
+            .collect();
+        let start_t = if last > 0 { last } else { r.first().map(|m| m.server_send_time).unwrap_or(end_t) };
+        (r, start_t)
+    };
 
-    let start_msg = match find(&sa.id1, sa.dt1_ms) {
-        Some(m) => m.clone(),
-        None => {
-            emit_log(app, format!("[{group_name}] 未找到起始消息 {}/{}", sa.name1, sa.id1));
-            return;
+    let (mut in_range, start_time, end_boundary): (Vec<WlMessage>, i64, i64) = match mode {
+        // 用法②（两个时间）：显式 起点消息 → 结束消息
+        SummaryMode::Range { start_id, start_dt, end_id, end_dt } => {
+            let Some(start_msg) = find(&start_id, start_dt).cloned() else {
+                emit_log(app, format!("[{group_name}] 未找到起始消息 {start_id}"));
+                return;
+            };
+            let (end_msg_id, end_t) = match find(&end_id, end_dt) {
+                Some(m) => (m.msg_id, m.server_send_time),
+                None => {
+                    emit_log(app, format!("[{group_name}] 未找到结束消息，截至总结命令"));
+                    (i64::MAX, summary_time)
+                }
+            };
+            let r: Vec<WlMessage> = all
+                .iter()
+                .filter(|m| start_msg.msg_id <= m.msg_id && m.msg_id <= end_msg_id)
+                .cloned()
+                .collect();
+            (r, start_msg.server_send_time, end_t)
+        }
+        // 用法①（一个时间）：截止 = 指定消息的时间
+        SummaryMode::ToMessage { id, dt_ms } => {
+            let Some(end_msg) = find(&id, dt_ms).cloned() else {
+                emit_log(app, format!("[{group_name}] 未找到消息 {id}"));
+                return;
+            };
+            let end_t = end_msg.server_send_time;
+            let (r, start_t) = to_cutoff(&all, end_t);
+            (r, start_t, end_t)
+        }
+        // 用法③（不带时间）：截止 = 这条总结命令自己的时间
+        SummaryMode::ToNow => {
+            let (r, start_t) = to_cutoff(&all, summary_time);
+            (r, start_t, summary_time)
         }
     };
 
-    let (end_msg_id, _end_time) = match &sa.end {
-        Some((_n, eid, dt_ms)) => match find(eid, *dt_ms) {
-            Some(m) => (m.msg_id, m.server_send_time),
-            None => {
-                emit_log(app, format!("[{group_name}] 未找到结束消息，截至总结命令前"));
-                (summary_msg_id - 1, summary_time)
-            }
-        },
-        None => (summary_msg_id - 1, summary_time),
-    };
-
-    let start_msg_id = start_msg.msg_id;
-    let mut in_range: Vec<WlMessage> = all.into_iter()
-        .filter(|m| start_msg_id <= m.msg_id && m.msg_id <= end_msg_id)
-        .collect();
+    // ③ 剔除系统命令消息，只保留核心记录
+    in_range.retain(|m| !is_system_cmd(settings, &m.content));
     in_range.sort_by_key(|m| m.server_send_time);
-
-    let chat_id = format!("{group_id}_{start_msg_id}_s");
-    save_chatlog(app, settings, group_name, &chat_id, start_msg.server_send_time, &mut in_range, st);
+    let chat_id = format!("{group_id}_{end_boundary}_s");
+    save_chatlog(app, settings, group_name, &chat_id, start_time, &mut in_range, st);
+    st.last_captured.insert(group_id.to_string(), end_boundary);
 }
 
-// ── 按天归档 ────────────────────────────────────────────────
+// ── 手动导入聊天记录（zip） ─────────────────────────────────
 
-fn maybe_run_daily(app: &AppHandle, settings: &Settings, st: &mut WelinkState) {
-    let now = Local::now();
-    let today = now.format("%Y-%m-%d").to_string();
-    if st.last_daily_date == today {
-        return;
+pub fn import_chatlog(
+    app: &AppHandle,
+    settings: &Settings,
+    zip_path: &str,
+    group_name: &str,
+) -> Result<String, String> {
+    if settings.output_dir.trim().is_empty() {
+        return Err("未设置输出目录".to_string());
     }
-    // 解析触发时间
-    let (hh, mm) = parse_hhmm(&settings.welink_daily_time);
-    if now.hour() < hh || (now.hour() == hh && now.minute() < mm) {
-        return; // 今天还没到触发时间
+    emit_log(app, format!("解析聊天记录: {zip_path}"));
+    let parsed = chatlog::parse_zip(zip_path)?;
+    if !parsed.summary.is_empty() {
+        emit_log(app, parsed.summary.clone());
     }
+    let count = parsed.count;
 
-    // 归档昨天
-    let yesterday = (now - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
-    st.last_daily_date = today;
-    emit_log(app, format!("按天归档开始: {yesterday}"));
+    let html2 = process_email_html(settings, &parsed.html, &parsed.images);
+    let md = htmlmd::html_to_md(app, settings, &html2);
+    let title = if group_name.trim().is_empty() {
+        parsed.stem.clone()
+    } else {
+        group_name.to_string()
+    };
+    let received = local_received(parsed.start_time);
 
-    let groups: Vec<_> = settings.welink_groups.iter().filter(|g| g.enabled).cloned().collect();
-    for g in groups {
-        let gname = if g.group_name.is_empty() { g.group_id.clone() } else { g.group_name.clone() };
-        run_daily_group(app, settings, &g.group_id, &gname, &yesterday, st);
-    }
-    emit_log(app, format!("按天归档完成: {yesterday}"));
-}
-
-fn parse_hhmm(s: &str) -> (u32, u32) {
-    let mut it = s.split(':');
-    let hh = it.next().and_then(|x| x.parse().ok()).unwrap_or(1);
-    let mm = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
-    (hh, mm)
-}
-
-fn day_range_ms(date: &str) -> Option<(i64, i64)> {
-    let d = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
-    let start = Local.from_local_datetime(&d.and_hms_opt(0, 0, 0)?).single()?.timestamp_millis();
-    Some((start, start + 86_400_000))
-}
-
-fn run_daily_group(app: &AppHandle, settings: &Settings, group_id: &str, group_name: &str,
-                   date: &str, st: &mut WelinkState) {
-    let Some((day_start, day_end)) = day_range_ms(date) else { return };
-    let all = fetch_100(settings, group_id);
-    let mut day_msgs: Vec<WlMessage> = all.into_iter()
-        .filter(|m| day_start <= m.server_send_time && m.server_send_time < day_end)
-        .collect();
-    if day_msgs.is_empty() {
-        emit_log(app, format!("[{group_name}] {date} 无消息，跳过"));
-        return;
-    }
-    day_msgs.sort_by_key(|m| m.server_send_time);
-
-    let chat_id = format!("{group_id}_{date}_daily");
-    if st.saved_chat_ids.contains(&chat_id) {
-        return;
-    }
-
-    image::localize_messages(settings, &mut day_msgs);
-    let html = render::msgs_to_html(&day_msgs);
-
-    // 剔除已被手动录制覆盖的区间
-    let excluded = st.manual_intervals.get(group_id).cloned().unwrap_or_default();
-    let filtered = render::filter_daily_html(&html, &excluded);
-    if filtered.trim().is_empty() {
-        emit_log(app, format!("[{group_name}] {date} 全部已手动覆盖，跳过"));
-        st.saved_chat_ids.insert(chat_id);
-        return;
-    }
-
-    let md = htmlmd::html_to_md(&filtered);
-    let title = format!("{group_name}_{date}_全天");
-    let received = local_received(day_msgs.first().map(|m| m.server_send_time).unwrap_or(day_start));
-    match output::save(settings, &received, &title, &filtered, &md) {
-        Ok(Some(saved)) => {
-            emit_log(app, format!("[{group_name}] 按天归档已保存: {}", saved.base_name));
-            st.saved_chat_ids.insert(chat_id);
+    match output::save(settings, output::SRC_WELINK, &received, &title, &html2, &md)? {
+        Some(saved) => {
+            emit_log(app, format!("聊天记录已保存（{count} 条）: {}", saved.base_name));
+            Ok(saved.base_name)
         }
-        Ok(None) => { st.saved_chat_ids.insert(chat_id); }
-        Err(e) => emit_log(app, format!("[{group_name}] 按天归档保存失败: {e}")),
+        None => {
+            emit_log(app, "已存在，跳过".to_string());
+            Ok(String::new())
+        }
     }
 }
-
-// ── 落盘 ────────────────────────────────────────────────────
 
 fn local_received(ms: i64) -> String {
     Local
@@ -480,10 +473,10 @@ fn save_chatlog(app: &AppHandle, settings: &Settings, group_name: &str, chat_id:
     }
     image::localize_messages(settings, msgs);
     let html = render::msgs_to_html(msgs);
-    let md = htmlmd::html_to_md(&html);
+    let md = htmlmd::html_to_md(app, settings, &html);
     let received = local_received(start_time);
 
-    match output::save(settings, &received, group_name, &html, &md) {
+    match output::save(settings, output::SRC_WELINK, &received, group_name, &html, &md) {
         Ok(Some(saved)) => {
             emit_log(app, format!("[{group_name}] 已保存 ({} 条): {}", msgs.len(), saved.base_name));
             st.saved_chat_ids.insert(chat_id.to_string());

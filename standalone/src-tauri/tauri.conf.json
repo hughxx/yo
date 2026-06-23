@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "邮件WeLink单机助手",
+  "productName": "问题定位助手",
   "version": "0.1.0",
   "identifier": "com.standalone.emailwelink",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "邮件 / WeLink 单机助手",
+        "title": "问题定位助手",
         "width": 1100,
         "height": 760,
         "minWidth": 880,
@@ -29,7 +29,8 @@
     "targets": ["nsis"],
     "icon": ["icons/icon.ico"],
     "resources": {
-      "../sidecar/outlook_cli/dist/outlook_cli.exe": "outlook_cli.exe"
+      "../sidecar/outlook_cli/dist/outlook_cli.exe": "outlook_cli.exe",
+      "../sidecar/html2md/dist/html2md.exe": "html2md.exe"
     }
   }
 }

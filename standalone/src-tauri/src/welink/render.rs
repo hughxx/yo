@@ -1,5 +1,5 @@
 //! WeLink 消息 → HTML（与旧 monitor.py `_msgs_to_html` 保持一致的标记，
-//! 以便 `filter_daily_html` 能按相同的 div 结构切分）。
+//! 手动导入解析（chatlog）按相同的 div 结构 `MSG_OPEN` 拼装）。
 
 use chrono::{Local, TimeZone};
 
@@ -70,47 +70,3 @@ max-width:860px;margin:20px auto;padding:0 16px}}</style></head><body>{rows}</bo
     )
 }
 
-/// 从全天 HTML 中剔除落在 excluded 区间（毫秒）内的消息块，返回过滤后的完整 HTML。
-/// 与 monitor/_filter_daily_html 等价：按 MSG_OPEN 切分、解析时间戳、命中区间则丢弃。
-pub fn filter_daily_html(html: &str, excluded: &[(i64, i64)]) -> String {
-    if excluded.is_empty() {
-        return html.to_string();
-    }
-    let (Some(bs), Some(be)) = (html.find("<body>"), html.find("</body>")) else {
-        return html.to_string();
-    };
-    let header = &html[..bs + "<body>".len()];
-    let footer = &html[be..];
-    let body = &html[bs + "<body>".len()..be];
-
-    let mut kept = String::new();
-    for part in body.split(MSG_OPEN).skip(1) {
-        let div_html = format!("{MSG_OPEN}{part}");
-        let ms = extract_ts_ms(&div_html);
-        if let Some(ms) = ms {
-            if excluded.iter().any(|&(s, e)| s <= ms && ms <= e) {
-                continue;
-            }
-        }
-        kept.push_str(&div_html);
-    }
-    if kept.is_empty() {
-        String::new()
-    } else {
-        format!("{header}{kept}{footer}")
-    }
-}
-
-/// 从单个消息块 HTML 中解析时间戳（毫秒）。
-fn extract_ts_ms(div_html: &str) -> Option<i64> {
-    // 形如 <span style="font-size:11px;color:#aaa;margin-left:8px">2026-06-15 10:00:00</span>
-    let marker = r#"margin-left:8px">"#;
-    let start = div_html.find(marker)? + marker.len();
-    let end = div_html[start..].find("</span>")? + start;
-    let ts = div_html[start..end].trim();
-    let dt = chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S").ok()?;
-    Local
-        .from_local_datetime(&dt)
-        .single()
-        .map(|d| d.timestamp_millis())
-}

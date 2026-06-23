@@ -1,0 +1,105 @@
+.editor {
+  border: 1px solid #e3e5e9;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px 14px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+
+  .title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #008c64;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .dirty {
+    font-size: 11px;
+    color: #d98300;
+    margin-right: 8px;
+  }
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  > label {
+    width: 76px;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #666;
+    text-align: right;
+  }
+}
+
+.input,
+.select {
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  background: #fff;
+  &:focus {
+    outline: none;
+    border-color: #008c64;
+  }
+}
+
+.btn {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  background: #f7f8fa;
+  cursor: pointer;
+  &:hover {
+    border-color: #008c64;
+    color: #008c64;
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+.btnPrimary {
+  background: #008c64;
+  color: #fff;
+  border-color: #008c64;
+  &:hover {
+    color: #fff;
+    opacity: 0.92;
+  }
+}
+.btnDanger {
+  color: #b71c1c;
+  border-color: #f0c4c4;
+  background: #fff;
+  &:hover {
+    background: #fdecec;
+  }
+}
+
+.ruleCard {
+  border: 1px solid #e3e5e9;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.empty {
+  font-size: 12px;
+  color: #aaa;
+  padding: 6px 0 10px;
+}

@@ -1,0 +1,266 @@
+.wrap {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+}
+
+/* 左侧竖排子 tab（随页滚动时吸顶） */
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 96px;
+  flex-shrink: 0;
+  padding-right: 10px;
+  margin-right: 14px;
+  border-right: 1px solid #e3e5e9;
+  position: sticky;
+  top: 0;
+}
+.tab {
+  padding: 9px 8px;
+  font-size: 13px;
+  color: #555;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: center;
+  &:hover {
+    color: #008c64;
+  }
+  &.active {
+    color: #008c64;
+    font-weight: 600;
+    background: #e9f7f1;
+  }
+}
+
+.tabContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.subTitle {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #444;
+  margin: 0 0 8px 0;
+}
+
+/* 分组标题（实时监听 / 手动导入） */
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 0;
+}
+.groupTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #222;
+}
+.groupHint {
+  font-size: 11px;
+  color: #aaa;
+}
+.groupDivider {
+  height: 1px;
+  background: #e3e5e9;
+  margin: 4px 0;
+}
+.subHint {
+  font-size: 11px;
+  font-weight: 400;
+  color: #aaa;
+  margin-left: 6px;
+}
+
+/* 「?」悬浮提示 */
+.help {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.helpIcon {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #dfe3e8;
+  color: #5a6068;
+  font-size: 11px;
+  line-height: 15px;
+  text-align: center;
+  cursor: help;
+  user-select: none;
+}
+.helpPop {
+  position: absolute;
+  left: 0;
+  top: 20px;
+  z-index: 40;
+  width: 560px;
+  background: #fff;
+  border: 1px solid #e3e5e9;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  padding: 12px;
+  display: none;
+}
+.help:hover .helpPop {
+  display: block;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #e3e5e9;
+  border-radius: 8px;
+
+  .dot {
+    font-size: 14px;
+  }
+  .statusText {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .spacer {
+    flex: 1;
+  }
+}
+
+.config {
+  border: 1px solid #e3e5e9;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 14px 16px;
+
+  .head {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+
+    .title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #008c64;
+    }
+    .spacer {
+      flex: 1;
+    }
+    .dirty {
+      font-size: 11px;
+      color: #d98300;
+      margin-right: 8px;
+    }
+  }
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+
+  > label {
+    width: 84px;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #666;
+    text-align: left;
+  }
+  .hint {
+    font-size: 11px;
+    color: #aaa;
+  }
+}
+
+.input {
+  flex: 1;
+  min-width: 160px;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  background: #fff;
+  &:focus {
+    outline: none;
+    border-color: #008c64;
+  }
+}
+.num {
+  width: 70px;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+}
+
+.btn {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 13px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  background: #f7f8fa;
+  cursor: pointer;
+  &:hover {
+    border-color: #008c64;
+    color: #008c64;
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+.btnPrimary {
+  background: #008c64;
+  color: #fff;
+  border-color: #008c64;
+  &:hover {
+    color: #fff;
+    opacity: 0.92;
+  }
+}
+.btnToggle {
+  height: 32px;
+  padding: 0 18px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+.btnDanger {
+  color: #b71c1c;
+  border-color: #f0c4c4;
+  background: #fff;
+  &:hover {
+    background: #fdecec;
+  }
+}
+
+.groupRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  margin-left: 92px;
+}
+
+.usage {
+  margin-left: 92px;
+  margin-top: -4px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #aaa;
+}

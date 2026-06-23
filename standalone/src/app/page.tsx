@@ -12,8 +12,8 @@ import styles from "./page.module.scss";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "email", label: "邮件" },
-  { key: "welink", label: "WeLink" },
-  { key: "output", label: "本地产物" },
+  { key: "welink", label: "聊天记录" },
+  { key: "output", label: "输出件" },
   { key: "settings", label: "设置" },
 ];
 
@@ -43,7 +43,6 @@ export default function Home() {
           </div>
         ))}
         <div className={styles.spacer} />
-        <div className={styles.title}>抓取 → HTML + Markdown → 落盘</div>
       </nav>
 
       <main className={styles.body}>

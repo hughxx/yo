@@ -2,14 +2,86 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  gap: 10px;
 }
 
-.toolbar {
+/* 两栏：左文件夹树 + 右内容 */
+.page {
+  display: flex;
+  gap: 12px;
+  height: 100%;
+}
+.right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 搜索框 */
+.search {
+  height: 30px;
+  width: 200px;
+  padding: 0 10px;
+  font-size: 12px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  &:focus {
+    outline: none;
+    border-color: #008c64;
+  }
+}
+
+/* 导入下拉 */
+.importWrap {
+  position: relative;
+}
+.menu {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid #e3e5e9;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  min-width: 180px;
+  padding: 4px;
+}
+.menuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 12px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #333;
+  &:hover {
+    background: #f4f6f8;
+  }
+}
+
+/* 顶部状态条 */
+.statusbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #e3e5e9;
+  border-radius: 8px;
 
+  .dot {
+    font-size: 14px;
+  }
+  .statusText {
+    font-size: 13px;
+    font-weight: 600;
+  }
   .spacer {
     flex: 1;
   }
@@ -17,6 +89,31 @@
     font-size: 12px;
     color: #888;
   }
+}
+
+/* 工具栏 */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  .divider {
+    width: 1px;
+    height: 20px;
+    background: #e3e5e9;
+    margin: 0 2px;
+  }
+  .spacer {
+    flex: 1;
+  }
+}
+
+/* 筛选+刷新行：紧贴下方表格 */
+.tableControls {
+  padding-bottom: 6px;
+  border-bottom: 1px solid #eef0f2;
+  margin-bottom: -4px;
 }
 
 .btn {
@@ -32,7 +129,7 @@
     color: #008c64;
   }
   &:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
   }
 }
@@ -45,12 +142,43 @@
     opacity: 0.92;
   }
 }
+.btnToggle {
+  height: 30px;
+  padding: 0 16px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
 .linkBtn {
   font-size: 12px;
   color: #b71c1c;
   background: none;
   border: none;
   cursor: pointer;
+}
+
+/* 过滤分段 */
+.segment {
+  display: inline-flex;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  overflow: hidden;
+
+  button {
+    height: 30px;
+    padding: 0 12px;
+    font-size: 12px;
+    border: none;
+    background: #fff;
+    cursor: pointer;
+    color: #555;
+    &.on {
+      background: #008c64;
+      color: #fff;
+    }
+  }
 }
 
 .report {
@@ -60,7 +188,6 @@
   border: 1px solid #bfe6d6;
   border-radius: 4px;
   padding: 6px 10px;
-  margin-bottom: 8px;
 }
 
 .tableWrap {
@@ -82,23 +209,106 @@
     top: 0;
     background: #f5f6f8;
     text-align: left;
-    padding: 6px 10px;
+    padding: 7px 10px;
     color: #666;
     border-bottom: 1px solid #e3e5e9;
     font-weight: 600;
+    white-space: nowrap;
   }
   td {
-    padding: 5px 10px;
+    padding: 6px 10px;
     border-bottom: 1px solid #f0f1f3;
     color: #333;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 360px;
+    max-width: 280px;
   }
   tr:hover td {
     background: #fafbfc;
   }
+  tr.sel td {
+    background: #eef7f3;
+  }
+  tr.done td {
+    color: #b6bbc1;
+  }
+  .ckcol {
+    width: 34px;
+    text-align: center;
+  }
+}
+
+.doneTag {
+  font-size: 10px;
+  color: #9aa0a6;
+}
+
+/* 启动定时弹窗 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialog {
+  width: 380px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  padding: 18px 20px;
+}
+.dialogTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #222;
+  margin-bottom: 14px;
+}
+.dialogBody {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 18px;
+}
+.dialogInput {
+  width: 72px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 14px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  &:focus {
+    outline: none;
+    border-color: #008c64;
+  }
+}
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #008c64;
+  color: #fff;
+}
+.badgeMuted {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #eceef0;
+  color: #aaa;
 }
 
 .empty {

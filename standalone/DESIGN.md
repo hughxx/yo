@@ -45,19 +45,19 @@
                 │ Tauri invoke (command) │ events (日志/进度)
 ┌───────────────┴───────────────────────▼──────────────────┐
 │  Rust 核心  (Tauri 2.x backend)                           │
-│   · 调度：邮件扫描定时器 / WeLink 轮询                      │
+│   · 调度：邮件监听定时器 / WeLink 轮询                      │
 │   · 规则匹配（主题/正文/发件人）                            │
-│   · HTML → Markdown（Rust crate，§5.3）                    │
-│   · 图片本地化下载（reqwest，§6）                           │
+│   · HTML → Markdown（转发 html2md.exe，§5.3）              │
+│   · 图片转外链上传（reqwest，§6）                           │
 │   · 落盘：扁平 + 时间戳前缀（§6）                           │
 │   · 设置读写（JSON）、本地去重记录                          │
-└──────┬───────────────────────────────────┬───────────────┘
-       │ 子进程 (stdin/args → stdout JSON)   │ 子进程
-┌──────▼─────────────────┐      ┌───────────▼───────────────┐
-│ outlook_cli.exe         │      │ welink-cli (既有外置二进制) │
-│ (Python + win32com)     │      │ im query-history-message    │
-│ Outlook COM 全部操作    │      │ （沿用旧实现，不在本仓维护）│
-└─────────────────────────┘      └─────────────────────────────┘
+└──────┬──────────────┬──────────────────────┬──────────────┘
+       │ 子进程        │ 子进程(stdin→stdout)  │ 子进程
+┌──────▼────────┐ ┌───▼──────────┐ ┌─────────▼───────────────┐
+│ outlook_cli.exe│ │ html2md.exe  │ │ welink-cli (既有外置二进制)│
+│ Python+win32com│ │ Python       │ │ im query-history-message  │
+│ Outlook COM    │ │ html2text    │ │ （沿用旧实现，不在本仓维护）│
+└────────────────┘ └──────────────┘ └───────────────────────────┘
 ```
 
 **为什么 Outlook 要外置成 `outlook_cli.exe`**：Outlook 自动化只有 COM（`win32com`）这一条稳定路径，Rust / TS 都没有成熟封装。沿用旧 `ews_cli.exe` / `welink-cli` 已验证的「子进程 + stdout JSON」模式。
@@ -85,15 +85,17 @@
 主要 Cargo 依赖：
 | crate | 用途 |
 |---|---|
-| `reqwest`（或 `ureq`） | 图片本地化下载（WeLink 云盘 / 代理） |
+| `reqwest`（含 blocking） | 图片下载 + 上传换外链（§6） |
 | `tokio` | 异步运行时、定时器、子进程 |
-| `htmd`（首选）/ `html2md` | HTML → Markdown（§5.3） |
 | `serde` / `serde_json` | 设置、CLI JSON 交互 |
 | `chrono` | 时间格式化、按天归档 |
 | `regex` | 正文/命令解析、文件名清洗 |
 
+> HTML→MD 不再用 Rust crate，改为转发外置 `html2md.exe`（§5.3）。
+
 ### 3.3 Python sidecar
-- `outlook_cli.exe`：Python 3.10+，`pywin32`（win32com）、`pyinstaller` 打包。**不含** `html2text`（MD 转换上移到 Rust）。
+- `outlook_cli.exe`：Python 3.10+，`pywin32`（win32com）、`pyinstaller` 打包。Outlook COM 全部操作；stdout 显式 UTF-8 字节输出（避免 Windows piped stdout 默认 GBK 导致中文乱码）。
+- `html2md.exe`：Python + `html2text`，stdin 读 HTML、stdout 写 Markdown（均 UTF-8）。轻量、不依赖 Outlook。
 
 ---
 
@@ -160,10 +162,10 @@ standalone/
 4. 消息渲染 HTML 沿用旧 `_msgs_to_html`（移植到 Rust）；图片本地化（§6）→ MD → 落盘。
 5. 本地 `last_ids` / `sessions` 记录（替代旧 `.welink_*.json`）。**结束**，不上传。
 
-### 5.3 HTML → Markdown（Rust 核心层）
-- 首选 crate **`htmd`**；产出规则尽量对齐旧 `html2text` 配置：不忽略链接/图片、不自动换行、统一 `-` 无序列表、保留表格、合并 3+ 空行、NBSP/全角空格归一化、去掉空 `![]()`。
-- 旧逻辑里 Python 侧的后处理（正则清洗）在 `htmlmd.rs` 复刻一遍。
-- ⚠️ 已知：换了转换引擎，MD 细节排版会与旧版略有差异（用户已确认接受）。
+### 5.3 HTML → Markdown（外置 `html2md.exe`）
+- 直接复用旧 `server/utils/html2md.py` 的 `html2text` 逻辑与全部后处理（不忽略链接/图片、不自动换行、统一 `-` 无序列表、保留表格、合并 3+ 空行、NBSP/全角空格归一化、去掉空 `![]()`），与旧版输出一致。
+- Rust（`htmlmd.rs`）通过 stdin 把 HTML 喂给 `html2md.exe`，读回 Markdown；失败则记日志、回退空串、不中断落盘。
+- 该 exe 不依赖 Outlook/win32com，体积小；邮件与 WeLink 两条流都走它。
 
 ---
 
@@ -280,6 +282,6 @@ standalone/
 
 ## 13. 待确认 / 风险
 - `welink-cli` 二进制不在本仓库维护，单机版假定其可用且接口不变（`im query-history-message`）。
-- `htmd` 与旧 `html2text` 输出排版有差异（已接受）。
+- HTML→MD 复用旧 `html2text`（外置 `html2md.exe`），输出与旧版一致；`html2text` 的表格支持有限。
 - 图片依赖**用户自配的上传接口**（旧 `/api/image/upload` 同款）。未配 → 产物无图；配了但接口/云盘鉴权失败 → 该图降级为无图并告警。
 ```

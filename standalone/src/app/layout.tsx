@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "邮件 / WeLink 单机助手",
+  title: "问题定位助手",
   description: "本地抓取 → HTML + Markdown 落盘",
 };
 

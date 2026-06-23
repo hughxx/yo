@@ -11,9 +11,11 @@ src-tauri/target/
 src-tauri/gen/
 
 # python sidecar build
-sidecar/outlook_cli/build/
-sidecar/outlook_cli/dist/
-sidecar/outlook_cli/__pycache__/
+sidecar/*/build/
+sidecar/*/dist/
+sidecar/*/__pycache__/
+sidecar/*/*.spec
+sidecar/*/test.zip
 *.spec
 
 # scratch / 验证用临时 crate

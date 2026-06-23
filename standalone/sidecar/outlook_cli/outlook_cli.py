@@ -21,8 +21,9 @@ import outlook
 
 
 def _emit(obj):
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False))
-    sys.stdout.flush()
+    # 显式 UTF-8 字节输出：Windows 下 piped stdout 默认 GBK，会让中文变乱码。
+    sys.stdout.buffer.write(json.dumps(obj, ensure_ascii=False).encode('utf-8'))
+    sys.stdout.buffer.flush()
 
 
 def _split(csv: str) -> list:
@@ -82,6 +83,6 @@ if __name__ == '__main__':
     except SystemExit:
         raise
     except BaseException as e:  # noqa: BLE001 — 顶层兜底，统一错误输出
-        sys.stderr.write(json.dumps({'error': str(e)}, ensure_ascii=False))
-        sys.stderr.flush()
+        sys.stderr.buffer.write(json.dumps({'error': str(e)}, ensure_ascii=False).encode('utf-8'))
+        sys.stderr.buffer.flush()
         sys.exit(1)

@@ -31,17 +31,23 @@ cd src-tauri && cargo check
 
 ## 打包（Windows）
 
-```bash
-# 先打 outlook_cli.exe（见 sidecar/outlook_cli/build.py）
-python sidecar/outlook_cli/build.py
+一键：
 
-# 再打 Tauri 安装包
-pnpm tauri build
+```bash
+build_all.bat        # 依次打 outlook_cli.exe + html2md.exe + Tauri 安装包
+```
+
+或手动：
+
+```bash
+python sidecar/outlook_cli/build.py   # outlook_cli.exe（Outlook COM）
+python sidecar/html2md/build.py       # html2md.exe（HTML→MD）
+pnpm tauri build                      # 安装包 → src-tauri/target/release/bundle/nsis/
 ```
 
 ## 目录
 ```
 src/          前端（Next.js）
 src-tauri/    Rust 核心（Tauri）
-sidecar/      outlook_cli.exe 源码与打包脚本
+sidecar/      outlook_cli.exe + html2md.exe 源码与打包脚本
 ```
