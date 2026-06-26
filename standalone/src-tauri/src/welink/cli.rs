@@ -11,13 +11,19 @@ use crate::settings::Settings;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// welink-cli 解析顺序：设置里的路径 → 环境变量 WELINK_CLI → PATH 里的 `welink-cli`。
 fn program(settings: &Settings) -> String {
     let p = settings.welink_cli_path.trim();
-    if p.is_empty() {
-        "welink-cli".to_string()
-    } else {
-        p.to_string()
+    if !p.is_empty() {
+        return p.to_string();
     }
+    if let Some(env) = std::env::var_os("WELINK_CLI") {
+        let s = env.to_string_lossy().trim().to_string();
+        if !s.is_empty() {
+            return s;
+        }
+    }
+    "welink-cli".to_string()
 }
 
 /// 拉取某群最近 count 条消息，返回 (messages_json, error)。

@@ -132,7 +132,7 @@ export default function SettingsPanel() {
           <input
             className={s.input}
             value={settings.welink_cli_path}
-            placeholder="留空 = 从 PATH 查找 welink-cli"
+            placeholder="留空 = 读环境变量 WELINK_CLI，否则从 PATH 查找 welink-cli"
             onChange={(e) => set("welink_cli_path", e.target.value)}
           />
           <button className={s.btn} onClick={() => pickExe("welink_cli_path")}>

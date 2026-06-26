@@ -10,6 +10,19 @@
 - Outlook 操作：外置 `outlook_cli.exe`（Python + win32com）
 - WeLink 拉取：外置 `welink-cli`（既有二进制）
 
+## 环境准备（装一次）
+
+| 用途 | 需要安装 |
+|---|---|
+| 前端 | Node.js 18+、pnpm（`npm i -g pnpm`） |
+| Rust 核心 | Rust 工具链。**本仓库用 GNU 工具链** `stable-x86_64-pc-windows-gnu`（`rustup default stable-x86_64-pc-windows-gnu` + mingw-w64）。默认 MSVC 一般也能编（`[lib]` 已设 `crate-type=["rlib"]`），若遇 `export ordinal too large` 链接错再切 GNU |
+| 两个 sidecar | Python 3.x + pip（`build.py` 会自动 `pip install` pywin32 / pyinstaller / html2text） |
+| WebView2 | Win11 自带；NSIS 安装包也会自动带。NSIS 本体 Tauri 首次打包自动下载，无需手装 |
+
+> **welink-cli** 是单独的既有二进制，不在本仓库、也不随包打。程序按
+> 「设置里的路径 → 环境变量 `WELINK_CLI` → PATH 中的 `welink-cli`」顺序解析；
+> 把它的路径写进 `WELINK_CLI` 环境变量，或丢进 PATH 即可。
+
 ## 开发
 
 ```bash
@@ -36,6 +49,9 @@ cd src-tauri && cargo check
 ```bash
 build_all.bat        # 依次打 outlook_cli.exe + html2md.exe + Tauri 安装包
 ```
+
+> 两个 exe 必须先打好：`tauri.conf.json` 把它们作为 resources 打进包，
+> 编译期会校验文件存在，缺了直接失败。安装包名是中文，故用 NSIS（MSI 对中文名会失败）。
 
 或手动：
 
