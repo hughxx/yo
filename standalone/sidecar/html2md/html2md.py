@@ -49,8 +49,10 @@ def main() -> int:
 
 
 if __name__ == '__main__':
+    # 用 Exception 而非 BaseException：否则正常结束的 SystemExit(0) 会被这里捕获，
+    # 把退出码 "0" 写进 stderr 再以 1 退出，吞掉转换结果。
     try:
         sys.exit(main())
-    except BaseException as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         sys.stderr.buffer.write(str(e).encode('utf-8', 'replace'))
         sys.exit(1)

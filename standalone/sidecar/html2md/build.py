@@ -17,7 +17,10 @@ def main() -> int:
     cmd = [
         sys.executable, '-m', 'PyInstaller',
         '--onefile',
-        '--noconsole',
+        # 控制台子系统：保证 stdin/stdout 与退出码正常（窗口由父进程
+        # CREATE_NO_WINDOW 抑制，不会闪黑框）。--noconsole 会导致读 stdin
+        # 后以退出码 1 结束，吞掉转换结果。
+        '--console',
         '--name', 'html2md',
         '--distpath', str(HERE / 'dist'),
         '--workpath', str(HERE / 'build'),

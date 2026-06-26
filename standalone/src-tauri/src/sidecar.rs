@@ -104,9 +104,16 @@ pub fn run_html2md(app: &AppHandle, settings: &Settings, html: &str) -> Result<S
     let out = child
         .wait_with_output()
         .map_err(|e| format!("等待 html2md 失败: {e}"))?;
-    if !out.status.success() {
+    // 有 stdout 就用，不纠结退出码：个别打包形态（windowed）会在读 stdin 后
+    // 以非零码退出却已正确输出，只有当真没产出时才算失败。
+    let md = String::from_utf8_lossy(&out.stdout).into_owned();
+    if md.trim().is_empty() {
         let err = String::from_utf8_lossy(&out.stderr);
-        return Err(format!("html2md 失败: {}", err.trim()));
+        return Err(format!(
+            "html2md 无输出 (exit {}): {}",
+            out.status.code().unwrap_or(-1),
+            err.trim()
+        ));
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    Ok(md)
 }
