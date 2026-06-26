@@ -1,9 +1,11 @@
 //! 调用外置 outlook_cli（dev 用 `python outlook_cli.py`，prod 用随包 exe）。
 //! 约定：成功 stdout 输出 JSON、退出码 0；失败 stderr 输出 {"error":...}、退出码非 0。
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
@@ -12,6 +14,68 @@ use crate::settings::Settings;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// outlook_cli 串行执行：Outlook 自动化本质上是单实例，并发 Dispatch 会互相
+/// 抢占 / 卡死。所有 outlook_cli 调用经此锁排队。
+static OUTLOOK_LOCK: Mutex<()> = Mutex::new(());
+
+/// 单次 outlook_cli 上限。超时通常意味着弹出了不可见的 Outlook 安全/登录/
+/// 配置文件对话框（CREATE_NO_WINDOW 下无法看到或应答），到点强杀进程树，
+/// 避免像历史上那样留下长期僵尸进程。
+const OUTLOOK_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// 等待子进程结束，超时则强杀其进程树。stdout/stderr 用独立线程读取，避免
+/// 管道写满导致的死锁。
+fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output, String> {
+    let mut so = child.stdout.take();
+    let mut se = child.stderr.take();
+    let h_so = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(s) = so.as_mut() {
+            let _ = s.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let h_se = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(s) = se.as_mut() {
+            let _ = s.read_to_end(&mut buf);
+        }
+        buf
+    });
+
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break Some(s),
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let pid = child.id();
+                    let _ = child.kill();
+                    // PyInstaller onefile 会再起一个子进程，单 kill 杀不净，taskkill /T 清整棵树。
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        let _ = Command::new("taskkill")
+                            .args(["/F", "/T", "/PID", &pid.to_string()])
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .output();
+                    }
+                    let _ = child.wait();
+                    break None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => return Err(format!("等待 outlook_cli 失败: {e}")),
+        }
+    };
+    let stdout = h_so.join().unwrap_or_default();
+    let stderr = h_se.join().unwrap_or_default();
+    match status {
+        Some(status) => Ok(Output { status, stdout, stderr }),
+        None => Err("outlook_cli 超时（疑似弹出了 Outlook 安全/登录/配置文件对话框，已强制结束）".to_string()),
+    }
+}
 
 /// 通用解析外置 Python sidecar：返回 (程序, 前置参数)。
 /// 查找顺序：配置路径 → 应用 bin/<stem>.exe（D 盘，HTTP 下载落地处）→ 随包资源 → 开发回退(python 脚本)。
@@ -46,19 +110,26 @@ fn resolve_sidecar(app: &AppHandle, configured: &str, stem: &str) -> (String, Ve
 
 /// 运行一条 outlook_cli 子命令，返回解析后的 JSON。
 pub fn run_outlook(app: &AppHandle, settings: &Settings, args: &[&str]) -> Result<Value, String> {
+    // 串行：避免并发 Dispatch 抢占同一个 Outlook 实例而互相卡死。
+    let _guard = OUTLOOK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
     let (program, prefix) = resolve_sidecar(app, &settings.outlook_cli_path, "outlook_cli");
 
     let mut cmd = Command::new(&program);
-    cmd.args(&prefix).args(args);
+    cmd.args(&prefix)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let out = cmd
-        .output()
+    let child = cmd
+        .spawn()
         .map_err(|e| format!("启动 outlook_cli 失败（{program}）: {e}"))?;
+    let out = wait_with_timeout(child, OUTLOOK_TIMEOUT)?;
 
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
