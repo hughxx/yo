@@ -70,42 +70,8 @@ def _get_folder(ns, path: str):
     raise FileNotFoundError(f'找不到文件夹: {path}')
 
 
-# ── PST 挂载 ──────────────────────────────────────────────
-
-def add_pst(path: str) -> str:
-    """把 .pst 挂载到当前 Outlook profile，返回新挂载 store 的显示名。
-
-    挂载后该 store 会出现在 folder_list() / mail_list() 的遍历里，无需额外改动。
-    若该 PST 已挂载，AddStore 不会新增 store，返回空串（调用方据此提示“已挂载”）。
-    """
-    with _session() as ns:
-        before = set()
-        for st in ns.Stores:
-            try:
-                before.add(st.StoreID)
-            except Exception:
-                pass
-        ns.AddStore(path)
-        for st in ns.Stores:
-            try:
-                if st.StoreID not in before:
-                    return st.DisplayName or ''
-            except Exception:
-                continue
-        return ''
-
-
-def remove_pst(display_name: str) -> bool:
-    """按显示名卸载已挂载的 PST（不会删除磁盘文件）。"""
-    with _session() as ns:
-        for st in ns.Stores:
-            try:
-                if st.DisplayName == display_name:
-                    ns.RemoveStore(st.GetRootFolder())
-                    return True
-            except Exception:
-                continue
-    return False
+# PST 不再由本程序挂载：用户用 Outlook 自带「打开 Outlook 数据文件」/「导入」即可，
+# 挂载后会自然出现在 folder_list() / mail_list() 的 ns.Stores 遍历里，无需额外对接。
 
 
 # ── 关键词搜索（主题 / 正文 / 发件人）────────────────────────

@@ -201,19 +201,20 @@ class SettingsDialog(QDialog):
         w = QWidget()
         lay = QVBoxLayout(w)
 
-        hint = QLabel('勾选要扫描的文件夹，留空则只扫描默认收件箱。')
+        hint = QLabel(
+            '勾选要扫描的文件夹，留空则只扫描默认收件箱。\n'
+            'PST 请用 Outlook 自带「文件 → 打开和导出 → 打开 Outlook 数据文件」挂载，'
+            '挂好后点「刷新」即可在下方勾选。')
+        hint.setWordWrap(True)
         hint.setStyleSheet('color: #555; font-size: 11px;')
         lay.addWidget(hint)
 
         top = QHBoxLayout()
         self._btn_folder_refresh = QPushButton('刷新')
         self._btn_folder_refresh.setFixedWidth(60)
-        self._btn_import_pst = QPushButton('导入 PST')
-        self._btn_import_pst.setFixedWidth(80)
         self._folder_hint = QLabel('')
         self._folder_hint.setStyleSheet('color: #888; font-size: 11px;')
         top.addWidget(self._btn_folder_refresh)
-        top.addWidget(self._btn_import_pst)
         top.addWidget(self._folder_hint)
         top.addStretch()
         lay.addLayout(top)
@@ -223,7 +224,6 @@ class SettingsDialog(QDialog):
         lay.addWidget(self._folder_list)
 
         self._btn_folder_refresh.clicked.connect(self._load_outlook_folders)
-        self._btn_import_pst.clicked.connect(self._import_pst)
         self._folder_loading = False
 
         self._scan_folders = set(self._s.get('scanFolders', []))
@@ -275,36 +275,6 @@ class SettingsDialog(QDialog):
             self._folder_hint.setText(f'加载失败: {msg}')
 
         w = Worker(_work)
-        w.ok.connect(_done)
-        w.err.connect(_fail)
-        w.start()
-        self._workers.append(w)
-
-    def _import_pst(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, '选择 PST 文件', '', 'Outlook 数据文件 (*.pst)')
-        if not path:
-            return
-        self._btn_import_pst.setEnabled(False)
-        self._folder_hint.setText('正在挂载 PST...')
-
-        def _done(name):
-            self._btn_import_pst.setEnabled(True)
-            if name:
-                QMessageBox.information(
-                    self, '挂载成功',
-                    f'已挂载：{name}\n下方列表已刷新，勾选其文件夹即可纳入扫描。')
-            else:
-                QMessageBox.information(
-                    self, '提示', '该 PST 可能已挂载，已刷新文件夹列表。')
-            self._load_outlook_folders()
-
-        def _fail(msg):
-            self._btn_import_pst.setEnabled(True)
-            self._folder_hint.setText('')
-            QMessageBox.warning(self, '挂载失败', msg)
-
-        w = Worker(outlook.add_pst, path)
         w.ok.connect(_done)
         w.err.connect(_fail)
         w.start()
