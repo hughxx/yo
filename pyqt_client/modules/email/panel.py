@@ -5,7 +5,9 @@ from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 
 from modules.email import outlook, rules as rules_mod, cloud_mute
-from modules.email.dialogs import SettingsDialog
+from modules.email.folder_pane import FolderPane
+from modules.email.rules_editor import RulesEditor
+from modules.email.log_panel import LogPanel
 import backend
 import store  # 仅用于 settings 读写
 from utils import Worker
@@ -142,6 +144,7 @@ class EmailPanel(QWidget):
         self._filter_mode = 'all'     # 'all' | 'matched'，对应分段筛选
         self._monitoring = False      # 定时同步是否在运行
         self._cancel_sync = False     # 请求中止当前推送（处理选中/同步/重推）
+        self._folders_loaded = False  # 文件夹树是否已首次加载
         self._last_sync_time = self._settings.get('lastSyncTime', '')
 
         # 定时同步：仅创建，不自动启动；由用户用「启动定时 / 停止定时」控制
@@ -152,13 +155,33 @@ class EmailPanel(QWidget):
 
     # ── UI 构建 ───────────────────────────────────────────
     def _build_ui(self):
-        root = QVBoxLayout(self)
+        root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        root.addWidget(self._make_toolbar())
-        root.addWidget(self._make_progress())
-        root.addWidget(self._make_table(), stretch=1)
-        root.addWidget(self._make_pagination())
+
+        self._folder_pane = FolderPane()
+        self._folder_pane.scopeChanged.connect(self._on_scope_changed)
+        root.addWidget(self._folder_pane)
+
+        right = QWidget()
+        rlay = QVBoxLayout(right)
+        rlay.setContentsMargins(0, 0, 0, 0)
+        rlay.setSpacing(0)
+        rlay.addWidget(self._make_toolbar())
+        rlay.addWidget(self._make_progress())
+
+        self._rules_editor = RulesEditor()
+        self._rules_editor.changed.connect(self._on_rules_changed)
+        self._rules_editor.setVisible(False)
+        rlay.addWidget(self._rules_editor)
+
+        rlay.addWidget(self._make_table(), stretch=1)
+        rlay.addWidget(self._make_pagination())
+
+        self._log = LogPanel()
+        rlay.addWidget(self._log)
+
+        root.addWidget(right, stretch=1)
 
     def _make_toolbar(self):
         bar = QWidget()
@@ -184,25 +207,13 @@ class EmailPanel(QWidget):
         lay.addWidget(self._seg_all)
         lay.addWidget(self._seg_matched)
 
-        self._btn_refresh  = QPushButton('刷新邮件')
-        self._btn_sync     = QPushButton('立即同步')
-        self._btn_settings = QPushButton('设置')
-        self._btn_refresh.setObjectName('btnRefresh')
-        self._btn_sync.setObjectName('btnSync')
-        self._btn_settings.setObjectName('btnSettings')
-        for b in (self._btn_refresh, self._btn_sync, self._btn_settings):
-            lay.addWidget(b)
+        self._btn_rules = QPushButton('规则 ▾')
+        self._btn_rules.setCheckable(True)
+        lay.addWidget(self._btn_rules)
 
-        self._btn_more = QToolButton()
-        self._btn_more.setText('···')
-        self._btn_more.setObjectName('btnMore')
-        self._btn_more.setFixedSize(28, 24)
-        self._btn_more.setStyleSheet('QToolButton::menu-indicator { image: none; width: 0; }')
-        _more_menu = QMenu(self._btn_more)
-        _more_menu.addAction('强制重推').triggered.connect(self._do_force_push)
-        self._btn_more.setMenu(_more_menu)
-        self._btn_more.setPopupMode(QToolButton.InstantPopup)
-        lay.addWidget(self._btn_more)
+        self._btn_refresh = QPushButton('刷新邮件')
+        self._btn_refresh.setObjectName('btnRefresh')
+        lay.addWidget(self._btn_refresh)
 
         self._search_edit = QLineEdit()
         self._search_edit.setPlaceholderText('🔍 搜索主题/发件人…')
@@ -226,16 +237,34 @@ class EmailPanel(QWidget):
         self._btn_process.setEnabled(False)
         lay.addWidget(self._btn_process)
 
+        self._btn_more = QToolButton()
+        self._btn_more.setText('···')
+        self._btn_more.setObjectName('btnMore')
+        self._btn_more.setFixedSize(28, 24)
+        self._btn_more.setStyleSheet('QToolButton::menu-indicator { image: none; width: 0; }')
+        _more_menu = QMenu(self._btn_more)
+        _more_menu.addAction('强制重推').triggered.connect(self._do_force_push)
+        self._btn_more.setMenu(_more_menu)
+        self._btn_more.setPopupMode(QToolButton.InstantPopup)
+        lay.addWidget(self._btn_more)
+
         self._btn_refresh.clicked.connect(self._do_refresh)
-        self._btn_sync.clicked.connect(self._do_sync)
-        self._btn_settings.clicked.connect(self._open_settings)
         self._seg_all.clicked.connect(lambda: self._set_filter_mode('all'))
         self._seg_matched.clicked.connect(lambda: self._set_filter_mode('matched'))
+        self._btn_rules.clicked.connect(self._toggle_rules)
         self._search_edit.textChanged.connect(self._on_filter_changed)
         self._btn_process.clicked.connect(self._on_process_clicked)
         self._btn_timer.clicked.connect(self._toggle_timer)
         self._refresh_timer_style()
         return bar
+
+    def _toggle_rules(self):
+        show = self._btn_rules.isChecked()
+        self._btn_rules.setText('规则 ▴' if show else '规则 ▾')
+        self._rules_editor.setVisible(show)
+        if show:
+            self._rules_editor.set_namespace(self._settings.get('namespace', ''))
+            self._rules_editor.reload()
 
     def _make_progress(self):
         self._progress = QProgressBar()
@@ -322,12 +351,14 @@ class EmailPanel(QWidget):
         self._monitoring = True
         self._refresh_timer_style()
         self._set_status(f'定时同步已启动：每 {mins} 分钟一次（可随时点「停止定时」）', 'green')
+        self._log.append(f'定时同步已启动：每 {mins} 分钟一次')
 
     def _stop_timer(self):
         self._sync_timer.stop()
         self._monitoring = False
         self._refresh_timer_style()
         self._set_status('定时同步已停止', 'green')
+        self._log.append('定时同步已停止')
 
     def _refresh_timer_style(self):
         if self._monitoring:
@@ -344,8 +375,21 @@ class EmailPanel(QWidget):
     def activate(self):
         self._settings = store.load_settings()
         backend.set_base(self._settings.get('backendUrl', ''))
+        self._rules_editor.set_namespace(self._settings.get('namespace', ''))
+        if not self._folders_loaded:
+            self._folders_loaded = True
+            self._folder_pane.reload()
         if self._is_configured():
             self._do_refresh()
+
+    def _on_scope_changed(self):
+        self._settings = store.load_settings()
+        self._log.append('文件夹范围已更新，重新读取')
+        self._do_refresh()
+
+    def _on_rules_changed(self):
+        self._log.append('规则已变更，重新匹配')
+        self._do_refresh()
 
     def _is_configured(self) -> bool:
         s = self._settings
@@ -357,6 +401,9 @@ class EmailPanel(QWidget):
     def on_settings_changed(self, s: dict):
         self._settings = s
         backend.set_base(s.get('backendUrl', ''))
+        self._rules_editor.set_namespace(s.get('namespace', ''))
+        if self._rules_editor.isVisible():
+            self._rules_editor.reload()
         self._do_refresh()
 
     # ── 状态控制 ──────────────────────────────────────────
@@ -369,8 +416,6 @@ class EmailPanel(QWidget):
         busy = loading or syncing
         self._progress.setVisible(busy)
         self._btn_refresh.setEnabled(not busy)
-        self._btn_sync.setEnabled(not busy)
-        self._btn_settings.setEnabled(not busy)
         self._btn_more.setEnabled(not busy)
         self._update_selection_ui()
 
@@ -410,9 +455,11 @@ class EmailPanel(QWidget):
         if errors:
             msgs = '；'.join(e['_folder_error'] for e in errors)
             self._set_status(f'文件夹错误：{msgs}', 'red')
+            self._log.append(f'文件夹错误：{msgs}')
         else:
             sync = f'    上次同步 {self._last_sync_time}' if self._last_sync_time else ''
             self._set_status(f'就绪    读取 {len(self._emails)} 封{sync}', 'green')
+            self._log.append(f'读取 {len(self._emails)} 封')
         self._set_busy()
         self._fetch_page_status()
 
@@ -500,6 +547,7 @@ class EmailPanel(QWidget):
                 summary = f'{verb}完成：{len(matched)} 封，成功 {success}，失败 {failed}'
             self._cancel_sync = False
             self._set_status(summary, 'red' if failed else 'green')
+            self._log.append(summary)
             self._set_busy()
             self._do_refresh()
             return
@@ -717,14 +765,4 @@ class EmailPanel(QWidget):
         w.err.connect(lambda _: None)
         w.start()
         self._workers.append(w)
-
-    # ── 设置 ──────────────────────────────────────────────
-    def _open_settings(self):
-        dlg = SettingsDialog(self._settings, parent=self)
-        if dlg.exec_() == SettingsDialog.Accepted:
-            saved = dlg.get_settings()
-            self._settings.update(saved)
-            store.save_settings(self._settings)
-            self._set_status('设置已更新', 'green')
-            self._do_refresh()
 
