@@ -48,31 +48,35 @@ def delete(rule_id: str):
     save([r for r in load() if r['id'] != rule_id])
 
 
-def match(email: dict, rules: list, body_matched_map: dict = None) -> str:
+def match(email: dict, rules: list, match_maps: dict = None) -> str:
     """
     返回第一条匹配规则的名称，无匹配返回空串。
 
-    body_matched_map: {rule_index: set(EntryID)} —— 由 outlook.search_body() 预先填充，
-    没有时跳过正文匹配（降级为仅主题/发件人匹配）。
+    match_maps: 由 build_match_maps() 预填充，结构
+        {'subj': {rule_index: set(EntryID)},
+         'body': {rule_index: set(EntryID)},
+         'sender': {rule_index: set(EntryID)}}
+    主题/正文/发件人三类命中均来自 Outlook 自带整词搜索（ci_phrasematch），
+    不再在 Python 里做子串包含，避免无关邮件被误命中。
     """
-    body_matched_map = body_matched_map or {}
+    match_maps = match_maps or {}
+    subj_map   = match_maps.get('subj', {})
+    body_map   = match_maps.get('body', {})
+    sender_map = match_maps.get('sender', {})
     item_id = email.get('item_id', '')
-    subj    = email.get('subject', '').lower()
-    s_name  = email.get('sender_name', '').lower()
-    s_mail  = email.get('sender_email', '').lower()
 
     for i, rule in enumerate(rules):
         if not rule.get('enabled', True):
             continue
 
-        kws  = [k.lower() for k in rule.get('keywords', [])]
-        bkws = rule.get('body_keywords', [])
-        snds = [s.lower() for s in rule.get('senders', [])]
+        kws   = rule.get('keywords', [])
+        bkws  = rule.get('body_keywords', [])
+        snds  = rule.get('senders', [])
         logic = rule.get('logic', 'OR')
 
-        kw_hit   = bool(kws  and any(k in subj for k in kws))
-        body_hit = bool(bkws and item_id in body_matched_map.get(i, set()))
-        sn_hit   = bool(snds and any(s in s_name or s in s_mail for s in snds))
+        kw_hit   = bool(kws  and item_id in subj_map.get(i, ()))
+        body_hit = bool(bkws and item_id in body_map.get(i, ()))
+        sn_hit   = bool(snds and item_id in sender_map.get(i, ()))
 
         if logic == 'AND':
             kw_ok   = (not kws)  or kw_hit
@@ -87,17 +91,24 @@ def match(email: dict, rules: list, body_matched_map: dict = None) -> str:
     return ''
 
 
-def build_body_matched_map(rules: list, scan_folders: list) -> dict:
+def build_match_maps(rules: list, scan_folders: list) -> dict:
     """
-    对所有启用且含 body_keywords 的规则，调用 outlook.search_body() 预查正文。
-    返回 {rule_index: set(EntryID)}。
+    对每条启用规则，调用 Outlook 整词搜索预查主题/正文/发件人命中。
+    返回 {'subj': {i: set}, 'body': {i: set}, 'sender': {i: set}}（按规则下标）。
     """
     from modules.email import outlook
-    result = {}
+    folders = scan_folders or None
+    subj, body, sender = {}, {}, {}
     for i, rule in enumerate(rules):
         if not rule.get('enabled', True):
             continue
+        kws  = rule.get('keywords', [])
         bkws = rule.get('body_keywords', [])
+        snds = rule.get('senders', [])
+        if kws:
+            subj[i] = outlook.search_subject(folders, kws)
         if bkws:
-            result[i] = outlook.search_body(scan_folders or None, bkws)
-    return result
+            body[i] = outlook.search_body(folders, bkws)
+        if snds:
+            sender[i] = outlook.search_senders(folders, snds)
+    return {'subj': subj, 'body': body, 'sender': sender}

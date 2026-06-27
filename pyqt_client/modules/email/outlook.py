@@ -108,55 +108,99 @@ def remove_pst(display_name: str) -> bool:
     return False
 
 
-# ── 正文搜索 ──────────────────────────────────────────────
+# ── 关键词搜索（主题 / 正文 / 发件人）────────────────────────
+#
+# 全部交给 Outlook 自带搜索，而不是在 Python 里做子串包含：
+#   旧实现里主题、发件人是 `keyword in subject` 子串匹配，没有词边界，
+#   会把无关邮件判为命中（关键词 "PO" 命中 "Report"、发件人 "li" 命中 "Alison"）。
+# 这里改用内容索引的前缀匹配 ci_startswith —— 与 Outlook 搜索框输入关键词时
+# 完全一致的引擎和语义（"inv" 带出 invoice，"PO" 带 Port/Position 但不命中 Report）。
+# 不分中英文：中文由 Outlook 分词器自行处理，和搜索框表现一致。
+# 仅当目标 store 没建内容索引（极少数 PST，连搜索框都会提示结果不完整）时，
+# 才回退到 LIKE 子串，保证不漏匹配。
 
-_BODY_FIELD = '"urn:schemas:httpmail:textdescription"'
+_SUBJECT_FIELD  = '"urn:schemas:httpmail:subject"'
+_BODY_FIELD     = '"urn:schemas:httpmail:textdescription"'
+_FROMNAME_FIELD = '"urn:schemas:httpmail:fromname"'
+_FROMMAIL_FIELD = '"urn:schemas:httpmail:fromemail"'
 
 
-def search_body(scan_folders: list, keywords: list) -> set:
+def _resolve_folders(ns, scan_folders: list) -> list:
+    folders = []
+    if scan_folders:
+        for path in scan_folders:
+            try:
+                folders.append(_get_folder(ns, path))
+            except Exception:
+                pass
+    if not folders:
+        folders = [ns.GetDefaultFolder(_INBOX)]
+    return folders
+
+
+def _dasl(fields: list, keywords: list, force_like: bool = False) -> str:
+    """构造 @SQL 查询：每个关键词在所有 fields 上取 OR，关键词之间也取 OR。
+
+    默认用 ci_startswith（前缀匹配，与 Outlook 搜索框一致，不分中英文）；
+    force_like=True 时退化为 LIKE 子串（用于 store 无内容索引的兜底）。
     """
-    用 Outlook Restrict() 搜索正文包含关键词的邮件，返回 EntryID 集合。
-    关键词之间取 OR（任一命中即返回）。
+    conds = []
+    for kw in keywords:
+        esc = kw.replace("'", "''")
+        for field in fields:
+            if force_like:
+                conds.append(f"{field} LIKE '%{esc}%'")
+            else:
+                conds.append(f"{field} ci_startswith '{esc}'")
+    body = conds[0] if len(conds) == 1 else '(' + ' OR '.join(conds) + ')'
+    return '@SQL=' + body
+
+
+def _collect(folder, dasl: str, out: set):
+    restricted = folder.Items.Restrict(dasl)
+    item = restricted.GetFirst()
+    while item is not None:
+        try:
+            out.add(item.EntryID)
+        except Exception:
+            pass
+        item = restricted.GetNext()  # 逐个推进，旧 item 引用即时释放
+
+
+def _search(scan_folders: list, fields: list, keywords: list) -> set:
+    """在 fields 上搜 keywords（OR），返回命中邮件的 EntryID 集合。
+
+    每个文件夹先用 ci_startswith（前缀，和搜索框一致）；若该 store 未建索引
+    导致 Restrict 抛错，则回退该文件夹到 LIKE 子串，避免漏匹配。
     """
     if not keywords:
         return set()
-
-    conditions = []
-    for kw in keywords:
-        escaped = kw.replace("'", "''")
-        conditions.append(f"{_BODY_FIELD} LIKE '%{escaped}%'")
-
-    if len(conditions) == 1:
-        dasl = f'@SQL={conditions[0]}'
-    else:
-        dasl = '@SQL=(' + ' OR '.join(conditions) + ')'
-
     matched = set()
     with _session() as ns:
-        folders_to_scan = []
-        if scan_folders:
-            for path in scan_folders:
-                try:
-                    folders_to_scan.append(_get_folder(ns, path))
+        for folder in _resolve_folders(ns, scan_folders):
+            try:
+                _collect(folder, _dasl(fields, keywords), matched)
+            except Exception:
+                try:  # 该 store 未建内容索引时 ci_phrasematch 会抛错，退化为 LIKE
+                    _collect(folder, _dasl(fields, keywords, force_like=True), matched)
                 except Exception:
                     pass
-        if not folders_to_scan:
-            folders_to_scan = [ns.GetDefaultFolder(_INBOX)]
-
-        for folder in folders_to_scan:
-            try:
-                restricted = folder.Items.Restrict(dasl)
-                item = restricted.GetFirst()
-                while item is not None:
-                    try:
-                        matched.add(item.EntryID)
-                    except Exception:
-                        pass
-                    item = restricted.GetNext()  # 逐个推进，旧 item 引用即时释放
-            except Exception:
-                pass
-
     return matched
+
+
+def search_subject(scan_folders: list, keywords: list) -> set:
+    """整词搜索主题命中的邮件 EntryID。"""
+    return _search(scan_folders, [_SUBJECT_FIELD], keywords)
+
+
+def search_body(scan_folders: list, keywords: list) -> set:
+    """整词搜索正文命中的邮件 EntryID。"""
+    return _search(scan_folders, [_BODY_FIELD], keywords)
+
+
+def search_senders(scan_folders: list, keywords: list) -> set:
+    """整词搜索发件人（姓名或邮箱）命中的邮件 EntryID。"""
+    return _search(scan_folders, [_FROMNAME_FIELD, _FROMMAIL_FIELD], keywords)
 
 
 # ── 邮件列表 ──────────────────────────────────────────────

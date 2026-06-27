@@ -274,10 +274,10 @@ class EmailPanel(QWidget):
             local_rules = rules_mod.load()
             cloud_rules = cloud_mute.apply(backend.get_cloud_rules(ns)) if ns else []
             all_rules   = cloud_rules + local_rules
-            body_matched_map = rules_mod.build_body_matched_map(all_rules, scan_folders)
+            match_maps  = rules_mod.build_match_maps(all_rules, scan_folders)
             emails = outlook.mail_list(scan_folders or None)
             for e in emails:
-                e['matched_rule'] = rules_mod.match(e, all_rules, body_matched_map)
+                e['matched_rule'] = rules_mod.match(e, all_rules, match_maps)
                 e['parseStatus']  = '-'
             return emails
 
@@ -415,10 +415,10 @@ class EmailPanel(QWidget):
             local_rules = rules_mod.load()
             cloud_rules = cloud_mute.apply(backend.get_cloud_rules(ns)) if ns else []
             all_rules   = cloud_rules + local_rules
-            body_matched_map = rules_mod.build_body_matched_map(all_rules, scan_folders)
+            match_maps  = rules_mod.build_match_maps(all_rules, scan_folders)
             emails = outlook.mail_list(scan_folders or None)
             for e in emails:
-                e['matched_rule'] = rules_mod.match(e, all_rules, body_matched_map)
+                e['matched_rule'] = rules_mod.match(e, all_rules, match_maps)
             return [e for e in emails if e['matched_rule']]
 
         w = Worker(_prep)
