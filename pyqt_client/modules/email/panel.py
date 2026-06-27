@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QPoint
 from PyQt5.QtGui import QColor, QFont
 
-from modules.email import outlook, rules as rules_mod
+from modules.email import outlook, rules as rules_mod, cloud_mute, imported_store
 from modules.email.dialogs import SettingsDialog
 import backend
 import store  # 仅用于 settings 读写
@@ -272,7 +272,7 @@ class EmailPanel(QWidget):
 
         def _work():
             local_rules = rules_mod.load()
-            cloud_rules = backend.get_cloud_rules(ns) if ns else []
+            cloud_rules = cloud_mute.apply(backend.get_cloud_rules(ns)) if ns else []
             all_rules   = cloud_rules + local_rules
             body_matched_map = rules_mod.build_body_matched_map(all_rules, scan_folders)
             emails = outlook.mail_list(scan_folders or None)
@@ -326,6 +326,12 @@ class EmailPanel(QWidget):
             self, '选择 .msg 文件（可多选）', '', 'Outlook 邮件 (*.msg)')
         if not paths:
             return
+        if QMessageBox.question(
+                self, '导入 .msg',
+                f'选中的 {len(paths)} 个 .msg 将立即推送到远端，不会出现在「邮件」列表中，\n'
+                f'可在「本地导入」页查看。\n\n确定继续？',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
         self._set_busy(syncing=True)
         self._set_status(f'导入 .msg... (0/{len(paths)})', 'darkcyan')
         self._import_msg_batch(paths, 0, 0, 0)
@@ -367,6 +373,16 @@ class EmailPanel(QWidget):
                         'ExtraInfo':         extra,
                         'Force':             False,
                     })
+                    from datetime import datetime
+                    imported_store.add({
+                        'item_id':       item['item_id'],
+                        'subject':       item.get('subject', ''),
+                        'sender_name':   item.get('sender_name', ''),
+                        'sender_email':  item.get('sender_email', ''),
+                        'received_time': item.get('received_time', ''),
+                        'source_path':   p,
+                        'imported_at':   datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    })
                     s += 1
                 except Exception:
                     f += 1
@@ -397,7 +413,7 @@ class EmailPanel(QWidget):
 
         def _prep():
             local_rules = rules_mod.load()
-            cloud_rules = backend.get_cloud_rules(ns) if ns else []
+            cloud_rules = cloud_mute.apply(backend.get_cloud_rules(ns)) if ns else []
             all_rules   = cloud_rules + local_rules
             body_matched_map = rules_mod.build_body_matched_map(all_rules, scan_folders)
             emails = outlook.mail_list(scan_folders or None)
