@@ -5,6 +5,7 @@ from PyQt5.QtGui import QFont
 
 from modules.email import outlook
 from modules.email import rules as rules_mod
+from modules.email import cloud_mute
 import backend
 from utils import Worker
 
@@ -416,7 +417,8 @@ class SettingsDialog(QDialog):
 
         def _done(rules):
             self._cloud_rules_data = rules
-            self._render_rule_table(self._cloud_table, rules)
+            # 启用列展示本机生效状态（套用本地静音），不改服务端
+            self._render_rule_table(self._cloud_table, cloud_mute.apply(rules))
 
         w = Worker(_work)
         w.ok.connect(_done)
@@ -473,12 +475,18 @@ class SettingsDialog(QDialog):
         if not rule:
             QMessageBox.information(self, '提示', '请先选择一条规则')
             return
-        def _done(_): self._load_cloud_rules()
-        w = Worker(backend.edit_cloud_rule, rule['id'], {'enabled': not rule['enabled']})
-        w.ok.connect(_done)
-        w.err.connect(lambda m: QMessageBox.warning(self, '错误', m))
-        w.start()
-        self._workers.append(w)
+        muted = cloud_mute.is_muted(rule['id'])
+        action = '启用' if muted else '禁用'
+        ret = QMessageBox.question(
+            self, '本地启用/禁用',
+            f'云端规则的启用/禁用仅在本机生效，不会修改服务端配置，也不影响其他人。\n'
+            f'（云端规则的增删改仍走服务端，这里只是本机不想用某条远程规则时的开关。）\n\n'
+            f'确定在本机{action}规则「{rule.get("name", "")}」吗？',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if ret != QMessageBox.Yes:
+            return
+        cloud_mute.toggle(rule['id'])
+        self._render_rule_table(self._cloud_table, cloud_mute.apply(self._cloud_rules_data))
 
     # ── 本地规则操作 ──────────────────────────────────
     def _load_rules(self):
