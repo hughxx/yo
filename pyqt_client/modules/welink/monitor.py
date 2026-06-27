@@ -14,6 +14,8 @@ urllib3.disable_warnings()
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from modules.welink import rules as wl_rules
+
 
 def _app_dir() -> Path:
     if getattr(sys, 'frozen', False):
@@ -442,14 +444,8 @@ class WelinkMonitor(QThread):
             return None
 
     def _fetch_rules(self) -> list:
-        try:
-            r = requests.get(f'{self._backend_base}/api/welink/rules',
-                             timeout=10, verify=False)
-            r.raise_for_status()
-            return [row for row in r.json() if row.get('enabled', True)]
-        except Exception as e:
-            self._log(f'获取规则失败: {e}')
-            return []
+        # 本地规则（不再走云端），仅取启用项
+        return [row for row in wl_rules.load() if row.get('enabled', True)]
 
     def _log(self, msg: str):
         ts = datetime.now().strftime('%H:%M:%S')
@@ -569,14 +565,8 @@ class WelinkDailyWorker(QThread):
             self._log(f'[{group_name}] 按天记录上传失败: {e}')
 
     def _fetch_rules(self) -> list:
-        try:
-            r = requests.get(f'{self._backend_base}/api/welink/rules',
-                             timeout=10, verify=False)
-            r.raise_for_status()
-            return [row for row in r.json() if row.get('enabled', True)]
-        except Exception as e:
-            self._log(f'获取规则失败: {e}')
-            return []
+        # 本地规则（不再走云端），仅取启用项
+        return [row for row in wl_rules.load() if row.get('enabled', True)]
 
     def _log(self, msg: str):
         ts = datetime.now().strftime('%H:%M:%S')

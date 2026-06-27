@@ -92,34 +92,5 @@ def upload_image(file_bytes: bytes, filename: str):
     except Exception:
         return None
 
-def get_welink_rules() -> list:
-    try:
-        r = requests.get(f'{_base}/api/welink/rules', timeout=10, verify=False)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return []
-
-def add_welink_rule(group_id: str, group_name: str) -> dict:
-    r = requests.post(f'{_base}/api/welink/rules',
-                      json={'group_id': group_id, 'group_name': group_name},
-                      timeout=10, verify=False)
-    r.raise_for_status()
-    return r.json()
-
-def delete_welink_rule(rule_id: int) -> dict:
-    r = requests.delete(f'{_base}/api/welink/rules/{rule_id}', timeout=10, verify=False)
-    r.raise_for_status()
-    return r.json()
-
-def update_welink_rule_name(rule_id: int, group_name: str) -> dict:
-    r = requests.put(f'{_base}/api/welink/rules/{rule_id}',
-                     json={'group_name': group_name}, timeout=10, verify=False)
-    r.raise_for_status()
-    return r.json()
-
-def toggle_welink_rule(rule_id: int, enabled: bool) -> dict:
-    r = requests.put(f'{_base}/api/welink/rules/{rule_id}',
-                     json={'enabled': enabled}, timeout=10, verify=False)
-    r.raise_for_status()
-    return r.json()
+# WeLink 监听群规则已改为本地存储（modules/welink/rules.py），不再走云端。
+# 服务端 /api/welink/rules 端点保留，供旧版本客户端继续使用。

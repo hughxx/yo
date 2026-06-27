@@ -10,6 +10,7 @@ from PyQt5.QtCore import Qt, QTimer, QTime
 import backend
 import store
 from utils import Worker
+from modules.welink import rules as wl_rules
 from modules.welink.monitor import WelinkMonitor, WelinkDailyWorker
 
 _CONFIRM_KEYWORD = '接口人已知晓'
@@ -330,11 +331,8 @@ class WelinkPanel(QWidget):
     # ── rules ─────────────────────────────────────────────────────
 
     def _load_rules(self):
-        w = Worker(backend.get_welink_rules)
-        w.ok.connect(self._on_rules_loaded)
-        w.err.connect(lambda _: None)
-        w.start()
-        self._worker = w
+        # 本地规则，直接同步加载（不再走云端）
+        self._on_rules_loaded(wl_rules.load())
 
     def _on_rules_loaded(self, rules: list):
         self._table.setRowCount(0)
@@ -367,30 +365,19 @@ class WelinkPanel(QWidget):
         if not _ConfirmDialog.ask(self):
             return
 
-        w = Worker(backend.add_welink_rule, gid, gname)
-        w.ok.connect(self._on_rule_added)
-        w.err.connect(lambda e: QMessageBox.warning(self, '添加失败', e))
-        w.start()
-        self._worker = w
-
-    def _on_rule_added(self, result: dict):
-        if 'message' in result and not result.get('id'):
-            QMessageBox.warning(self, '添加失败', result['message'])
-            return
+        wl_rules.add(gid, gname)
         self._gid_edit.clear()
         self._gname_edit.clear()
-        self._append_row(result)
+        self._load_rules()
         self._restart_monitor()
 
-    def _delete_rule(self, rule_id: int, group_id: str):
+    def _delete_rule(self, rule_id, group_id: str):
         if not _ConfirmDialog.ask(self):
             return
 
-        w = Worker(backend.delete_welink_rule, rule_id)
-        w.ok.connect(lambda _: (self._load_rules(), self._restart_monitor()))
-        w.err.connect(lambda e: QMessageBox.warning(self, '删除失败', e))
-        w.start()
-        self._worker = w
+        wl_rules.delete(rule_id)
+        self._load_rules()
+        self._restart_monitor()
 
     # ── slots ─────────────────────────────────────────────────────
 
