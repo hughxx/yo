@@ -261,68 +261,6 @@ def mail_get(entry_id: str, img_api: str = '') -> dict:
         }
 
 
-def msg_get(path: str, img_api: str = '') -> dict:
-    """读取磁盘上的 .msg 文件为邮件详情，字段与 mail_get 一致。
-
-    .msg 不在任何 store 里，用 Namespace.OpenSharedItem 打开成 MailItem，
-    EntryID 通常为空，回退为按文件路径生成的合成 ID；ConversationTopic 为空时
-    回退为主题、再回退为文件名，保证服务端 upsert 的必填键不为空。
-    """
-    import re
-    import os as _os
-    import hashlib
-
-    with _session() as ns:
-        m = ns.OpenSharedItem(path)
-
-        try:
-            html = m.HTMLBody or ''
-        except Exception:
-            html = ''
-        html = html.replace('<head>', '<head><meta charset="utf-8">', 1)
-        if img_api:
-            try:
-                html = _process_images(m, html, img_api)
-            except Exception:
-                pass
-        html = re.sub(r'src=["\']cid:[^"\']*["\']', 'src=""', html)
-
-        subject = getattr(m, 'Subject', '') or ''
-        stem    = _os.path.splitext(_os.path.basename(path))[0]
-        topic   = (getattr(m, 'ConversationTopic', '') or '') or subject or stem
-
-        rt = None
-        for attr in ('ReceivedTime', 'SentOn'):
-            try:
-                v = getattr(m, attr, None)
-                if v:
-                    rt = v
-                    break
-            except Exception:
-                pass
-        try:
-            rt_str = rt.strftime('%Y-%m-%dT%H:%M:%S') if rt else ''
-        except Exception:
-            rt_str = ''
-
-        try:
-            entry = getattr(m, 'EntryID', '') or ''
-        except Exception:
-            entry = ''
-        if not entry:
-            entry = 'msg_' + hashlib.md5(path.encode('utf-8', 'ignore')).hexdigest()[:16]
-
-        return {
-            'item_id':            entry,
-            'subject':            subject,
-            'sender_name':        getattr(m, 'SenderName', '') or '',
-            'sender_email':       getattr(m, 'SenderEmailAddress', '') or '',
-            'received_time':      rt_str or '1970-01-01T00:00:00',
-            'conversation_topic': topic,
-            'html_body':          html,
-        }
-
-
 def _process_images(mail_item, html: str, img_api: str) -> str:
     """上传内联附件图片，替换 cid: 引用为远端 URL"""
     import requests

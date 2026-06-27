@@ -32,7 +32,7 @@ def _app_icon() -> QIcon:
             return QIcon(path)
     return QIcon()
 
-from modules.email.container import EmailContainer
+from modules.email.panel import EmailPanel
 from modules.welink.container import WelinkContainer
 from modules.email.dialogs import SetupDialog
 import store
@@ -184,7 +184,7 @@ QFormLayout { margin: 12px; }
 
 # ── 模块注册表 ────────────────────────────────────────────
 _MODULES = [
-    ('邮件',   EmailContainer),
+    ('邮件',   EmailPanel),
     ('WeLink', WelinkContainer),
 ]
 
