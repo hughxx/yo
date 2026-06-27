@@ -102,10 +102,17 @@ class EmailPanel(QWidget):
         self._workers = []
         self._loading = False
         self._syncing = False
+        self._building = False        # 重建表格时屏蔽 itemChanged
+        self._checked = set()         # 选中的 item_id（跨分页/筛选保持）
+        self._monitoring = False      # 定时同步是否在运行
+        self._cancel_sync = False     # 请求中止当前推送（处理选中/同步/重推）
         self._last_sync_time = self._settings.get('lastSyncTime', '')
 
+        # 定时同步：仅创建，不自动启动；由用户用「启动定时 / 停止定时」控制
+        self._sync_timer = QTimer(self)
+        self._sync_timer.timeout.connect(self._do_sync)
+
         self._build_ui()
-        self._start_auto_sync()
 
     # ── UI 构建 ───────────────────────────────────────────
     def _build_ui(self):
@@ -151,14 +158,40 @@ class EmailPanel(QWidget):
         self._status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         lay.addWidget(self._status_label)
 
-        self._filter_check = QCheckBox('仅显示规则匹配的邮件')
+        self._search_edit = QLineEdit()
+        self._search_edit.setPlaceholderText('🔍 搜索主题/发件人…')
+        self._search_edit.setFixedWidth(170)
+        self._search_edit.setClearButtonEnabled(True)
+        lay.addWidget(self._search_edit)
+
+        self._filter_check = QCheckBox('仅匹配')
         self._filter_check.setChecked(True)
-        self._filter_check.stateChanged.connect(self._update_table)
+        self._filter_check.setToolTip('仅显示命中规则的邮件')
         lay.addWidget(self._filter_check)
+
+        self._btn_select_all = QPushButton('全选')
+        self._btn_select_all.setObjectName('pgBtn')
+        self._btn_select_all.setFixedWidth(56)
+        lay.addWidget(self._btn_select_all)
+
+        self._btn_process = QPushButton('处理选中 (0)')
+        self._btn_process.setObjectName('btnPrimary')
+        self._btn_process.setEnabled(False)
+        lay.addWidget(self._btn_process)
+
+        self._btn_timer = QPushButton('启动定时')
+        self._btn_timer.setFixedWidth(76)
+        lay.addWidget(self._btn_timer)
 
         self._btn_refresh.clicked.connect(self._do_refresh)
         self._btn_sync.clicked.connect(self._do_sync)
         self._btn_settings.clicked.connect(self._open_settings)
+        self._search_edit.textChanged.connect(self._on_filter_changed)
+        self._filter_check.stateChanged.connect(self._on_filter_changed)
+        self._btn_select_all.clicked.connect(self._toggle_select_all)
+        self._btn_process.clicked.connect(self._on_process_clicked)
+        self._btn_timer.clicked.connect(self._toggle_timer)
+        self._refresh_timer_style()
         return bar
 
     def _make_progress(self):
@@ -169,22 +202,24 @@ class EmailPanel(QWidget):
         return self._progress
 
     def _make_table(self):
-        self._table = QTableWidget(0, 6)
+        self._table = QTableWidget(0, 7)
         self._table.setHorizontalHeaderLabels(
-            ['#', '状态', '时间', '发件人', '主题', '会话主题'])
+            ['', '#', '状态', '时间', '发件人', '主题', '会话主题'])
         hh = self._table.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.Interactive)
-        hh.setSectionResizeMode(4, QHeaderView.Stretch)
         hh.setSectionResizeMode(5, QHeaderView.Stretch)
-        self._table.setColumnWidth(0,  36)
-        self._table.setColumnWidth(1,  80)
-        self._table.setColumnWidth(2, 150)
-        self._table.setColumnWidth(3, 110)
+        hh.setSectionResizeMode(6, QHeaderView.Stretch)
+        self._table.setColumnWidth(0,  30)
+        self._table.setColumnWidth(1,  36)
+        self._table.setColumnWidth(2,  80)
+        self._table.setColumnWidth(3, 150)
+        self._table.setColumnWidth(4, 110)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(26)
+        self._table.itemChanged.connect(self._on_item_changed)
         return self._table
 
     def _make_pagination(self):
@@ -217,14 +252,48 @@ class EmailPanel(QWidget):
         self._btn_last.clicked.connect(lambda: self._go_page(self._total_pages()))
         return bar
 
-    # ── 自动扫描 ──────────────────────────────────────────
-    def _start_auto_sync(self):
-        if hasattr(self, '_sync_timer'):
-            self._sync_timer.stop()
-        ms = self._settings.get('scanIntervalMinutes', 60) * 60 * 1000
-        self._sync_timer = QTimer(self)
-        self._sync_timer.timeout.connect(self._do_sync)
-        self._sync_timer.start(ms)
+    # ── 定时同步（用户启停） ───────────────────────────────
+    def _toggle_timer(self):
+        if self._monitoring:
+            self._stop_timer()
+        else:
+            self._start_timer()
+
+    def _start_timer(self):
+        if not self._is_configured():
+            QMessageBox.warning(self, '提示', '请先在设置中配置后端地址、工号与命名空间')
+            return
+        default = int(self._settings.get('scanIntervalMinutes', 60) or 60)
+        mins, ok = QInputDialog.getInt(
+            self, '启动定时同步',
+            '每隔多少分钟自动同步一次？\n（范围 = 设置里勾选的文件夹，按启用规则匹配后推送到服务端）',
+            default, 1, 1440)
+        if not ok:
+            return
+        self._settings['scanIntervalMinutes'] = mins
+        store.save_settings(self._settings)
+        self._sync_timer.start(mins * 60 * 1000)
+        self._monitoring = True
+        self._refresh_timer_style()
+        self._set_status(f'定时同步已启动：每 {mins} 分钟一次（可随时点「停止定时」）', 'green')
+
+    def _stop_timer(self):
+        self._sync_timer.stop()
+        self._monitoring = False
+        self._refresh_timer_style()
+        self._set_status('定时同步已停止', 'green')
+
+    def _refresh_timer_style(self):
+        if self._monitoring:
+            self._btn_timer.setText('停止定时')
+            self._btn_timer.setStyleSheet(
+                'QPushButton{background:#B71C1C;color:white;border:none;}'
+                'QPushButton:hover{background:#a01818;}')
+        else:
+            self._btn_timer.setText('启动定时')
+            self._btn_timer.setStyleSheet(
+                'QPushButton{background:#008C64;color:white;border:none;}'
+                'QPushButton:hover{background:#007a57;}')
 
     def activate(self):
         self._settings = store.load_settings()
@@ -242,7 +311,6 @@ class EmailPanel(QWidget):
     def on_settings_changed(self, s: dict):
         self._settings = s
         backend.set_base(s.get('backendUrl', ''))
-        self._start_auto_sync()
         self._do_refresh()
 
     # ── 状态控制 ──────────────────────────────────────────
@@ -258,6 +326,7 @@ class EmailPanel(QWidget):
         self._btn_sync.setEnabled(not busy)
         self._btn_settings.setEnabled(not busy)
         self._btn_more.setEnabled(not busy)
+        self._update_selection_ui()
 
     # ── 刷新邮件 ──────────────────────────────────────────
     def _do_refresh(self):
@@ -290,6 +359,7 @@ class EmailPanel(QWidget):
         errors = [e for e in emails if '_folder_error' in e]
         diags  = [e for e in emails if '_diag' in e]
         self._emails = [e for e in emails if '_folder_error' not in e and '_diag' not in e]
+        self._checked.clear()
         self._render_table()
         if errors:
             msgs = '；'.join(e['_folder_error'] for e in errors)
@@ -317,6 +387,7 @@ class EmailPanel(QWidget):
     def _start_sync(self, force: bool):
         if self._loading or self._syncing:
             return
+        self._cancel_sync = False
         self._set_busy(syncing=True)
         label = '强制重推中...' if force else '同步中...'
         self._set_status(label, 'darkcyan')
@@ -345,24 +416,49 @@ class EmailPanel(QWidget):
             self._set_status('无匹配邮件', 'green')
             self._set_busy()
             return
-        self._sync_batch(matched, 0, 0, 0, force)
+        self._sync_batch(matched, 0, 0, 0, force, '重推' if force else '同步')
 
-    def _sync_batch(self, matched, offset, success, failed, force):
+    # ── 处理选中：把勾选的邮件推送到服务端 ──────────────────
+    def _do_process_selected(self):
+        if self._loading or self._syncing:
+            return
+        if not self._is_configured():
+            QMessageBox.warning(self, '提示', '请先在设置中配置后端地址、工号与命名空间')
+            return
+        selected = [e for e in self._emails if e['item_id'] in self._checked]
+        if not selected:
+            return
+        if QMessageBox.question(
+                self, '处理选中',
+                f'将选中的 {len(selected)} 封邮件推送到服务端解析。\n'
+                f'（未命中规则的邮件将以「手动处理」为规则名）\n\n确定继续？',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+        self._cancel_sync = False
+        self._set_busy(syncing=True)
+        self._set_status(f'处理选中... (0/{len(selected)})', 'darkcyan')
+        self._sync_batch(selected, 0, 0, 0, False, '处理选中')
+
+    def _sync_batch(self, matched, offset, success, failed, force, verb):
         BATCH = 10
-        if offset >= len(matched):
+        # 已处理完，或用户在批次间点了「停止」 → 收尾
+        if offset >= len(matched) or self._cancel_sync:
             from datetime import datetime
             self._last_sync_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self._settings['lastSyncTime'] = self._last_sync_time
             store.save_settings(self._settings)
-            verb = '重推' if force else '同步'
-            summary = f'{verb}完成：{len(matched)} 封，成功 {success}，失败 {failed}'
+            if self._cancel_sync:
+                summary = (f'{verb}已停止：已处理 {offset}/{len(matched)} 封，'
+                           f'成功 {success}，失败 {failed}')
+            else:
+                summary = f'{verb}完成：{len(matched)} 封，成功 {success}，失败 {failed}'
+            self._cancel_sync = False
             self._set_status(summary, 'red' if failed else 'green')
             self._set_busy()
             self._do_refresh()
             return
 
-        verb = '重推' if force else '同步'
-        self._set_status(f'{verb}中... ({offset}/{len(matched)})', 'darkcyan')
+        self._set_status(f'{verb}中... ({offset}/{len(matched)})  可点「停止」中止', 'darkcyan')
         batch   = matched[offset:offset + BATCH]
         img_api = self._settings.get('backendUrl', '')
 
@@ -372,6 +468,8 @@ class EmailPanel(QWidget):
         def _done(items):
             s, f = 0, 0
             for item, src in zip(items, batch):
+                if self._cancel_sync:   # 批次内也及时停，未推送的留待收尾
+                    break
                 try:
                     extra = {}
                     try: extra = json.loads(self._settings.get('customJsonConfig', '{}'))
@@ -384,7 +482,7 @@ class EmailPanel(QWidget):
                         'SenderEmail':       item.get('sender_email', ''),
                         'ReceivedTime':      item.get('received_time', ''),
                         'HtmlBody':          item.get('html_body', ''),
-                        'MatchedRuleName':   src.get('matched_rule', ''),
+                        'MatchedRuleName':   src.get('matched_rule') or '手动处理',
                         'UserId':            self._settings.get('userId', ''),
                         'Namespace':         self._settings.get('namespace', ''),
                         'ExtraInfo':         extra,
@@ -393,10 +491,11 @@ class EmailPanel(QWidget):
                     s += 1
                 except Exception:
                     f += 1
-            self._sync_batch(matched, offset + BATCH, success + s, failed + f, force)
+            # 仅推进实际尝试过的数量；若中途停止，剩余的不计入 offset，由收尾分支结束
+            self._sync_batch(matched, offset + s + f, success + s, failed + f, force, verb)
 
         def _fail(msg):
-            self._sync_batch(matched, offset + BATCH, success, failed + len(batch), force)
+            self._sync_batch(matched, offset + len(batch), success, failed + len(batch), force, verb)
 
         w = Worker(_get)
         w.ok.connect(_done)
@@ -404,11 +503,69 @@ class EmailPanel(QWidget):
         w.start()
         self._workers.append(w)
 
-    # ── 渲染表格 ──────────────────────────────────────────
+    # ── 筛选 / 选择 ───────────────────────────────────────
     def _visible_emails(self):
+        rows = self._emails
         if self._filter_check.isChecked():
-            return [e for e in self._emails if e.get('matched_rule')]
-        return self._emails
+            rows = [e for e in rows if e.get('matched_rule')]
+        q = self._search_edit.text().strip().lower()
+        if q:
+            rows = [e for e in rows if q in (
+                f"{e.get('subject', '')} {e.get('sender_name', '')} "
+                f"{e.get('sender_email', '')} {e.get('conversation_topic', '')}").lower()]
+        return rows
+
+    def _on_filter_changed(self, _=None):
+        self._page = 1
+        self._update_table()
+
+    def _on_item_changed(self, item):
+        if self._building or item.column() != 0:
+            return
+        iid = item.data(Qt.UserRole)
+        if item.checkState() == Qt.Checked:
+            self._checked.add(iid)
+        else:
+            self._checked.discard(iid)
+        self._update_selection_ui()
+
+    def _toggle_select_all(self):
+        vis_ids = [e['item_id'] for e in self._visible_emails()]
+        all_checked = bool(vis_ids) and all(i in self._checked for i in vis_ids)
+        if all_checked:
+            for i in vis_ids:
+                self._checked.discard(i)
+        else:
+            self._checked.update(vis_ids)
+        self._update_table()
+
+    def _update_selection_ui(self):
+        if not hasattr(self, '_btn_process'):
+            return
+        if self._syncing:
+            # 推送进行中：按钮变成「停止」，随时可中止
+            self._btn_process.setText('停止')
+            self._btn_process.setEnabled(not self._cancel_sync)
+            self._btn_process.setStyleSheet(
+                'QPushButton{background:#B71C1C;color:white;border:none;}'
+                'QPushButton:hover{background:#a01818;}')
+        else:
+            n = len(self._checked)
+            self._btn_process.setText(f'处理选中 ({n})')
+            self._btn_process.setEnabled(n > 0 and not self._loading)
+            self._btn_process.setStyleSheet('')
+        vis_ids = [e['item_id'] for e in self._visible_emails()]
+        all_checked = bool(vis_ids) and all(i in self._checked for i in vis_ids)
+        self._btn_select_all.setText('取消全选' if all_checked else '全选')
+
+    # ── 处理选中 / 停止 ───────────────────────────────────
+    def _on_process_clicked(self):
+        if self._syncing:
+            self._cancel_sync = True
+            self._set_status('正在停止…（当前批次完成后停止）', 'orange')
+            self._update_selection_ui()
+        else:
+            self._do_process_selected()
 
     def _render_table(self):
         self._page = 1
@@ -422,38 +579,46 @@ class EmailPanel(QWidget):
         start = (self._page - 1) * PAGE_SIZE
         rows  = rows_data[start:start + PAGE_SIZE]
 
+        self._building = True
         self._table.setRowCount(0)
         for idx, e in enumerate(rows):
             r = self._table.rowCount()
             self._table.insertRow(r)
 
+            chk = QTableWidgetItem()
+            chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            chk.setCheckState(Qt.Checked if e['item_id'] in self._checked else Qt.Unchecked)
+            chk.setData(Qt.UserRole, e['item_id'])
+            self._table.setItem(r, 0, chk)
+
             num = QTableWidgetItem(str(start + idx + 1))
             num.setTextAlignment(Qt.AlignCenter)
-            self._table.setItem(r, 0, num)
+            self._table.setItem(r, 1, num)
 
             ps = e['parseStatus']
             if ps == '已解析':
-                self._table.setItem(r, 1, _badge('已解析',   '#2EA043'))
+                self._table.setItem(r, 2, _badge('已解析',   '#2EA043'))
             elif ps == '解析失败':
-                self._table.setItem(r, 1, _badge('解析失败', '#B43C3C'))
+                self._table.setItem(r, 2, _badge('解析失败', '#B43C3C'))
             elif ps == '解析中':
-                self._table.setItem(r, 1, _badge('解析中',   '#B48200'))
+                self._table.setItem(r, 2, _badge('解析中',   '#B48200'))
             else:
                 dash = QTableWidgetItem('-')
                 dash.setForeground(QColor('#aaa'))
                 dash.setTextAlignment(Qt.AlignCenter)
-                self._table.setItem(r, 1, dash)
+                self._table.setItem(r, 2, dash)
 
-            self._table.setItem(r, 2, QTableWidgetItem(e['received_time'].replace('T', ' ')))
-            self._table.setItem(r, 3, QTableWidgetItem(e['sender_name']))
+            self._table.setItem(r, 3, QTableWidgetItem(e['received_time'].replace('T', ' ')))
+            self._table.setItem(r, 4, QTableWidgetItem(e['sender_name']))
 
             subj_item = QTableWidgetItem(e['subject'])
             subj_item.setToolTip(e['subject'])
-            self._table.setItem(r, 4, subj_item)
+            self._table.setItem(r, 5, subj_item)
 
             topic_item = QTableWidgetItem(e['conversation_topic'])
             topic_item.setToolTip(e['conversation_topic'])
-            self._table.setItem(r, 5, topic_item)
+            self._table.setItem(r, 6, topic_item)
+        self._building = False
 
         self._total_label.setText(f'共 {len(rows_data)} 封')
         self._page_label.setText(f'第 {self._page} / {total} 页')
@@ -461,6 +626,7 @@ class EmailPanel(QWidget):
         self._btn_prev.setEnabled(self._page > 1)
         self._btn_next.setEnabled(self._page < total)
         self._btn_last.setEnabled(self._page < total)
+        self._update_selection_ui()
 
     def _total_pages(self):
         rows = self._visible_emails()
@@ -505,7 +671,6 @@ class EmailPanel(QWidget):
             saved = dlg.get_settings()
             self._settings.update(saved)
             store.save_settings(self._settings)
-            self._start_auto_sync()
             self._set_status('设置已更新', 'green')
             self._do_refresh()
 
