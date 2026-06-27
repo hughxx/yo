@@ -1,7 +1,7 @@
 """邮件模块主面板（基于 win32com Outlook）"""
 import json
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QTimer, QPoint
+from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 
 from modules.email import outlook, rules as rules_mod, cloud_mute
@@ -79,6 +79,41 @@ class _StatusLabel(QLabel):
         super().leaveEvent(e)
 
 
+class _CheckHeader(QHeaderView):
+    """带「全选」复选框的表头（第 0 列绘制 checkbox，点击发 toggled 信号）。"""
+    toggled = pyqtSignal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(Qt.Horizontal, parent)
+        self._checked = False
+        self.setSectionsClickable(True)
+        self.setHighlightSections(False)
+
+    def setChecked(self, c: bool):
+        if self._checked != bool(c):
+            self._checked = bool(c)
+            self.updateSection(0)
+
+    def paintSection(self, painter, rect, logicalIndex):
+        super().paintSection(painter, rect, logicalIndex)
+        if logicalIndex != 0:
+            return
+        opt = QStyleOptionButton()
+        sz = 14
+        opt.rect = QRect(rect.x() + (rect.width() - sz) // 2,
+                         rect.y() + (rect.height() - sz) // 2, sz, sz)
+        opt.state = QStyle.State_Enabled | (QStyle.State_On if self._checked else QStyle.State_Off)
+        self.style().drawControl(QStyle.CE_CheckBox, opt, painter)
+
+    def mousePressEvent(self, e):
+        if self.logicalIndexAt(e.pos()) == 0:
+            self._checked = not self._checked
+            self.updateSection(0)
+            self.toggled.emit(self._checked)
+            return
+        super().mousePressEvent(e)
+
+
 def _badge(text: str, bg: str, fg: str = '#fff') -> QTableWidgetItem:
     item = QTableWidgetItem(f'  {text}  ')
     item.setBackground(QColor(bg))
@@ -104,6 +139,7 @@ class EmailPanel(QWidget):
         self._syncing = False
         self._building = False        # 重建表格时屏蔽 itemChanged
         self._checked = set()         # 选中的 item_id（跨分页/筛选保持）
+        self._filter_mode = 'all'     # 'all' | 'matched'，对应分段筛选
         self._monitoring = False      # 定时同步是否在运行
         self._cancel_sync = False     # 请求中止当前推送（处理选中/同步/重推）
         self._last_sync_time = self._settings.get('lastSyncTime', '')
@@ -131,6 +167,23 @@ class EmailPanel(QWidget):
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(6)
 
+        # 分段筛选：全部 / 按规则匹配（参考 standalone）
+        seg_style = (
+            'QPushButton{border:1px solid #bbb;background:#f5f5f5;padding:4px 12px;'
+            'min-height:24px;border-radius:0;}'
+            'QPushButton:checked{background:#008C64;color:white;border:1px solid #008C64;}')
+        self._seg_all     = QPushButton('全部 (0)')
+        self._seg_matched = QPushButton('按规则匹配 (0)')
+        seg_group = QButtonGroup(self)
+        seg_group.setExclusive(True)
+        for b in (self._seg_all, self._seg_matched):
+            b.setCheckable(True)
+            b.setStyleSheet(seg_style)
+            seg_group.addButton(b)
+        self._seg_all.setChecked(True)
+        lay.addWidget(self._seg_all)
+        lay.addWidget(self._seg_matched)
+
         self._btn_refresh  = QPushButton('刷新邮件')
         self._btn_sync     = QPushButton('立即同步')
         self._btn_settings = QPushButton('设置')
@@ -151,6 +204,12 @@ class EmailPanel(QWidget):
         self._btn_more.setPopupMode(QToolButton.InstantPopup)
         lay.addWidget(self._btn_more)
 
+        self._search_edit = QLineEdit()
+        self._search_edit.setPlaceholderText('🔍 搜索主题/发件人…')
+        self._search_edit.setFixedWidth(170)
+        self._search_edit.setClearButtonEnabled(True)
+        lay.addWidget(self._search_edit)
+
         self._status_popup = _StatusPopup()
         self._status_label = _StatusLabel(self._status_popup)
         self._status_label.set_status('就绪', 'green')
@@ -158,37 +217,21 @@ class EmailPanel(QWidget):
         self._status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         lay.addWidget(self._status_label)
 
-        self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText('🔍 搜索主题/发件人…')
-        self._search_edit.setFixedWidth(170)
-        self._search_edit.setClearButtonEnabled(True)
-        lay.addWidget(self._search_edit)
-
-        self._filter_check = QCheckBox('仅匹配')
-        self._filter_check.setChecked(True)
-        self._filter_check.setToolTip('仅显示命中规则的邮件')
-        lay.addWidget(self._filter_check)
-
-        self._btn_select_all = QPushButton('全选')
-        self._btn_select_all.setObjectName('pgBtn')
-        self._btn_select_all.setFixedWidth(56)
-        lay.addWidget(self._btn_select_all)
+        self._btn_timer = QPushButton('启动定时')
+        self._btn_timer.setFixedWidth(76)
+        lay.addWidget(self._btn_timer)
 
         self._btn_process = QPushButton('处理选中 (0)')
         self._btn_process.setObjectName('btnPrimary')
         self._btn_process.setEnabled(False)
         lay.addWidget(self._btn_process)
 
-        self._btn_timer = QPushButton('启动定时')
-        self._btn_timer.setFixedWidth(76)
-        lay.addWidget(self._btn_timer)
-
         self._btn_refresh.clicked.connect(self._do_refresh)
         self._btn_sync.clicked.connect(self._do_sync)
         self._btn_settings.clicked.connect(self._open_settings)
+        self._seg_all.clicked.connect(lambda: self._set_filter_mode('all'))
+        self._seg_matched.clicked.connect(lambda: self._set_filter_mode('matched'))
         self._search_edit.textChanged.connect(self._on_filter_changed)
-        self._filter_check.stateChanged.connect(self._on_filter_changed)
-        self._btn_select_all.clicked.connect(self._toggle_select_all)
         self._btn_process.clicked.connect(self._on_process_clicked)
         self._btn_timer.clicked.connect(self._toggle_timer)
         self._refresh_timer_style()
@@ -203,9 +246,12 @@ class EmailPanel(QWidget):
 
     def _make_table(self):
         self._table = QTableWidget(0, 7)
+        self._check_header = _CheckHeader(self._table)
+        self._table.setHorizontalHeader(self._check_header)
+        self._check_header.toggled.connect(self._on_header_toggle)
         self._table.setHorizontalHeaderLabels(
             ['', '#', '状态', '时间', '发件人', '主题', '会话主题'])
-        hh = self._table.horizontalHeader()
+        hh = self._check_header
         hh.setSectionResizeMode(QHeaderView.Interactive)
         hh.setSectionResizeMode(5, QHeaderView.Stretch)
         hh.setSectionResizeMode(6, QHeaderView.Stretch)
@@ -506,7 +552,7 @@ class EmailPanel(QWidget):
     # ── 筛选 / 选择 ───────────────────────────────────────
     def _visible_emails(self):
         rows = self._emails
-        if self._filter_check.isChecked():
+        if self._filter_mode == 'matched':
             rows = [e for e in rows if e.get('matched_rule')]
         q = self._search_edit.text().strip().lower()
         if q:
@@ -514,6 +560,11 @@ class EmailPanel(QWidget):
                 f"{e.get('subject', '')} {e.get('sender_name', '')} "
                 f"{e.get('sender_email', '')} {e.get('conversation_topic', '')}").lower()]
         return rows
+
+    def _set_filter_mode(self, mode: str):
+        self._filter_mode = mode
+        self._page = 1
+        self._update_table()
 
     def _on_filter_changed(self, _=None):
         self._page = 1
@@ -529,14 +580,14 @@ class EmailPanel(QWidget):
             self._checked.discard(iid)
         self._update_selection_ui()
 
-    def _toggle_select_all(self):
+    def _on_header_toggle(self, checked: bool):
+        """表头「全选」：勾选/取消当前筛选下的全部（跨分页）。"""
         vis_ids = [e['item_id'] for e in self._visible_emails()]
-        all_checked = bool(vis_ids) and all(i in self._checked for i in vis_ids)
-        if all_checked:
+        if checked:
+            self._checked.update(vis_ids)
+        else:
             for i in vis_ids:
                 self._checked.discard(i)
-        else:
-            self._checked.update(vis_ids)
         self._update_table()
 
     def _update_selection_ui(self):
@@ -556,7 +607,7 @@ class EmailPanel(QWidget):
             self._btn_process.setStyleSheet('')
         vis_ids = [e['item_id'] for e in self._visible_emails()]
         all_checked = bool(vis_ids) and all(i in self._checked for i in vis_ids)
-        self._btn_select_all.setText('取消全选' if all_checked else '全选')
+        self._check_header.setChecked(all_checked)
 
     # ── 处理选中 / 停止 ───────────────────────────────────
     def _on_process_clicked(self):
@@ -620,6 +671,9 @@ class EmailPanel(QWidget):
             self._table.setItem(r, 6, topic_item)
         self._building = False
 
+        self._seg_all.setText(f'全部 ({len(self._emails)})')
+        self._seg_matched.setText(
+            f'按规则匹配 ({sum(1 for e in self._emails if e.get("matched_rule"))})')
         self._total_label.setText(f'共 {len(rows_data)} 封')
         self._page_label.setText(f'第 {self._page} / {total} 页')
         self._btn_first.setEnabled(self._page > 1)
