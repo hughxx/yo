@@ -37,56 +37,56 @@ def _session():
 def folder_list() -> list:
     """返回所有文件夹路径列表。
 
-    两条枚举都试：ns.Folders（命名空间顶层文件夹，每账户一个根，最通用）+ ns.Stores
-    （每个存储的根）。带重试等 logon。若多次都空，带 Folders/Stores 计数抛出，
-    让上层把真实原因写进日志（而不是静默“0 个”）。
+    枚举 ns.Folders（命名空间顶层文件夹，每账户一个根）。关键：**逐个文件夹单独 try**，
+    某个特殊文件夹（在线存档 / 公用文件夹等）访问会抛 -2147352567「条件无效」，
+    不能让它中断整轮枚举——隔离掉它，其余正常列出。先 GetDefaultFolder 确保 logon。
     """
-    import time
     result = []
     with _session() as ns:
-        last = ''
-        for _ in range(8):   # 最多约 4s
+        try:
+            ns.GetDefaultFolder(_INBOX)   # 触发 logon
+        except Exception:
+            pass
+        tops = []
+        try:
+            tops = list(ns.Folders)
+        except Exception:
+            pass
+        for top in tops:
             try:
-                ns.GetDefaultFolder(_INBOX)   # 触发 logon
+                _collect(top, result, '')
             except Exception:
-                pass
+                pass   # 跳过这个会抛“条件无效”的顶层文件夹，继续其余
+        if not result:   # 兜底：ns.Folders 整个不行时改走 ns.Stores
             try:
-                for top in list(ns.Folders):
-                    _collect(top, result, '')
-            except Exception as e:
-                last = f'Folders 异常: {e}'
-            if not result:
+                stores = list(ns.Stores)
+            except Exception:
+                stores = []
+            for store in stores:
                 try:
-                    for store in list(ns.Stores):
-                        try:
-                            _collect(store.GetRootFolder(), result, '')
-                        except Exception:
-                            pass
-                except Exception as e:
-                    last = f'Stores 异常: {e}'
-            if result:
-                return result
-            time.sleep(0.5)
-        # 多次仍空：带计数抛出，定位是“真没有”还是“枚举抛异常”还是“_collect 失败”
-        try:
-            fc = len(list(ns.Folders))
-        except Exception as e:
-            fc = f'err({e})'
-        try:
-            sc = ns.Stores.Count
-        except Exception as e:
-            sc = f'err({e})'
-        raise RuntimeError(f'枚举文件夹为空（ns.Folders={fc} ns.Stores={sc}）{last}')
+                    _collect(store.GetRootFolder(), result, '')
+                except Exception:
+                    pass
+    return result
 
 
 def _collect(folder, out: list, prefix: str):
-    path = f'{prefix}\\{folder.Name}' if prefix else folder.Name
-    out.append(path)
+    # 每一步都隔离：folder.Name / folder.Folders / 每个子文件夹各自 try，
+    # 任一抛“条件无效”只丢这一支，不连累兄弟节点。
     try:
-        for sub in folder.Folders:
-            _collect(sub, out, path)
+        name = folder.Name
     except Exception:
-        pass
+        return
+    out.append(f'{prefix}\\{name}' if prefix else name)
+    try:
+        subs = list(folder.Folders)
+    except Exception:
+        return
+    for sub in subs:
+        try:
+            _collect(sub, out, f'{prefix}\\{name}' if prefix else name)
+        except Exception:
+            pass
 
 
 def _get_folder(ns, path: str):
