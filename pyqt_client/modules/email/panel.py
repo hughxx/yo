@@ -363,18 +363,16 @@ class EmailPanel(QWidget):
     def activate(self):
         self._settings = store.load_settings()
         backend.set_base(self._settings.get('backendUrl', ''))
-        if not self._folders_loaded_once:
-            # 首次：先加载文件夹（快），loaded 回来后再刷邮件，避免并发拉 Outlook
-            self._folders_loaded_once = True
-            self._pending_refresh = self._is_configured()
-            self._folder_pane.reload()
-        elif self._is_configured():
+        if self._is_configured():
+            # 先刷邮件：mail_list 会 GetDefaultFolder 触发 MAPI logon 把 Outlook 暖起来，
+            # 刷完(在 _on_refresh_done)再加载文件夹——此时 ns.Stores 才齐，避免“0 个”。
             self._do_refresh()
+        elif not self._folders_loaded_once:
+            self._folders_loaded_once = True
+            self._folder_pane.reload()
 
     def _on_folders_loaded(self):
-        if self._pending_refresh:
-            self._pending_refresh = False
-            self._do_refresh()
+        pass
 
     def _on_scope_changed(self):
         self._settings = store.load_settings()
@@ -451,6 +449,10 @@ class EmailPanel(QWidget):
             self._set_status(f'读取 {len(self._emails)} 封{sync}', 'green')
         self._set_busy()
         self._fetch_page_status()
+        if not self._folders_loaded_once:
+            # 邮件已刷完，Outlook 已暖；此时加载文件夹树才能拿全 Stores
+            self._folders_loaded_once = True
+            self._folder_pane.reload()
 
     # ── 同步 ─────────────────────────────────────────────
     def _do_sync(self):
