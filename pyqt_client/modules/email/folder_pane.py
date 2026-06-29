@@ -47,7 +47,7 @@ class FolderPane(QWidget):
 
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
-        self._tree.setAlternatingRowColors(True)
+        self._tree.setAlternatingRowColors(False)
         self._tree.itemChanged.connect(self._on_item_changed)
         lay.addWidget(self._tree, 1)
 

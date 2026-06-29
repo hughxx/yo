@@ -213,6 +213,8 @@ class EmailPanel(QWidget):
         self._btn_refresh.setObjectName('btnRefresh')
         lay.addWidget(self._btn_refresh)
 
+        lay.addStretch()   # 搜索框在「刷新邮件」和「启动定时」之间居中
+
         self._search_edit = QLineEdit()
         self._search_edit.setPlaceholderText('🔍 搜索主题/发件人…')
         self._search_edit.setFixedWidth(170)
