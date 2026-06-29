@@ -18,6 +18,9 @@ LLM_BASE_URL = "https://your-llm-endpoint/v1"
 LLM_API_KEY  = "sk-your-api-key"
 LLM_MODEL_ID = "your-model-id"
 
+# 同时处理（含 LLM 调用）的邮件并发上限。定时一次推大量邮件时靠它限流，避免打爆 LLM。
+MAX_CONCURRENT_PROCESS = 3
+
 # ==================== OCR 配置 ====================
 OCR_URL = "http://your-ocr-service/ocr"
 

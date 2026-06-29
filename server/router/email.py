@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -29,7 +30,10 @@ async def receive_email(
     topic = data.get("ConversationTopic", "")[:60]
     logger.info("receive: topic=%r", topic)
 
-    ok, msg, process_kwargs = upsert_email(db, data, force=bool(data.get("Force", False)))
+    # upsert 是同步 DB 调用；一次 200 封涌入时别在事件循环里串行阻塞，丢线程里做
+    ok, msg, process_kwargs = await asyncio.to_thread(
+        upsert_email, db, data, bool(data.get("Force", False))
+    )
 
     if ok and process_kwargs:
         logger.info("background_task scheduled: topic=%r", topic)

@@ -15,11 +15,26 @@ from server.utils.engine import push_experience
 from server.utils.um_content import replace_um_images
 from server.service.log_service import log_process_error
 
+try:
+    from server.utils.settings import MAX_CONCURRENT_PROCESS as _MAX_CONCURRENT
+except Exception:
+    _MAX_CONCURRENT = 3
+
 logger = logging.getLogger(__name__)
 
 _IMAGE_RE = re.compile(r'(!\[[^\]]*\]\((https?://[^)\s]+)\))')
 
 _CHUNK = 300   # 每次 read_content 最多返回的行数
+
+# 全局并发闸：最多 _MAX_CONCURRENT 封邮件同时处理。懒加载，确保在运行中的事件循环里创建。
+_process_sem: "asyncio.Semaphore | None" = None
+
+
+def _get_sem() -> asyncio.Semaphore:
+    global _process_sem
+    if _process_sem is None:
+        _process_sem = asyncio.Semaphore(max(1, _MAX_CONCURRENT))
+    return _process_sem
 
 _SYSTEM_PROMPT = """\
 你是一个专业的技术知识整理专家。请将邮件线程整理成一条结构化经验文档，存入知识库供后续检索和学习。
@@ -89,7 +104,7 @@ async def _enrich_with_ocr(markdown: str) -> str:
     for m in matches:
         url = m.group(2)
         try:
-            resp = req_lib.get(url, timeout=30, verify=False)
+            resp = await asyncio.to_thread(req_lib.get, url, timeout=30, verify=False)
             resp.raise_for_status()
             filename = url.rstrip("/").split("/")[-1] or "image.png"
             logger.info("OCR: %s", filename)
@@ -208,25 +223,30 @@ async def process_email(
         subject, user_id, namespace_id, namespace_name, doc_id,
     )
     try:
-        # 客户端直传 markdown 时直接采用，省去 html2md；否则按旧逻辑从 html 转换
-        if markdown_body and markdown_body.strip():
-            markdown = markdown_body
-            logger.info("markdown from client: %d chars", len(markdown))
-        else:
-            markdown = html2md(html_body)
-            logger.info("html2md: %d chars", len(markdown))
+        # 并发闸：最多 N 封同时处理。其余在此 await 排队（不占线程、不阻塞事件循环），
+        # 既限制 LLM 调用量，也避免一次 200 封把后台压垮。
+        async with _get_sem():
+            logger.info("process_email acquired slot: subject=%r", subject)
+            # 客户端直传 markdown 时直接采用，省去 html2md；否则按旧逻辑从 html 转换
+            if markdown_body and markdown_body.strip():
+                markdown = markdown_body
+                logger.info("markdown from client: %d chars", len(markdown))
+            else:
+                markdown = await asyncio.to_thread(html2md, html_body)  # 同步、CPU 活 → 入线程
+                logger.info("html2md: %d chars", len(markdown))
 
-        if not markdown.strip():
-            logger.info("process_email: empty markdown, skip")
-            return
-        markdown = await asyncio.to_thread(replace_um_images, markdown)
-        markdown = await _enrich_with_ocr(markdown)
-        result   = await _call_llm(markdown)
-        push_experience(result, user_id, doc_id)
-        _update_ns_status(conversation_topic, namespace_id, "done")
-        logger.info("process_email done: subject=%r", subject)
+            if not markdown.strip():
+                logger.info("process_email: empty markdown, skip")
+                return
+            markdown = await asyncio.to_thread(replace_um_images, markdown)
+            markdown = await _enrich_with_ocr(markdown)
+            result   = await _call_llm(markdown)
+            await asyncio.to_thread(push_experience, result, user_id, doc_id)  # 同步 requests → 入线程
+            await asyncio.to_thread(_update_ns_status, conversation_topic, namespace_id, "done")
+            logger.info("process_email done: subject=%r", subject)
     except Exception as e:
         logger.exception("process_email failed: topic=%r subject=%r",
                          conversation_topic[:60], subject)
-        _update_ns_status(conversation_topic, namespace_id, "failed")
-        log_process_error("email", conversation_topic, namespace_name, e)
+        # 失败收尾同样走线程，别在事件循环里做同步 DB
+        await asyncio.to_thread(_update_ns_status, conversation_topic, namespace_id, "failed")
+        await asyncio.to_thread(log_process_error, "email", conversation_topic, namespace_name, e)
