@@ -1,6 +1,5 @@
 """win32com Outlook 访问封装"""
 import os
-import threading
 import tempfile
 from contextlib import contextmanager
 import pythoncom
@@ -8,12 +7,6 @@ import win32com.client
 import win32timezone  # noqa: F401 — PyInstaller must bundle this for win32com timezone handling
 
 _INBOX = 6  # olFolderInbox
-
-# 串行化所有 Outlook COM 访问：folder_list / mail_list / mail_get / search_* 各在
-# 自己的 Worker 线程里跑，若并发同时自动化同一个 Outlook 实例，会触发
-# RPC_E_CALL_REJECTED（“应用程序正忙”），表现为某个调用静默失败——例如启动时
-# 文件夹树和邮件刷新同时拉 Outlook，文件夹就加载不出来。加全局锁逐个来。
-_COM_LOCK = threading.Lock()
 
 
 @contextmanager
@@ -25,36 +18,35 @@ def _session():
     Outlook.Application/namespace 从不释放。mail_get 又是每封邮件调一次，
     导致同时打开的 MAPI 对象越积越多，最终触发“Outlook 已用完所有共享资源”
     （MAPI_E_NO_RESOURCES）。务必通过本上下文管理器获取 namespace。
+
+    并发：不在此处串行化（曾加全局锁，反而导致 ns.Stores 取不到/文件夹空）。
+    启动时改由面板「先刷邮件、刷完再加载文件夹」串行驱动，天然不并发。
     """
-    with _COM_LOCK:
-        pythoncom.CoInitialize()
+    pythoncom.CoInitialize()
+    ns = None
+    try:
+        ns = win32com.client.Dispatch('Outlook.Application').GetNamespace('MAPI')
+        yield ns
+    finally:
         ns = None
-        try:
-            ns = win32com.client.Dispatch('Outlook.Application').GetNamespace('MAPI')
-            yield ns
-        finally:
-            ns = None
-            pythoncom.CoUninitialize()
+        pythoncom.CoUninitialize()
 
 
 # ── 文件夹 ────────────────────────────────────────────────
 
 def folder_list() -> list:
-    """返回所有文件夹路径列表"""
-    import time
+    """返回所有文件夹路径列表。
+
+    工作版（设置对话框）就是这段：枚举 ns.Stores 取每个存储的根文件夹。前提是 MAPI
+    已 logon——面板「先刷邮件再加载文件夹」保证了这点。这里再 GetDefaultFolder 兜一下
+    未配置首启（没有邮件刷新来 logon）的情况。
+    """
     result = []
     with _session() as ns:
-        # 冷启动时若先于任何取信操作直接枚举 ns.Stores，MAPI 可能尚未 logon，
-        # 返回空集合（表现为“加载完成 0 个”）。先碰一下默认收件箱强制 logon，
-        # Outlook 刚被拉起时 logon 需要时间，重试等到 Stores 出现再枚举。
-        for _ in range(20):   # 最多约 10s
-            try:
-                ns.GetDefaultFolder(_INBOX)
-                if ns.Stores.Count > 0:
-                    break
-            except Exception:
-                pass
-            time.sleep(0.5)
+        try:
+            ns.GetDefaultFolder(_INBOX)   # 确保已 logon
+        except Exception:
+            pass
         for store in ns.Stores:
             try:
                 _collect(store.GetRootFolder(), result, '')
