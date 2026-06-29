@@ -299,7 +299,7 @@ class MainShell(QMainWindow):
         if self._setup_dlg and self._setup_dlg.isVisible():
             self._setup_dlg.raise_()
             return
-        dlg = SetupDialog(s, parent=self)
+        dlg = SetupDialog(s, parent=self, mandatory=True)
         dlg.accepted.connect(lambda: self._on_setup_accepted(dlg))
         dlg.show()
         self._setup_dlg = dlg

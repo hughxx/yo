@@ -1,6 +1,8 @@
 """邮件模块：设置对话框 + 规则编辑对话框"""
+import time
+
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QTimer, QStringListModel
+from PyQt5.QtCore import Qt, QTimer, QStringListModel, QEvent
 from PyQt5.QtGui import QFont
 
 import backend
@@ -141,12 +143,26 @@ class RuleDialog(QDialog):
 
 # ── 首次配置向导 ──────────────────────────────────────────
 class SetupDialog(QDialog):
-    """首次打开邮件标签时的强制配置：服务器 + 工号 + 命名空间"""
-    def __init__(self, settings: dict, parent=None):
+    """首次打开邮件标签时的强制配置：服务器 + 工号 + 命名空间。
+
+    mandatory=True（首启强制配置）时：去掉关闭按钮、吞掉 Esc/关闭，普通用户关不掉；
+    管理员可在「额外配置」框上**连续三击**隐藏地关闭（不保存）。
+    mandatory=False（齿轮打开设置）时为普通可关闭对话框。
+    """
+    def __init__(self, settings: dict, parent=None, mandatory: bool = False):
         super().__init__(parent)
         self.setWindowTitle('初始配置 — 问题定位助手')
         self.setFixedWidth(420)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        flags = self.windowFlags() & ~Qt.WindowContextHelpButtonHint
+        self._mandatory = mandatory
+        self._allow_close = not mandatory
+        self._click_ts = []
+        if mandatory:
+            # 去掉关闭按钮，并设为模态，逼用户面对它
+            flags &= ~Qt.WindowCloseButtonHint
+            flags |= Qt.CustomizeWindowHint | Qt.WindowTitleHint
+            self.setModal(True)
+        self.setWindowFlags(flags)
         self._s = dict(settings)
         self._workers = []
         self._userinfo_map = {}
@@ -220,6 +236,8 @@ class SetupDialog(QDialog):
         self._custom_json.setFont(QFont('Consolas', 10))
         self._custom_json.setPlaceholderText('{}')
         form.addRow('额外配置：', self._custom_json)
+        # 隐藏的管理员关闭：在「额外配置」框上连续三击
+        self._custom_json.viewport().installEventFilter(self)
 
         lay.addLayout(form)
 
@@ -230,6 +248,38 @@ class SetupDialog(QDialog):
         lay.addWidget(btn_ok)
 
         self._load_namespaces()
+
+    # ── 强制模式下的关闭控制 + 隐藏管理员关闭 ──────────────
+    def eventFilter(self, obj, event):
+        if (obj is self._custom_json.viewport()
+                and event.type() == QEvent.MouseButtonPress):
+            now = time.monotonic()
+            self._click_ts = [t for t in self._click_ts if now - t < 0.8] + [now]
+            if len(self._click_ts) >= 3:
+                self._click_ts = []
+                self._admin_close()
+        return super().eventFilter(obj, event)
+
+    def _admin_close(self):
+        """管理员三击「额外配置」：放行关闭并直接关掉（不保存）。"""
+        self._allow_close = True
+        self.reject()
+
+    def closeEvent(self, event):
+        if self._allow_close:
+            event.accept()
+        else:
+            event.ignore()   # 强制模式：普通用户关不掉
+
+    def reject(self):
+        if self._allow_close:
+            super().reject()
+        # 强制模式下吞掉 Esc / 取消
+
+    def keyPressEvent(self, event):
+        if self._mandatory and not self._allow_close and event.key() == Qt.Key_Escape:
+            return
+        super().keyPressEvent(event)
 
     def _on_server_activated(self, index: int):
         if self._server_combo.itemText(index) == _MANUAL_INPUT:
