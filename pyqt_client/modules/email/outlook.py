@@ -35,38 +35,19 @@ def _session():
 # ── 文件夹 ────────────────────────────────────────────────
 
 def folder_list() -> list:
-    """返回所有文件夹路径列表。
+    """返回所有文件夹路径列表（恢复工作版：枚举 ns.Stores 的各存储根）。
 
-    枚举 ns.Folders（命名空间顶层文件夹，每账户一个根）。关键：**逐个文件夹单独 try**，
-    某个特殊文件夹（在线存档 / 公用文件夹等）访问会抛 -2147352567「条件无效」，
-    不能让它中断整轮枚举——隔离掉它，其余正常列出。先 GetDefaultFolder 确保 logon。
+    用 ns.Stores 而**不是** ns.Folders——后者含命名空间级虚拟文件夹（在线存档/公用
+    文件夹），其中某个访问会抛 -2147352567「条件无效」，把整轮枚举带崩。ns.Stores
+    走真实存储的根，和 _get_folder（能读到邮件的那条路径）同源，稳。
     """
     result = []
     with _session() as ns:
-        try:
-            ns.GetDefaultFolder(_INBOX)   # 触发 logon
-        except Exception:
-            pass
-        tops = []
-        try:
-            tops = list(ns.Folders)
-        except Exception:
-            pass
-        for top in tops:
+        for store in ns.Stores:
             try:
-                _collect(top, result, '')
+                _collect(store.GetRootFolder(), result, '')
             except Exception:
-                pass   # 跳过这个会抛“条件无效”的顶层文件夹，继续其余
-        if not result:   # 兜底：ns.Folders 整个不行时改走 ns.Stores
-            try:
-                stores = list(ns.Stores)
-            except Exception:
-                stores = []
-            for store in stores:
-                try:
-                    _collect(store.GetRootFolder(), result, '')
-                except Exception:
-                    pass
+                pass
     return result
 
 
