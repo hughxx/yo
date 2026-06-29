@@ -17,6 +17,22 @@ def ping():
     return {"Success": True, "Message": "pong"}
 
 
+@router.get("/version")
+def client_version():
+    """客户端最新版本信息。发版时改 settings 里的 CLIENT_* 即可推送给所有客户端。
+
+    latest = 最新版本号；min = 低于此版本则强制更新；url = 下载地址；notes = 更新说明。
+    用 getattr 兜默认值，settings 未配置时返回空，客户端会静默跳过。
+    """
+    from server.utils import settings as st
+    return {
+        "latest": getattr(st, "CLIENT_LATEST_VERSION", ""),
+        "min":    getattr(st, "CLIENT_MIN_VERSION", ""),
+        "url":    getattr(st, "CLIENT_DOWNLOAD_URL", ""),
+        "notes":  getattr(st, "CLIENT_UPDATE_NOTES", ""),
+    }
+
+
 _HW_USERINFO_URL = "https://fuyao.rnd.huawei.com/config-service/config-center/hw-userinfo"
 
 

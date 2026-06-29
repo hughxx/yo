@@ -15,6 +15,15 @@ def ping() -> bool:
     except Exception:
         return False
 
+def get_latest_version() -> dict:
+    """返回 {latest, min, url, notes}；失败返回空 dict（静默不打扰用户）。"""
+    try:
+        r = requests.get(f'{_base}/api/config/version', timeout=8, verify=False)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return {}
+
 def get_namespaces() -> list:
     try:
         r = requests.get(f'{_base}/api/config/namespaces', timeout=10, verify=False)

@@ -35,8 +35,18 @@ def _app_icon() -> QIcon:
 from modules.email.panel import EmailPanel
 from modules.welink.container import WelinkContainer
 from modules.email.dialogs import SetupDialog
+from utils import Worker
+from version import APP_VERSION
+import webbrowser
 import store
 import backend
+
+
+def _ver_tuple(v: str):
+    try:
+        return tuple(int(x) for x in str(v).split('.')[:3])
+    except Exception:
+        return (0, 0, 0)
 
 # ── 样式表 ────────────────────────────────────────────────
 QSS = """
@@ -208,6 +218,7 @@ class MainShell(QMainWindow):
         self._build_tray()
         self._switch(0)
         self._check_setup()
+        self._check_version()
 
     def _build_ui(self):
         root = QWidget()
@@ -294,6 +305,50 @@ class MainShell(QMainWindow):
         s = store.load_settings()
         if not (s.get('backendUrl') and s.get('userId') and s.get('namespace')):
             self._show_setup(s)
+
+    # ── 版本检查（后台拉服务端，发现新版本则提示） ──────────
+    def _check_version(self):
+        s = store.load_settings()
+        url = s.get('backendUrl')
+        if not url:
+            return   # 未配置后端，跳过
+        backend.set_base(url)
+        w = Worker(backend.get_latest_version)
+        w.ok.connect(self._on_version)
+        w.err.connect(lambda _: None)
+        w.start()
+        self._ver_worker = w   # 持引用，防 GC
+
+    def _on_version(self, info):
+        if not isinstance(info, dict):
+            return
+        latest = info.get('latest', '')
+        if not latest or _ver_tuple(APP_VERSION) >= _ver_tuple(latest):
+            return   # 已是最新
+        minv  = info.get('min', '')
+        force = bool(minv) and _ver_tuple(APP_VERSION) < _ver_tuple(minv)
+        self._show_update(latest, info.get('url', ''), info.get('notes', ''), force)
+
+    def _show_update(self, latest, dl_url, notes, force):
+        box = QMessageBox(self)
+        box.setWindowTitle('版本更新')
+        body = f'发现新版本 {latest}（当前 {APP_VERSION}）。'
+        if notes:
+            body += f'\n\n{notes}'
+        if force:
+            body += '\n\n这是强制更新，请更新到最新版后再使用。'
+        box.setText(body)
+        btn_dl = box.addButton('去下载', QMessageBox.AcceptRole)
+        if not force:
+            box.addButton('稍后', QMessageBox.RejectRole)
+        box.exec_()
+        if box.clickedButton() is btn_dl and dl_url:
+            try:
+                webbrowser.open(dl_url)
+            except Exception:
+                pass
+        if force:
+            QApplication.quit()
 
     def _show_setup(self, s):
         if self._setup_dlg and self._setup_dlg.isVisible():

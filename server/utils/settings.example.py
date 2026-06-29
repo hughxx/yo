@@ -21,6 +21,13 @@ LLM_MODEL_ID = "your-model-id"
 # 同时处理（含 LLM 调用）的邮件并发上限。定时一次推大量邮件时靠它限流，避免打爆 LLM。
 MAX_CONCURRENT_PROCESS = 3
 
+# ==================== 客户端版本推送 ====================
+# 发版流程：把新 exe 传到下载地址 → 改 CLIENT_LATEST_VERSION → 需要逼旧版升级时调 CLIENT_MIN_VERSION
+CLIENT_LATEST_VERSION = "1.0.0"          # 最新版本号
+CLIENT_MIN_VERSION    = "0.0.0"          # 低于此版本强制更新（设成 latest 即全员强更）
+CLIENT_DOWNLOAD_URL   = ""               # 新 exe 的下载地址（放文件服务器/网盘直链）
+CLIENT_UPDATE_NOTES   = ""               # 更新说明（弹窗里展示）
+
 # ==================== OCR 配置 ====================
 OCR_URL = "http://your-ocr-service/ocr"
 
