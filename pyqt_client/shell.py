@@ -195,8 +195,8 @@ class MainShell(QMainWindow):
         super().__init__()
         self.setWindowTitle('问题定位助手')
         self.setWindowIcon(_app_icon())
-        self.resize(1020, 640)
-        self.setMinimumSize(820, 500)
+        self.resize(1320, 840)
+        self.setMinimumSize(1080, 640)
 
         self._panels   = []
         self._nav_btns = []

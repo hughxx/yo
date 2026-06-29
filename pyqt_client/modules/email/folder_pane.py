@@ -16,10 +16,12 @@ class FolderPane(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName('folderPane')
+        self.setStyleSheet('#folderPane { background:#fafafa; border-right:1px solid #d0d0d0; }')
         self.setFixedWidth(220)
         self._scope = set(store.load_settings().get('scanFolders', []))
         self._building = False
         self._loading = False
+        self._loaded_once = False
         self._workers = []
 
         lay = QVBoxLayout(self)
@@ -53,6 +55,13 @@ class FolderPane(QWidget):
         lay.addWidget(self._hint)
 
         self._btn_reload.clicked.connect(self.reload)
+
+    def showEvent(self, e):
+        # 首次显示时自动加载一次 Outlook 文件夹（无需用户先点刷新）
+        super().showEvent(e)
+        if not self._loaded_once:
+            self._loaded_once = True
+            self.reload()
 
     # ── 加载 ──────────────────────────────────────────────
     def reload(self):

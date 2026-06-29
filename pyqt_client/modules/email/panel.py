@@ -101,11 +101,12 @@ class _CheckHeader(QHeaderView):
         if logicalIndex != 0:
             return
         opt = QStyleOptionButton()
-        sz = 14
+        sz = 15
         opt.rect = QRect(rect.x() + (rect.width() - sz) // 2,
                          rect.y() + (rect.height() - sz) // 2, sz, sz)
         opt.state = QStyle.State_Enabled | (QStyle.State_On if self._checked else QStyle.State_Off)
-        self.style().drawControl(QStyle.CE_CheckBox, opt, painter)
+        # PE_IndicatorCheckBox 画的是裸复选框，比 CE_CheckBox 在表头里渲染更可靠
+        self.style().drawPrimitive(QStyle.PE_IndicatorCheckBox, opt, painter)
 
     def mousePressEvent(self, e):
         if self.logicalIndexAt(e.pos()) == 0:
@@ -144,7 +145,6 @@ class EmailPanel(QWidget):
         self._filter_mode = 'all'     # 'all' | 'matched'，对应分段筛选
         self._monitoring = False      # 定时同步是否在运行
         self._cancel_sync = False     # 请求中止当前推送（处理选中/同步/重推）
-        self._folders_loaded = False  # 文件夹树是否已首次加载
         self._last_sync_time = self._settings.get('lastSyncTime', '')
 
         # 定时同步：仅创建，不自动启动；由用户用「启动定时 / 停止定时」控制
@@ -376,9 +376,6 @@ class EmailPanel(QWidget):
         self._settings = store.load_settings()
         backend.set_base(self._settings.get('backendUrl', ''))
         self._rules_editor.set_namespace(self._settings.get('namespace', ''))
-        if not self._folders_loaded:
-            self._folders_loaded = True
-            self._folder_pane.reload()
         if self._is_configured():
             self._do_refresh()
 
@@ -454,12 +451,12 @@ class EmailPanel(QWidget):
         self._render_table()
         if errors:
             msgs = '；'.join(e['_folder_error'] for e in errors)
-            self._set_status(f'文件夹错误：{msgs}', 'red')
+            self._set_status('文件夹错误', 'red')
             self._log.append(f'文件夹错误：{msgs}')
         else:
-            sync = f'    上次同步 {self._last_sync_time}' if self._last_sync_time else ''
-            self._set_status(f'就绪    读取 {len(self._emails)} 封{sync}', 'green')
-            self._log.append(f'读取 {len(self._emails)} 封')
+            self._set_status('就绪', 'green')
+            sync = f'，上次同步 {self._last_sync_time}' if self._last_sync_time else ''
+            self._log.append(f'读取 {len(self._emails)} 封{sync}')
         self._set_busy()
         self._fetch_page_status()
 
