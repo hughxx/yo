@@ -37,22 +37,46 @@ def _session():
 def folder_list() -> list:
     """返回所有文件夹路径列表。
 
-    工作版（设置对话框）就是这段：枚举 ns.Stores 取每个存储的根文件夹。前提是 MAPI
-    已 logon——面板「先刷邮件再加载文件夹」保证了这点。这里再 GetDefaultFolder 兜一下
-    未配置首启（没有邮件刷新来 logon）的情况。
+    两条枚举都试：ns.Folders（命名空间顶层文件夹，每账户一个根，最通用）+ ns.Stores
+    （每个存储的根）。带重试等 logon。若多次都空，带 Folders/Stores 计数抛出，
+    让上层把真实原因写进日志（而不是静默“0 个”）。
     """
+    import time
     result = []
     with _session() as ns:
-        try:
-            ns.GetDefaultFolder(_INBOX)   # 确保已 logon
-        except Exception:
-            pass
-        for store in ns.Stores:
+        last = ''
+        for _ in range(8):   # 最多约 4s
             try:
-                _collect(store.GetRootFolder(), result, '')
+                ns.GetDefaultFolder(_INBOX)   # 触发 logon
             except Exception:
                 pass
-    return result
+            try:
+                for top in list(ns.Folders):
+                    _collect(top, result, '')
+            except Exception as e:
+                last = f'Folders 异常: {e}'
+            if not result:
+                try:
+                    for store in list(ns.Stores):
+                        try:
+                            _collect(store.GetRootFolder(), result, '')
+                        except Exception:
+                            pass
+                except Exception as e:
+                    last = f'Stores 异常: {e}'
+            if result:
+                return result
+            time.sleep(0.5)
+        # 多次仍空：带计数抛出，定位是“真没有”还是“枚举抛异常”还是“_collect 失败”
+        try:
+            fc = len(list(ns.Folders))
+        except Exception as e:
+            fc = f'err({e})'
+        try:
+            sc = ns.Stores.Count
+        except Exception as e:
+            sc = f'err({e})'
+        raise RuntimeError(f'枚举文件夹为空（ns.Folders={fc} ns.Stores={sc}）{last}')
 
 
 def _collect(folder, out: list, prefix: str):
