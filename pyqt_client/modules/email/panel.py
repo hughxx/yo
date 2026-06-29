@@ -150,8 +150,11 @@ class EmailPanel(QWidget):
         self._last_sync_time = self._settings.get('lastSyncTime', '')
 
         # 定时同步：仅创建，不自动启动；由用户用「启动定时 / 停止定时」控制
+        self._timer_mode = 'interval'   # 'interval'（每N分钟）| 'daily'（每天某时刻）
+        self._daily_time = self._settings.get('scanDailyTime', '09:00')
+        self._daily_fired_date = ''     # 'daily' 模式当天是否已触发
         self._sync_timer = QTimer(self)
-        self._sync_timer.timeout.connect(self._do_sync)
+        self._sync_timer.timeout.connect(self._on_timer_tick)
 
         self._build_ui()
 
@@ -332,17 +335,46 @@ class EmailPanel(QWidget):
             return
         default = int(self._settings.get('scanIntervalMinutes', 60) or 60)
         scan_count = len(self._settings.get('scanFolders', []))
-        dlg = StartTimerDialog(self._settings.get('namespace', ''), scan_count, default,
-                               on_changed=self._on_rules_changed, parent=self)
+        dlg = StartTimerDialog(
+            self._settings.get('namespace', ''), scan_count, default,
+            daily_time=self._settings.get('scanDailyTime', '09:00'),
+            mode=self._settings.get('scanTimerMode', 'interval'),
+            on_changed=self._on_rules_changed, parent=self)
         if dlg.exec_() != QDialog.Accepted:
             return
-        mins = dlg.interval()
-        self._settings['scanIntervalMinutes'] = mins
-        store.save_settings(self._settings)
-        self._sync_timer.start(mins * 60 * 1000)
+        self._timer_mode = dlg.mode()
+        if self._timer_mode == 'daily':
+            from datetime import datetime
+            self._daily_time = dlg.daily_time()
+            now = datetime.now()
+            # 启动时若已过当天时刻，标记今天已触发，避免点一下就立刻全量推一次（明天才跑）
+            self._daily_fired_date = now.strftime('%Y-%m-%d') if now.strftime('%H:%M') >= self._daily_time else ''
+            self._settings['scanTimerMode'] = 'daily'
+            self._settings['scanDailyTime'] = self._daily_time
+            store.save_settings(self._settings)
+            self._sync_timer.start(30 * 1000)   # 每 30s 查一次是否到点
+            label = f'定时同步已启动：每天 {self._daily_time}（可随时点「停止定时」）'
+        else:
+            mins = dlg.interval()
+            self._settings['scanTimerMode'] = 'interval'
+            self._settings['scanIntervalMinutes'] = mins
+            store.save_settings(self._settings)
+            self._sync_timer.start(mins * 60 * 1000)
+            label = f'定时同步已启动：每 {mins} 分钟一次（可随时点「停止定时」）'
         self._monitoring = True
         self._refresh_timer_style()
-        self._set_status(f'定时同步已启动：每 {mins} 分钟一次（可随时点「停止定时」）')
+        self._set_status(label)
+
+    def _on_timer_tick(self):
+        if self._timer_mode == 'daily':
+            from datetime import datetime
+            now = datetime.now()
+            today = now.strftime('%Y-%m-%d')
+            if now.strftime('%H:%M') >= self._daily_time and self._daily_fired_date != today:
+                self._daily_fired_date = today
+                self._do_sync()
+        else:
+            self._do_sync()
 
     def _stop_timer(self):
         self._sync_timer.stop()
@@ -567,6 +599,7 @@ class EmailPanel(QWidget):
                         'SenderEmail':       item.get('sender_email', ''),
                         'ReceivedTime':      item.get('received_time', ''),
                         'HtmlBody':          item.get('html_body', ''),
+                        'MarkdownBody':      item.get('markdown_body', ''),
                         'MatchedRuleName':   src.get('matched_rule') or '手动处理',
                         'UserId':            self._settings.get('userId', ''),
                         'Namespace':         self._settings.get('namespace', ''),

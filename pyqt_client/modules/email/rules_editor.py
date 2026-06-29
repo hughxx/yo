@@ -7,9 +7,9 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QPushButton, QMessageBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog,
-    QLabel, QSpinBox, QDialogButtonBox,
+    QLabel, QSpinBox, QDialogButtonBox, QRadioButton, QButtonGroup, QTimeEdit,
 )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QTime, pyqtSignal
 
 from modules.email import rules as rules_mod
 from modules.email import cloud_mute
@@ -280,10 +280,12 @@ class RulesDialog(QDialog):
 
 # ── 启动定时弹窗（间隔 + 规则编辑，参考 standalone）──────────
 class StartTimerDialog(QDialog):
-    def __init__(self, ns: str, scan_count: int, interval: int, on_changed=None, parent=None):
+    def __init__(self, ns: str, scan_count: int, interval: int,
+                 daily_time: str = '09:00', mode: str = 'interval',
+                 on_changed=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle('启动定时同步（后台批量）')
-        self.setMinimumSize(680, 520)
+        self.setMinimumSize(680, 540)
         lay = QVBoxLayout(self)
 
         tip = QLabel(f'范围 = 左侧勾选的 {scan_count} 个文件夹；按下方启用的规则匹配后推送到服务端。')
@@ -291,17 +293,47 @@ class StartTimerDialog(QDialog):
         tip.setStyleSheet('color:#666;')
         lay.addWidget(tip)
 
-        row = QHBoxLayout()
-        row.addWidget(QLabel('每'))
+        grp = QButtonGroup(self)
+
+        # 模式一：每隔 N 分钟
+        row1 = QHBoxLayout()
+        self._rb_interval = QRadioButton('每隔')
+        grp.addButton(self._rb_interval)
         self._spin = QSpinBox()
         self._spin.setRange(1, 1440)
         self._spin.setValue(max(1, int(interval or 60)))
         self._spin.setSuffix(' 分钟')
         self._spin.setMaximumWidth(110)
-        row.addWidget(self._spin)
-        row.addWidget(QLabel('自动同步一次'))
-        row.addStretch()
-        lay.addLayout(row)
+        row1.addWidget(self._rb_interval)
+        row1.addWidget(self._spin)
+        row1.addWidget(QLabel('自动同步一次'))
+        row1.addStretch()
+        lay.addLayout(row1)
+
+        # 模式二：每天某时刻
+        row2 = QHBoxLayout()
+        self._rb_daily = QRadioButton('每天')
+        grp.addButton(self._rb_daily)
+        self._time = QTimeEdit()
+        self._time.setDisplayFormat('HH:mm')
+        self._time.setMaximumWidth(110)
+        try:
+            hh, mm = (daily_time or '09:00').split(':')
+            self._time.setTime(QTime(int(hh), int(mm)))
+        except Exception:
+            self._time.setTime(QTime(9, 0))
+        row2.addWidget(self._rb_daily)
+        row2.addWidget(self._time)
+        row2.addWidget(QLabel('自动同步一次'))
+        row2.addStretch()
+        lay.addLayout(row2)
+
+        if mode == 'daily':
+            self._rb_daily.setChecked(True)
+        else:
+            self._rb_interval.setChecked(True)
+        self._rb_interval.toggled.connect(self._sync_enabled)
+        self._sync_enabled()
 
         self.editor = RulesEditor()
         self.editor.set_namespace(ns)
@@ -317,5 +349,16 @@ class StartTimerDialog(QDialog):
         lay.addWidget(btns)
         self.editor.reload()
 
+    def _sync_enabled(self):
+        on_interval = self._rb_interval.isChecked()
+        self._spin.setEnabled(on_interval)
+        self._time.setEnabled(not on_interval)
+
+    def mode(self) -> str:
+        return 'interval' if self._rb_interval.isChecked() else 'daily'
+
     def interval(self) -> int:
         return self._spin.value()
+
+    def daily_time(self) -> str:
+        return self._time.time().toString('HH:mm')

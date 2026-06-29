@@ -272,6 +272,15 @@ def mail_get(entry_id: str, img_api: str = '') -> dict:
         # 清理未能上传的 cid: 引用，避免浏览器显示裂图
         html = re.sub(r'src=["\']cid:[^"\']*["\']', 'src=""', html)
 
+        # 本地转 Markdown 一并上报（图片已是远端 URL）。失败则留空，
+        # 服务端会自己 html2md——对旧服务端/缺依赖都兼容。
+        markdown = ''
+        try:
+            from modules.email.html2md import html2md
+            markdown = html2md(html)
+        except Exception:
+            pass
+
         return {
             'item_id':            entry_id,
             'subject':            m.Subject or '',
@@ -280,6 +289,7 @@ def mail_get(entry_id: str, img_api: str = '') -> dict:
             'received_time':      m.ReceivedTime.strftime('%Y-%m-%dT%H:%M:%S'),
             'conversation_topic': m.ConversationTopic or '',
             'html_body':          html,
+            'markdown_body':      markdown,
         }
 
 
