@@ -139,7 +139,12 @@ def _dasl(fields: list, keywords: list, force_like: bool = False) -> str:
     return '@SQL=' + body
 
 
-def _collect(folder, dasl: str, out: set):
+def _collect_matches(folder, dasl: str, out: set):
+    """按 DASL 在单个文件夹里搜命中邮件，EntryID 收进 out。
+
+    注意：函数名不能再叫 _collect——会和上面文件夹树枚举用的 _collect 撞名、相互覆盖，
+    曾导致 folder_list 误调到这里 Restrict([]) 报“条件无效”，整棵文件夹树列不出来。
+    """
     restricted = folder.Items.Restrict(dasl)
     item = restricted.GetFirst()
     while item is not None:
@@ -162,10 +167,10 @@ def _search(scan_folders: list, fields: list, keywords: list) -> set:
     with _session() as ns:
         for folder in _resolve_folders(ns, scan_folders):
             try:
-                _collect(folder, _dasl(fields, keywords), matched)
+                _collect_matches(folder, _dasl(fields, keywords), matched)
             except Exception:
                 try:  # 该 store 未建内容索引时 ci_phrasematch 会抛错，退化为 LIKE
-                    _collect(folder, _dasl(fields, keywords, force_like=True), matched)
+                    _collect_matches(folder, _dasl(fields, keywords, force_like=True), matched)
                 except Exception:
                     pass
     return matched
