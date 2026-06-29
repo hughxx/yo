@@ -339,7 +339,8 @@ class MainShell(QMainWindow):
             body += '\n\n这是强制更新，请更新到最新版后再使用。'
         box.setText(body)
         btn_dl = box.addButton('去下载', QMessageBox.AcceptRole)
-        if not force:
+        # 强更但没配下载地址时，退化为可关闭提醒，避免把用户卡死又无处可下
+        if not force or not dl_url:
             box.addButton('稍后', QMessageBox.RejectRole)
         box.exec_()
         if box.clickedButton() is btn_dl and dl_url:
@@ -347,7 +348,7 @@ class MainShell(QMainWindow):
                 webbrowser.open(dl_url)
             except Exception:
                 pass
-        if force:
+        if force and dl_url:
             QApplication.quit()
 
     def _show_setup(self, s):
