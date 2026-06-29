@@ -10,7 +10,7 @@ from PyQt5.QtGui import QFont
 class LogPanel(QWidget):
     def __init__(self, parent=None, height=150):
         super().__init__(parent)
-        self._expanded = True
+        self._expanded = False
         self._last_msg = ''
 
         lay = QVBoxLayout(self)
@@ -27,7 +27,7 @@ class LogPanel(QWidget):
 
         self._toggle = QToolButton()
         self._toggle.setAutoRaise(True)
-        self._toggle.setText('日志 ▾')
+        self._toggle.setText('日志 ▸')   # 默认折叠
         self._toggle.setStyleSheet('QToolButton{color:#ddd;border:none;font-weight:bold;}')
         self._toggle.clicked.connect(self._toggle_log)
 
@@ -51,6 +51,7 @@ class LogPanel(QWidget):
         self._edit.setFixedHeight(height)
         self._edit.setFont(QFont('Consolas', 9))
         self._edit.setStyleSheet('background:#1e1e1e;color:#d4d4d4;border:none;')
+        self._edit.setVisible(False)   # 默认折叠
         lay.addWidget(self._edit)
 
     def append(self, msg: str):

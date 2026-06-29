@@ -7,6 +7,7 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QPushButton, QMessageBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog,
+    QLabel, QSpinBox, QDialogButtonBox,
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 
@@ -255,3 +256,66 @@ class RulesEditor(QWidget):
                     it = table.item(row, col)
                     if it:
                         it.setForeground(Qt.gray)
+
+
+# ── 规则弹窗（点工具栏「规则」打开，不在面板里内联展开）──────
+class RulesDialog(QDialog):
+    def __init__(self, ns: str, on_changed=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('匹配规则')
+        self.setMinimumSize(680, 460)
+        lay = QVBoxLayout(self)
+        self.editor = RulesEditor()
+        self.editor.set_namespace(ns)
+        if on_changed:
+            self.editor.changed.connect(on_changed)
+        lay.addWidget(self.editor)
+        btns = QDialogButtonBox(QDialogButtonBox.Close)
+        btns.button(QDialogButtonBox.Close).setText('关闭')
+        btns.rejected.connect(self.reject)
+        btns.accepted.connect(self.accept)
+        lay.addWidget(btns)
+        self.editor.reload()
+
+
+# ── 启动定时弹窗（间隔 + 规则编辑，参考 standalone）──────────
+class StartTimerDialog(QDialog):
+    def __init__(self, ns: str, scan_count: int, interval: int, on_changed=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('启动定时同步（后台批量）')
+        self.setMinimumSize(680, 520)
+        lay = QVBoxLayout(self)
+
+        tip = QLabel(f'范围 = 左侧勾选的 {scan_count} 个文件夹；按下方启用的规则匹配后推送到服务端。')
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#666;')
+        lay.addWidget(tip)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel('每'))
+        self._spin = QSpinBox()
+        self._spin.setRange(1, 1440)
+        self._spin.setValue(max(1, int(interval or 60)))
+        self._spin.setSuffix(' 分钟')
+        self._spin.setMaximumWidth(110)
+        row.addWidget(self._spin)
+        row.addWidget(QLabel('自动同步一次'))
+        row.addStretch()
+        lay.addLayout(row)
+
+        self.editor = RulesEditor()
+        self.editor.set_namespace(ns)
+        if on_changed:
+            self.editor.changed.connect(on_changed)
+        lay.addWidget(self.editor, 1)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.button(QDialogButtonBox.Ok).setText('启动定时')
+        btns.button(QDialogButtonBox.Cancel).setText('取消')
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        lay.addWidget(btns)
+        self.editor.reload()
+
+    def interval(self) -> int:
+        return self._spin.value()

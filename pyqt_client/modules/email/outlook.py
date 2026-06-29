@@ -1,5 +1,6 @@
 """win32com Outlook 访问封装"""
 import os
+import threading
 import tempfile
 from contextlib import contextmanager
 import pythoncom
@@ -7,6 +8,12 @@ import win32com.client
 import win32timezone  # noqa: F401 — PyInstaller must bundle this for win32com timezone handling
 
 _INBOX = 6  # olFolderInbox
+
+# 串行化所有 Outlook COM 访问：folder_list / mail_list / mail_get / search_* 各在
+# 自己的 Worker 线程里跑，若并发同时自动化同一个 Outlook 实例，会触发
+# RPC_E_CALL_REJECTED（“应用程序正忙”），表现为某个调用静默失败——例如启动时
+# 文件夹树和邮件刷新同时拉 Outlook，文件夹就加载不出来。加全局锁逐个来。
+_COM_LOCK = threading.Lock()
 
 
 @contextmanager
@@ -19,14 +26,15 @@ def _session():
     导致同时打开的 MAPI 对象越积越多，最终触发“Outlook 已用完所有共享资源”
     （MAPI_E_NO_RESOURCES）。务必通过本上下文管理器获取 namespace。
     """
-    pythoncom.CoInitialize()
-    ns = None
-    try:
-        ns = win32com.client.Dispatch('Outlook.Application').GetNamespace('MAPI')
-        yield ns
-    finally:
+    with _COM_LOCK:
+        pythoncom.CoInitialize()
         ns = None
-        pythoncom.CoUninitialize()
+        try:
+            ns = win32com.client.Dispatch('Outlook.Application').GetNamespace('MAPI')
+            yield ns
+        finally:
+            ns = None
+            pythoncom.CoUninitialize()
 
 
 # ── 文件夹 ────────────────────────────────────────────────
