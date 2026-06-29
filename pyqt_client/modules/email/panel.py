@@ -145,6 +145,8 @@ class EmailPanel(QWidget):
         self._filter_mode = 'all'     # 'all' | 'matched'，对应分段筛选
         self._monitoring = False      # 定时同步是否在运行
         self._cancel_sync = False     # 请求中止当前推送（处理选中/同步/重推）
+        self._folders_loaded_once = False  # 文件夹是否已首次加载
+        self._pending_refresh = False      # 文件夹加载完成后是否补一次邮件刷新
         self._last_sync_time = self._settings.get('lastSyncTime', '')
 
         # 定时同步：仅创建，不自动启动；由用户用「启动定时 / 停止定时」控制
@@ -161,6 +163,7 @@ class EmailPanel(QWidget):
 
         self._folder_pane = FolderPane()
         self._folder_pane.scopeChanged.connect(self._on_scope_changed)
+        self._folder_pane.loaded.connect(self._on_folders_loaded)
         root.addWidget(self._folder_pane)
 
         right = QWidget()
@@ -360,7 +363,17 @@ class EmailPanel(QWidget):
     def activate(self):
         self._settings = store.load_settings()
         backend.set_base(self._settings.get('backendUrl', ''))
-        if self._is_configured():
+        if not self._folders_loaded_once:
+            # 首次：先加载文件夹（快），loaded 回来后再刷邮件，避免并发拉 Outlook
+            self._folders_loaded_once = True
+            self._pending_refresh = self._is_configured()
+            self._folder_pane.reload()
+        elif self._is_configured():
+            self._do_refresh()
+
+    def _on_folders_loaded(self):
+        if self._pending_refresh:
+            self._pending_refresh = False
             self._do_refresh()
 
     def _on_scope_changed(self):

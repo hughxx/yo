@@ -12,6 +12,7 @@ from utils import Worker
 
 class FolderPane(QWidget):
     scopeChanged = pyqtSignal()
+    loaded = pyqtSignal()   # 一次加载结束（成功或失败都发），供面板串行化后续邮件刷新
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,13 +61,10 @@ class FolderPane(QWidget):
     def set_log(self, fn):
         self._log = fn
 
-    def showEvent(self, e):
-        # 首次显示时自动加载一次 Outlook 文件夹（无需用户先点刷新）
-        super().showEvent(e)
-        if not self._loaded_once:
-            self.reload()
-
     # ── 加载 ──────────────────────────────────────────────
+    # 注意：不在 showEvent 里自动加载——那会和邮件刷新在启动时并发拉 Outlook，
+    # 触发 RPC_E_CALL_REJECTED 致文件夹静默失败。改由面板 activate() 串行驱动：
+    # 先 reload() 文件夹（快），loaded 信号回来后面板再去刷邮件。
     def reload(self):
         if self._loading:
             return
@@ -82,13 +80,15 @@ class FolderPane(QWidget):
             self._hint.setText('' if paths else '没有可用文件夹')
             if self._log:
                 self._log(f'文件夹加载完成：{len(paths or [])} 个')
+            self.loaded.emit()
 
         def _fail(msg):
-            self._loading = False  # 失败不置 loaded_once，下次显示/刷新会重试
+            self._loading = False  # 失败不置 loaded_once，下次刷新会重试
             self._btn_reload.setEnabled(True)
             self._hint.setText(f'加载失败：{msg}（点刷新重试）')
             if self._log:
                 self._log(f'文件夹加载失败：{msg}')
+            self.loaded.emit()
 
         w = Worker(outlook.folder_list)
         w.ok.connect(_done)
