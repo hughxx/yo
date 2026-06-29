@@ -43,6 +43,13 @@ def folder_list() -> list:
     """返回所有文件夹路径列表"""
     result = []
     with _session() as ns:
+        # 冷启动时若先于任何取信操作直接枚举 ns.Stores，MAPI 可能尚未 logon，
+        # 返回空集合（表现为“加载完成 0 个”）。先碰一下默认收件箱强制 logon，
+        # 再枚举 Stores 才拿得到全部已挂载的存储。
+        try:
+            ns.GetDefaultFolder(_INBOX)
+        except Exception:
+            pass
         for store in ns.Stores:
             try:
                 _collect(store.GetRootFolder(), result, '')
