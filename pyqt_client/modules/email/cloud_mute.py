@@ -7,7 +7,10 @@
 import json
 from pathlib import Path
 
-_FILE = Path.home() / '.email_assistant_cloud_muted.json'
+from paths import config_dir, migrate
+
+_FILE = config_dir() / 'email_cloud_muted.json'
+migrate(Path.home() / '.email_assistant_cloud_muted.json', _FILE)
 
 
 def _load_set() -> set:

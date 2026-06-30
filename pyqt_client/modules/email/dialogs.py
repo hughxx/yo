@@ -230,6 +230,18 @@ class SetupDialog(QDialog):
         ns_row.addWidget(btn_ns)
         form.addRow('Namespace：', ns_row)
 
+        # 文件保存目录（html / md 本地保存位置，可改）
+        dir_row = QHBoxLayout()
+        dir_row.setSpacing(6)
+        self._out_dir = QLineEdit(self._s.get('outputDir', ''))
+        self._out_dir.setPlaceholderText('html / md 本地保存目录')
+        btn_dir = QPushButton('浏览')
+        btn_dir.setFixedWidth(50)
+        btn_dir.clicked.connect(self._pick_out_dir)
+        dir_row.addWidget(self._out_dir, stretch=1)
+        dir_row.addWidget(btn_dir)
+        form.addRow('文件保存目录：', dir_row)
+
         # 额外配置（可选 JSON，随每封邮件作为 ExtraInfo 上报）
         self._custom_json = QPlainTextEdit(self._s.get('customJsonConfig', '{}'))
         self._custom_json.setFixedHeight(64)
@@ -280,6 +292,11 @@ class SetupDialog(QDialog):
         if self._mandatory and not self._allow_close and event.key() == Qt.Key_Escape:
             return
         super().keyPressEvent(event)
+
+    def _pick_out_dir(self):
+        d = QFileDialog.getExistingDirectory(self, '选择文件保存目录', self._out_dir.text() or '')
+        if d:
+            self._out_dir.setText(d)
 
     def _on_server_activated(self, index: int):
         if self._server_combo.itemText(index) == _MANUAL_INPUT:
@@ -366,6 +383,7 @@ class SetupDialog(QDialog):
         self._s['userId'] = self._confirmed_uid
         self._s['namespace'] = ns
         self._s['customJsonConfig'] = self._custom_json.toPlainText()
+        self._s['outputDir'] = self._out_dir.text().strip()
         self.accept()
 
     def get_settings(self) -> dict:

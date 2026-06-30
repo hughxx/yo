@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 
-from modules.email import outlook, rules as rules_mod, cloud_mute
+from modules.email import outlook, rules as rules_mod, cloud_mute, local_archive
 from modules.email.folder_pane import FolderPane
 from modules.email.rules_editor import RulesDialog, StartTimerDialog
 from modules.email.log_panel import LogPanel
@@ -606,6 +606,12 @@ class EmailPanel(QWidget):
                         'ExtraInfo':         extra,
                         'Force':             force,
                     })
+                    # 推送成功后，HTML + MD 两份都存到本地保存目录
+                    local_archive.save_email(
+                        self._settings.get('outputDir', ''),
+                        item.get('subject') or item.get('conversation_topic', ''),
+                        item.get('html_body', ''),
+                        item.get('markdown_body', ''))
                     s += 1
                 except Exception:
                     f += 1

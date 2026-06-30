@@ -3,7 +3,10 @@ import json
 import uuid
 from pathlib import Path
 
-_FILE = Path.home() / '.email_assistant_rules.json'
+from paths import config_dir, migrate
+
+_FILE = config_dir() / 'email_rules.json'
+migrate(Path.home() / '.email_assistant_rules.json', _FILE)
 
 
 def load() -> list:

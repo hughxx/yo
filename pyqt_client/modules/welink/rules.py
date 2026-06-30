@@ -7,7 +7,10 @@ import json
 import uuid
 from pathlib import Path
 
-_FILE = Path.home() / '.welink_assistant_rules.json'
+from paths import config_dir, migrate
+
+_FILE = config_dir() / 'welink_rules.json'
+migrate(Path.home() / '.welink_assistant_rules.json', _FILE)
 
 
 def load() -> list:

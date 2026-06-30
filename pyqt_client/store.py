@@ -3,22 +3,31 @@ import json
 import sys
 from pathlib import Path
 
+from paths import config_dir, default_output_dir, migrate
+
 def _app_dir() -> Path:
-    """exe 同目录（frozen）或脚本目录（开发模式）"""
+    """exe 同目录（frozen）或脚本目录（开发模式）——仅用于迁移旧配置。"""
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent
     return Path(__file__).parent
 
-_SETTINGS  = _app_dir() / '.email_assistant.json'
-_PROCESSED = _app_dir() / '.email_assistant_processed.json'
+_CFG       = config_dir()
+_SETTINGS  = _CFG / 'settings.json'
+_PROCESSED = _CFG / 'processed.json'
+# 迁移旧位置（exe/脚本目录）的配置到新的 D 盘 config 目录
+migrate(_app_dir() / '.email_assistant.json',           _SETTINGS)
+migrate(_app_dir() / '.email_assistant_processed.json', _PROCESSED)
 
 DEFAULT = {
     'backendUrl':          'https://coreinsight-beta.rnd.huawei.com/collection',
     'userId':              '',
     'namespace':           '',
     'scanIntervalMinutes': 60,
+    'scanTimerMode':       'interval',
+    'scanDailyTime':       '09:00',
     'customJsonConfig':    '{}',
     'scanFolders':         [],
+    'outputDir':           str(default_output_dir()),   # html/md 本地保存目录
     # WeLink settings
     'welinkStartCmd':      '@云见 开始定位',
     'welinkEndCmd':        '@云见 结束定位',
