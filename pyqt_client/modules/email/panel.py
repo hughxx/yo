@@ -2,7 +2,7 @@
 import json
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QColor, QFont, QPen, QPainter
 
 from modules.email import outlook, rules as rules_mod, cloud_mute, local_archive
 from modules.email.folder_pane import FolderPane
@@ -100,13 +100,26 @@ class _CheckHeader(QHeaderView):
         super().paintSection(painter, rect, logicalIndex)
         if logicalIndex != 0:
             return
-        opt = QStyleOptionButton()
-        sz = 15
-        opt.rect = QRect(rect.x() + (rect.width() - sz) // 2,
-                         rect.y() + (rect.height() - sz) // 2, sz, sz)
-        opt.state = QStyle.State_Enabled | (QStyle.State_On if self._checked else QStyle.State_Off)
-        # PE_IndicatorCheckBox 画的是裸复选框，比 CE_CheckBox 在表头里渲染更可靠
-        self.style().drawPrimitive(QStyle.PE_IndicatorCheckBox, opt, painter)
+        # 手绘复选框：全局 QSS 会把 style().drawPrimitive(PE_IndicatorCheckBox) 吞掉，
+        # 自己画才稳，和勾选状态联动。
+        sz = 14
+        x = rect.x() + (rect.width() - sz) // 2
+        y = rect.y() + (rect.height() - sz) // 2
+        box = QRect(x, y, sz, sz)
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        if self._checked:
+            painter.setPen(QPen(QColor('#0078D4'), 1))
+            painter.setBrush(QColor('#0078D4'))
+            painter.drawRoundedRect(box, 2, 2)
+            painter.setPen(QPen(QColor('#ffffff'), 2))
+            painter.drawLine(x + 3, y + 7, x + 6, y + 10)
+            painter.drawLine(x + 6, y + 10, x + 11, y + 4)
+        else:
+            painter.setPen(QPen(QColor('#888888'), 1))
+            painter.setBrush(QColor('#ffffff'))
+            painter.drawRoundedRect(box, 2, 2)
+        painter.restore()
 
     def mousePressEvent(self, e):
         if self.logicalIndexAt(e.pos()) == 0:
