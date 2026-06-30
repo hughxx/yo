@@ -1,29 +1,31 @@
-"""规则本地 JSON 管理"""
+"""规则本地 JSON 管理：白名单(规则) + 黑名单。最终命中 = 规则集合 − 黑名单集合。"""
 import json
 import uuid
 from pathlib import Path
 
 from paths import config_dir, migrate
 
-_FILE = config_dir() / 'email_rules.json'
+_FILE  = config_dir() / 'email_rules.json'        # 规则（白名单）
+_BLACK = config_dir() / 'email_blacklist.json'    # 黑名单
 migrate(Path.home() / '.email_assistant_rules.json', _FILE)
 
 
-def load() -> list:
-    if _FILE.exists():
+# ── 通用存取（按文件） ─────────────────────────────────────
+def _load(f: Path) -> list:
+    if f.exists():
         try:
-            return json.loads(_FILE.read_text('utf-8'))
+            return json.loads(f.read_text('utf-8'))
         except Exception:
             pass
     return []
 
 
-def save(rules: list):
-    _FILE.write_text(json.dumps(rules, ensure_ascii=False, indent=2), 'utf-8')
+def _save(f: Path, rules: list):
+    f.write_text(json.dumps(rules, ensure_ascii=False, indent=2), 'utf-8')
 
 
-def add(name: str, keywords: list, body_keywords: list, senders: list, logic: str = 'OR') -> dict:
-    rules = load()
+def _add(f: Path, name, keywords, body_keywords, senders, logic='OR') -> dict:
+    rules = _load(f)
     rule = {
         'id':            str(uuid.uuid4()),
         'name':          name,
@@ -31,24 +33,39 @@ def add(name: str, keywords: list, body_keywords: list, senders: list, logic: st
         'body_keywords': body_keywords,
         'senders':       senders,
         'logic':         logic,
-        'enabled':       True,
     }
     rules.append(rule)
-    save(rules)
+    _save(f, rules)
     return rule
 
 
-def edit(rule_id: str, patch: dict):
-    rules = load()
+def _edit(f: Path, rule_id, patch):
+    rules = _load(f)
     for r in rules:
         if r['id'] == rule_id:
             r.update(patch)
             break
-    save(rules)
+    _save(f, rules)
 
 
-def delete(rule_id: str):
-    save([r for r in load() if r['id'] != rule_id])
+def _delete(f: Path, rule_id):
+    _save(f, [r for r in _load(f) if r['id'] != rule_id])
+
+
+# ── 规则（白名单） ─────────────────────────────────────────
+def load() -> list:                return _load(_FILE)
+def save(rules: list):             _save(_FILE, rules)
+def add(name, kw, bkw, snd, logic='OR'):  return _add(_FILE, name, kw, bkw, snd, logic)
+def edit(rule_id, patch):          _edit(_FILE, rule_id, patch)
+def delete(rule_id):               _delete(_FILE, rule_id)
+
+
+# ── 黑名单 ─────────────────────────────────────────────────
+def load_blacklist() -> list:      return _load(_BLACK)
+def save_blacklist(rules: list):   _save(_BLACK, rules)
+def add_blacklist(name, kw, bkw, snd, logic='OR'):  return _add(_BLACK, name, kw, bkw, snd, logic)
+def edit_blacklist(rule_id, patch): _edit(_BLACK, rule_id, patch)
+def delete_blacklist(rule_id):     _delete(_BLACK, rule_id)
 
 
 def match(email: dict, rules: list, match_maps: dict = None) -> str:

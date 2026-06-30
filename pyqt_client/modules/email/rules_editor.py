@@ -1,21 +1,41 @@
-"""内联规则编辑器（就近放在邮件页，参考 standalone 的「规则 ▾」）。
-
-云端规则：增删改仍走服务端；启用/禁用本机生效（cloud_mute）。
-本地规则：完全本地 CRUD（rules_mod）。
-任一改动后发 changed 信号，面板据此重新匹配。
-"""
+"""规则编辑器：规则(白名单) + 黑名单。最终处理集合 = 规则集合 − 黑名单集合。
+只本地、无云端；规则只增/删/改，不启用/禁用。任一改动发 changed 信号。"""
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QPushButton, QMessageBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog,
-    QLabel, QSpinBox, QDialogButtonBox, QRadioButton, QButtonGroup, QTimeEdit,
+    QLabel, QSpinBox, QDialogButtonBox, QRadioButton, QButtonGroup, QTimeEdit, QToolButton,
 )
 from PyQt5.QtCore import Qt, QTime, pyqtSignal
 
 from modules.email import rules as rules_mod
-from modules.email import cloud_mute
 from modules.email.dialogs import RuleDialog
-import backend
-from utils import Worker
+
+
+_RULE_HELP = (
+    '规则（白名单）\n\n'
+    '命中任一条规则的邮件会被纳入处理。每条规则可按：\n'
+    '· 主题关键词 / 正文关键词 / 发件人 匹配\n'
+    '· 逻辑 OR = 任一类命中即算；AND = 配置的各类都要命中\n'
+    '关键词走 Outlook 搜索（整词前缀，与搜索框一致）。'
+)
+_BLACK_HELP = (
+    '黑名单\n\n'
+    '在规则命中的基础上，再命中黑名单的邮件会被排除。\n'
+    '最终处理集合 = 规则集合 − 黑名单集合。\n'
+    '匹配方式与规则相同（主题/正文/发件人 + OR/AND）。'
+)
+
+
+def _help_btn(text: str) -> QToolButton:
+    b = QToolButton()
+    b.setText('?')
+    b.setAutoRaise(True)
+    b.setCursor(Qt.PointingHandCursor)
+    b.setToolTip(text)
+    b.setStyleSheet('QToolButton{color:#0078D4;font-weight:bold;border:1px solid #0078D4;'
+                    'border-radius:8px;min-width:16px;max-width:16px;min-height:16px;max-height:16px;}')
+    b.clicked.connect(lambda: QMessageBox.information(b, '说明', text))
+    return b
 
 
 class RulesEditor(QWidget):
@@ -23,169 +43,88 @@ class RulesEditor(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._ns = ''
-        self._cloud_rules_data = []
         self._rules_data = []
-        self._workers = []
+        self._black_data = []
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 4, 8, 8)
         outer.setSpacing(8)
 
-        # ── 云端规则 ──────────────────────────────────
-        self._cloud_group = QGroupBox('云端规则（命名空间）')
-        cg = QVBoxLayout(self._cloud_group)
-        self._cloud_table = self._make_rule_table()
-        cg.addWidget(self._cloud_table)
-        cr = QHBoxLayout()
-        cb_add    = QPushButton('添加')
-        cb_edit   = QPushButton('编辑')
-        cb_del    = QPushButton('删除')
-        cb_toggle = QPushButton('启用/禁用')
-        cb_refresh = QPushButton('刷新')
-        cb_del.setObjectName('btnDanger')
-        for b in (cb_add, cb_edit, cb_del, cb_toggle):
+        self._rule_table  = self._make_table()
+        self._black_table = self._make_table()
+        outer.addWidget(self._section('规则', _RULE_HELP, self._rule_table,
+                                      self._rule_add, self._rule_edit, self._rule_delete))
+        outer.addWidget(self._section('黑名单', _BLACK_HELP, self._black_table,
+                                      self._black_add, self._black_edit, self._black_delete))
+
+    def _section(self, title, help_text, table, on_add, on_edit, on_del) -> QGroupBox:
+        gb = QGroupBox()
+        v = QVBoxLayout(gb)
+        head = QHBoxLayout()
+        lbl = QLabel(title)
+        lbl.setStyleSheet('font-weight:bold;')
+        head.addWidget(lbl)
+        head.addWidget(_help_btn(help_text))
+        head.addStretch()
+        v.addLayout(head)
+        v.addWidget(table)
+        row = QHBoxLayout()
+        b_add, b_edit, b_del = QPushButton('添加'), QPushButton('编辑'), QPushButton('删除')
+        b_del.setObjectName('btnDanger')
+        for b in (b_add, b_edit, b_del):
             b.setFixedHeight(24)
-            cr.addWidget(b)
-        cr.addStretch()
-        cb_refresh.setFixedHeight(24)
-        cr.addWidget(cb_refresh)
-        cg.addLayout(cr)
-        outer.addWidget(self._cloud_group)
-
-        cb_add.clicked.connect(self._cloud_rule_add)
-        cb_edit.clicked.connect(self._cloud_rule_edit)
-        cb_del.clicked.connect(self._cloud_rule_delete)
-        cb_toggle.clicked.connect(self._cloud_rule_toggle)
-        cb_refresh.clicked.connect(self._load_cloud_rules)
-
-        # ── 本地规则 ──────────────────────────────────
-        local_group = QGroupBox('本地规则')
-        lg = QVBoxLayout(local_group)
-        self._rule_table = self._make_rule_table()
-        lg.addWidget(self._rule_table)
-        lr = QHBoxLayout()
-        btn_add    = QPushButton('添加')
-        btn_edit   = QPushButton('编辑')
-        btn_del    = QPushButton('删除')
-        btn_toggle = QPushButton('启用/禁用')
-        btn_del.setObjectName('btnDanger')
-        for b in (btn_add, btn_edit, btn_del, btn_toggle):
-            b.setFixedHeight(24)
-            lr.addWidget(b)
-        lr.addStretch()
-        lg.addLayout(lr)
-        outer.addWidget(local_group)
-
-        btn_add.clicked.connect(self._rule_add)
-        btn_edit.clicked.connect(self._rule_edit)
-        btn_del.clicked.connect(self._rule_delete)
-        btn_toggle.clicked.connect(self._rule_toggle)
+            row.addWidget(b)
+        row.addStretch()
+        v.addLayout(row)
+        b_add.clicked.connect(on_add)
+        b_edit.clicked.connect(on_edit)
+        b_del.clicked.connect(on_del)
+        return gb
 
     # ── 对外 ──────────────────────────────────────────────
-    def set_namespace(self, ns: str):
-        self._ns = ns or ''
+    def set_namespace(self, ns):    # 兼容旧调用：已无云端，空实现
+        pass
 
     def reload(self):
-        self._load_cloud_rules()
         self._load_rules()
+        self._load_black()
 
+    # ── 公用 ──────────────────────────────────────────────
     @staticmethod
-    def _make_rule_table() -> QTableWidget:
-        t = QTableWidget(0, 6)
-        t.setHorizontalHeaderLabels(['启用', '规则名称', '主题关键词', '正文关键词', '发件人', '逻辑'])
+    def _make_table() -> QTableWidget:
+        t = QTableWidget(0, 5)
+        t.setHorizontalHeaderLabels(['规则名称', '主题关键词', '正文关键词', '发件人', '逻辑'])
+        t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         t.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         t.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        t.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-        t.setColumnWidth(0, 40)
-        t.setColumnWidth(1, 110)
-        t.setColumnWidth(5, 44)
+        t.setColumnWidth(0, 120)
+        t.setColumnWidth(4, 44)
         t.setSelectionBehavior(QAbstractItemView.SelectRows)
         t.setEditTriggers(QAbstractItemView.NoEditTriggers)
         t.setAlternatingRowColors(True)
         t.setMaximumHeight(150)
         return t
 
-    # ── 云端规则 ──────────────────────────────────────────
-    def _load_cloud_rules(self):
-        ns = self._ns
-        self._cloud_group.setTitle(f'云端规则（{ns or "未选择命名空间"}）')
-        if not ns:
-            self._cloud_rules_data = []
-            self._render(self._cloud_table, [])
-            return
+    @staticmethod
+    def _render(table: QTableWidget, rules: list):
+        table.setRowCount(0)
+        for r in rules:
+            row = table.rowCount()
+            table.insertRow(row)
+            table.setItem(row, 0, QTableWidgetItem(r.get('name', '')))
+            table.setItem(row, 1, QTableWidgetItem(', '.join(r.get('keywords', []))))
+            table.setItem(row, 2, QTableWidgetItem(', '.join(r.get('body_keywords', []))))
+            table.setItem(row, 3, QTableWidgetItem(', '.join(r.get('senders', []))))
+            table.setItem(row, 4, QTableWidgetItem('且' if r.get('logic') == 'AND' else '或'))
 
-        def _done(rules):
-            self._cloud_rules_data = rules
-            self._render(self._cloud_table, cloud_mute.apply(rules))
+    @staticmethod
+    def _selected(table: QTableWidget, data: list):
+        if not table.selectedItems():
+            return None
+        row = table.currentRow()
+        return data[row] if 0 <= row < len(data) else None
 
-        w = Worker(backend.get_cloud_rules, ns)
-        w.ok.connect(_done)
-        w.start()
-        self._workers.append(w)
-
-    def _cloud_rule_add(self):
-        if not self._ns:
-            QMessageBox.warning(self, '提示', '请先在设置中选择命名空间')
-            return
-        dlg = RuleDialog(parent=self)
-        if dlg.exec_() != QDialog.Accepted:
-            return
-        d = dlg.result_data()
-        w = Worker(backend.add_cloud_rule, self._ns, d['name'], d['keywords'],
-                   d['body_keywords'], d['senders'], d['logic'])
-        w.ok.connect(lambda _: (self._load_cloud_rules(), self.changed.emit()))
-        w.err.connect(lambda m: QMessageBox.warning(self, '错误', m))
-        w.start()
-        self._workers.append(w)
-
-    def _cloud_rule_edit(self):
-        rule = self._selected(self._cloud_table, self._cloud_rules_data)
-        if not rule:
-            QMessageBox.information(self, '提示', '请先选择一条规则')
-            return
-        dlg = RuleDialog(rule=rule, parent=self)
-        if dlg.exec_() != QDialog.Accepted:
-            return
-        w = Worker(backend.edit_cloud_rule, rule['id'], dlg.result_data())
-        w.ok.connect(lambda _: (self._load_cloud_rules(), self.changed.emit()))
-        w.err.connect(lambda m: QMessageBox.warning(self, '错误', m))
-        w.start()
-        self._workers.append(w)
-
-    def _cloud_rule_delete(self):
-        rule = self._selected(self._cloud_table, self._cloud_rules_data)
-        if not rule:
-            QMessageBox.information(self, '提示', '请先选择一条规则')
-            return
-        if QMessageBox.question(self, '确认', f'确定删除云端规则「{rule["name"]}」？') != QMessageBox.Yes:
-            return
-        w = Worker(backend.delete_cloud_rule, rule['id'])
-        w.ok.connect(lambda _: (self._load_cloud_rules(), self.changed.emit()))
-        w.err.connect(lambda m: QMessageBox.warning(self, '错误', m))
-        w.start()
-        self._workers.append(w)
-
-    def _cloud_rule_toggle(self):
-        rule = self._selected(self._cloud_table, self._cloud_rules_data)
-        if not rule:
-            QMessageBox.information(self, '提示', '请先选择一条规则')
-            return
-        muted = cloud_mute.is_muted(rule['id'])
-        action = '启用' if muted else '禁用'
-        ret = QMessageBox.question(
-            self, '本地启用/禁用',
-            f'云端规则的启用/禁用仅在本机生效，不会修改服务端配置，也不影响其他人。\n'
-            f'（云端规则的增删改仍走服务端，这里只是本机不想用某条远程规则时的开关。）\n\n'
-            f'确定在本机{action}规则「{rule.get("name", "")}」吗？',
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-        if ret != QMessageBox.Yes:
-            return
-        cloud_mute.toggle(rule['id'])
-        self._render(self._cloud_table, cloud_mute.apply(self._cloud_rules_data))
-        self.changed.emit()
-
-    # ── 本地规则 ──────────────────────────────────────────
+    # ── 规则（白名单） ─────────────────────────────────────
     def _load_rules(self):
         self._rules_data = rules_mod.load()
         self._render(self._rule_table, self._rules_data)
@@ -216,57 +155,58 @@ class RulesEditor(QWidget):
         if not rule:
             QMessageBox.information(self, '提示', '请先选择一条规则')
             return
-        if QMessageBox.question(self, '确认', f'确定删除本地规则「{rule["name"]}」？') != QMessageBox.Yes:
+        if QMessageBox.question(self, '确认', f'确定删除规则「{rule["name"]}」？') != QMessageBox.Yes:
             return
         rules_mod.delete(rule['id'])
         self._load_rules()
         self.changed.emit()
 
-    def _rule_toggle(self):
-        rule = self._selected(self._rule_table, self._rules_data)
-        if not rule:
-            QMessageBox.information(self, '提示', '请先选择一条规则')
+    # ── 黑名单 ─────────────────────────────────────────────
+    def _load_black(self):
+        self._black_data = rules_mod.load_blacklist()
+        self._render(self._black_table, self._black_data)
+
+    def _black_add(self):
+        dlg = RuleDialog(parent=self)
+        if dlg.exec_() != QDialog.Accepted:
             return
-        rules_mod.edit(rule['id'], {'enabled': not rule['enabled']})
-        self._load_rules()
+        d = dlg.result_data()
+        rules_mod.add_blacklist(d['name'], d['keywords'], d['body_keywords'], d['senders'], d['logic'])
+        self._load_black()
         self.changed.emit()
 
-    # ── 公用 ──────────────────────────────────────────────
-    @staticmethod
-    def _selected(table: QTableWidget, data: list):
-        if not table.selectedItems():
-            return None
-        row = table.currentRow()
-        return data[row] if 0 <= row < len(data) else None
+    def _black_edit(self):
+        rule = self._selected(self._black_table, self._black_data)
+        if not rule:
+            QMessageBox.information(self, '提示', '请先选择一条黑名单')
+            return
+        dlg = RuleDialog(rule=rule, parent=self)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        rules_mod.edit_blacklist(rule['id'], dlg.result_data())
+        self._load_black()
+        self.changed.emit()
 
-    @staticmethod
-    def _render(table: QTableWidget, rules: list):
-        table.setRowCount(0)
-        for r in rules:
-            row = table.rowCount()
-            table.insertRow(row)
-            table.setItem(row, 0, QTableWidgetItem('是' if r['enabled'] else '否'))
-            table.setItem(row, 1, QTableWidgetItem(r['name']))
-            table.setItem(row, 2, QTableWidgetItem(', '.join(r.get('keywords', []))))
-            table.setItem(row, 3, QTableWidgetItem(', '.join(r.get('body_keywords', []))))
-            table.setItem(row, 4, QTableWidgetItem(', '.join(r.get('senders', []))))
-            table.setItem(row, 5, QTableWidgetItem('且' if r['logic'] == 'AND' else '或'))
-            if not r['enabled']:
-                for col in range(6):
-                    it = table.item(row, col)
-                    if it:
-                        it.setForeground(Qt.gray)
+    def _black_delete(self):
+        rule = self._selected(self._black_table, self._black_data)
+        if not rule:
+            QMessageBox.information(self, '提示', '请先选择一条黑名单')
+            return
+        if QMessageBox.question(self, '确认', f'确定删除黑名单「{rule["name"]}」？') != QMessageBox.Yes:
+            return
+        rules_mod.delete_blacklist(rule['id'])
+        self._load_black()
+        self.changed.emit()
 
 
-# ── 规则弹窗（点工具栏「规则」打开，不在面板里内联展开）──────
+# ── 规则弹窗（点工具栏「规则」打开）──────────────────────────
 class RulesDialog(QDialog):
-    def __init__(self, ns: str, on_changed=None, parent=None):
+    def __init__(self, ns: str = '', on_changed=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('匹配规则')
-        self.setMinimumSize(680, 460)
+        self.setWindowTitle('规则 / 黑名单')
+        self.setMinimumSize(700, 520)
         lay = QVBoxLayout(self)
         self.editor = RulesEditor()
-        self.editor.set_namespace(ns)
         if on_changed:
             self.editor.changed.connect(on_changed)
         lay.addWidget(self.editor)
@@ -278,24 +218,23 @@ class RulesDialog(QDialog):
         self.editor.reload()
 
 
-# ── 启动定时弹窗（间隔 + 规则编辑，参考 standalone）──────────
+# ── 启动定时弹窗（间隔/每天某时刻 + 规则编辑）────────────────
 class StartTimerDialog(QDialog):
     def __init__(self, ns: str, scan_count: int, interval: int,
                  daily_time: str = '09:00', mode: str = 'interval',
                  on_changed=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle('启动定时同步（后台批量）')
-        self.setMinimumSize(680, 540)
+        self.setMinimumSize(700, 560)
         lay = QVBoxLayout(self)
 
-        tip = QLabel(f'范围 = 左侧勾选的 {scan_count} 个文件夹；按下方启用的规则匹配后推送到服务端。')
+        tip = QLabel(f'范围 = 左侧勾选的 {scan_count} 个文件夹；按下方规则匹配（再减去黑名单）后推送到服务端。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#666;')
         lay.addWidget(tip)
 
         grp = QButtonGroup(self)
 
-        # 模式一：每隔 N 分钟
         row1 = QHBoxLayout()
         self._rb_interval = QRadioButton('每隔')
         grp.addButton(self._rb_interval)
@@ -310,7 +249,6 @@ class StartTimerDialog(QDialog):
         row1.addStretch()
         lay.addLayout(row1)
 
-        # 模式二：每天某时刻
         row2 = QHBoxLayout()
         self._rb_daily = QRadioButton('每天')
         grp.addButton(self._rb_daily)
@@ -336,7 +274,6 @@ class StartTimerDialog(QDialog):
         self._sync_enabled()
 
         self.editor = RulesEditor()
-        self.editor.set_namespace(ns)
         if on_changed:
             self.editor.changed.connect(on_changed)
         lay.addWidget(self.editor, 1)

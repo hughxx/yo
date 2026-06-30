@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QPen, QPainter
 
-from modules.email import outlook, rules as rules_mod, cloud_mute, local_archive
+from modules.email import outlook, rules as rules_mod, local_archive
 from modules.email.folder_pane import FolderPane
 from modules.email.rules_editor import RulesDialog, StartTimerDialog
 from modules.email.log_panel import LogPanel
@@ -443,6 +443,19 @@ class EmailPanel(QWidget):
         self._btn_refresh.setEnabled(not busy)
         self._update_selection_ui()
 
+    # ── 匹配：规则集合 − 黑名单集合 ─────────────────────────
+    def _match_emails(self, emails, scan_folders):
+        """命中规则(白名单)且未命中黑名单 → matched_rule=规则名；否则空。在 Worker 线程里跑。"""
+        whitelist = rules_mod.load()
+        blacklist = rules_mod.load_blacklist()
+        wl_maps = rules_mod.build_match_maps(whitelist, scan_folders)
+        bl_maps = rules_mod.build_match_maps(blacklist, scan_folders)
+        for e in emails:
+            wl = rules_mod.match(e, whitelist, wl_maps)
+            bl = rules_mod.match(e, blacklist, bl_maps)
+            e['matched_rule'] = wl if (wl and not bl) else ''
+        return emails
+
     # ── 刷新邮件 ──────────────────────────────────────────
     def _do_refresh(self):
         if self._loading or self._syncing:
@@ -451,17 +464,12 @@ class EmailPanel(QWidget):
         self._set_status('读取 Outlook...', 'orange')
 
         scan_folders = self._settings.get('scanFolders', [])
-        ns           = self._settings.get('namespace', '')
 
         def _work():
-            local_rules = rules_mod.load()
-            cloud_rules = cloud_mute.apply(backend.get_cloud_rules(ns)) if ns else []
-            all_rules   = cloud_rules + local_rules
-            match_maps  = rules_mod.build_match_maps(all_rules, scan_folders)
             emails = outlook.mail_list(scan_folders or None)
+            self._match_emails(emails, scan_folders)
             for e in emails:
-                e['matched_rule'] = rules_mod.match(e, all_rules, match_maps)
-                e['parseStatus']  = '-'
+                e['parseStatus'] = '-'
             return emails
 
         w = Worker(_work)
@@ -501,16 +509,10 @@ class EmailPanel(QWidget):
         self._set_status('定时同步中...', 'darkcyan')
 
         scan_folders = self._settings.get('scanFolders', [])
-        ns           = self._settings.get('namespace', '')
 
         def _prep():
-            local_rules = rules_mod.load()
-            cloud_rules = cloud_mute.apply(backend.get_cloud_rules(ns)) if ns else []
-            all_rules   = cloud_rules + local_rules
-            match_maps  = rules_mod.build_match_maps(all_rules, scan_folders)
             emails = outlook.mail_list(scan_folders or None)
-            for e in emails:
-                e['matched_rule'] = rules_mod.match(e, all_rules, match_maps)
+            self._match_emails(emails, scan_folders)
             return [e for e in emails if e['matched_rule']]
 
         w = Worker(_prep)
