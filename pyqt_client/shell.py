@@ -1,7 +1,7 @@
 """主壳：侧边栏导航 + 模块切换"""
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QPushButton, QStackedWidget, QSizePolicy,
+    QPushButton, QStackedWidget, QSizePolicy, QLabel,
     QSystemTrayIcon, QMenu, QAction, QApplication
 )
 from PyQt5.QtCore import Qt
@@ -261,6 +261,12 @@ class MainShell(QMainWindow):
         btn_gear.setToolTip('设置')
         btn_gear.clicked.connect(self._open_settings)
         lay.addWidget(btn_gear)
+
+        ver = QLabel(f'v{APP_VERSION}')
+        ver.setAlignment(Qt.AlignCenter)
+        ver.setToolTip(f'客户端版本 v{APP_VERSION}')
+        ver.setStyleSheet('color:#6b6b6b; font-size:9px; padding:2px 0;')
+        lay.addWidget(ver)
 
         return sidebar
 
