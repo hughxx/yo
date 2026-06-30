@@ -235,17 +235,6 @@ class EmailPanel(QWidget):
         self._btn_process.setEnabled(False)
         lay.addWidget(self._btn_process)
 
-        self._btn_more = QToolButton()
-        self._btn_more.setText('···')
-        self._btn_more.setObjectName('btnMore')
-        self._btn_more.setFixedSize(28, 24)
-        self._btn_more.setStyleSheet('QToolButton::menu-indicator { image: none; width: 0; }')
-        _more_menu = QMenu(self._btn_more)
-        _more_menu.addAction('强制重推').triggered.connect(self._do_force_push)
-        self._btn_more.setMenu(_more_menu)
-        self._btn_more.setPopupMode(QToolButton.InstantPopup)
-        lay.addWidget(self._btn_more)
-
         self._btn_refresh.clicked.connect(self._do_refresh)
         self._seg_all.clicked.connect(lambda: self._set_filter_mode('all'))
         self._seg_matched.clicked.connect(lambda: self._set_filter_mode('matched'))
@@ -439,7 +428,6 @@ class EmailPanel(QWidget):
         busy = loading or syncing
         self._progress.setVisible(busy)
         self._btn_refresh.setEnabled(not busy)
-        self._btn_more.setEnabled(not busy)
         self._update_selection_ui()
 
     # ── 刷新邮件 ──────────────────────────────────────────
@@ -492,23 +480,12 @@ class EmailPanel(QWidget):
     def _do_sync(self):
         self._start_sync(force=False)
 
-    def _do_force_push(self):
-        if self._loading or self._syncing:
-            return
-        if QMessageBox.question(
-            self, '确认强制重推',
-            '将重新推送所有匹配邮件，服务端会重新解析。\n确定继续？'
-        ) != QMessageBox.Yes:
-            return
-        self._start_sync(force=True)
-
     def _start_sync(self, force: bool):
         if self._loading or self._syncing:
             return
         self._cancel_sync = False
         self._set_busy(syncing=True)
-        label = '强制重推中...' if force else '同步中...'
-        self._set_status(label, 'darkcyan')
+        self._set_status('定时同步中...', 'darkcyan')
 
         scan_folders = self._settings.get('scanFolders', [])
         ns           = self._settings.get('namespace', '')
@@ -548,14 +525,15 @@ class EmailPanel(QWidget):
             return
         if QMessageBox.question(
                 self, '处理选中',
-                f'将选中的 {len(selected)} 封邮件推送到服务端解析。\n'
+                f'将选中的 {len(selected)} 封邮件推送到服务端处理（含已解析的会重新解析）。\n'
                 f'（未命中规则的邮件将以「手动处理」为规则名）\n\n确定继续？',
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
         self._cancel_sync = False
         self._set_busy(syncing=True)
         self._set_status(f'处理选中... (0/{len(selected)})', 'darkcyan')
-        self._sync_batch(selected, 0, 0, 0, False, '处理选中')
+        # 你手动勾选 = 明确想处理它，force=True 让已解析的也重跑（替代旧「强制重推」）
+        self._sync_batch(selected, 0, 0, 0, True, '处理选中')
 
     def _sync_batch(self, matched, offset, success, failed, force, verb):
         BATCH = 10
