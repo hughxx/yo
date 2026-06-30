@@ -13,6 +13,9 @@ DB_NAME     = "email_forwarder"
 # DB_DRIVER      = "psycopg2"
 # 可选：建库时连接的维护库（默认 postgres，建目标库时连它）
 # DB_MAINTENANCE = "postgres"
+# 是否自动建库建表（默认 False=手动，执行 server/db/schema_gaussdb.md 的 SQL）。
+# 想让服务端启动时自动确保库存在并 create_all 建表，置 True。
+DB_AUTO_INIT = False
 
 # ==================== 图片服务器配置 ====================
 # 邮件内联图片上传目标，留空则跳过图片上传

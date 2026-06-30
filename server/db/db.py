@@ -78,13 +78,18 @@ def _ensure_database_postgres() -> None:
 
 
 def init_db():
-    """确保目标库存在，并按模型自动建表（GaussDB 同样支持）。"""
+    """默认不自动建库建表（手动执行 server/db/schema_gaussdb.md 里的 SQL）。
+
+    需要自动建时在 settings 里设 DB_AUTO_INIT = True：PG/GaussDB 会先确保库存在，
+    再 create_all 建表（MySQL 同理）。
+    """
+    if not getattr(_st, "DB_AUTO_INIT", False):
+        return
     try:
         if DB_DIALECT in ("mysql", "mariadb"):
             _ensure_database_mysql()
         else:
             _ensure_database_postgres()
     except Exception as e:
-        # 库已存在 / 无建库权限时不阻断；下面 create_all 仍会按需建表
         print(f"Warning: could not ensure database: {e}")
     Base.metadata.create_all(bind=engine)
