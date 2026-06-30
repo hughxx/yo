@@ -1,6 +1,10 @@
 from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy.dialects.mysql import LONGTEXT
 
 from server.db.models import Base, _now
+
+# MySQL→LONGTEXT，GaussDB/PG→TEXT（无长度）
+_LONGTEXT = Text().with_variant(LONGTEXT, "mysql")
 
 
 class WelinkRule(Base):
@@ -30,7 +34,7 @@ class WelinkChatlog(Base):
     group_name = Column(String(200), default="")
     start_time = Column(DateTime)
     end_time   = Column(DateTime)
-    html_body      = Column(Text(4294967295), default="")  # LONGTEXT
+    html_body      = Column(_LONGTEXT, default="")
     upload_by      = Column(String(100), default="")
     process_status = Column(String(20), default="pending")
     is_daily       = Column(Integer, default=0)

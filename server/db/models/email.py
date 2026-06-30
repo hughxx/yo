@@ -1,8 +1,13 @@
 from sqlalchemy import Column, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import relationship
 
 from server.db.models import Base, _now
 import json as _json
+
+# 大正文：MySQL 用 LONGTEXT（4GB），GaussDB/PG 用无长度 TEXT（无上限）。
+# 不能写 Text(4294967295)——PG/GaussDB 不接受 TEXT 带长度，建表会报错。
+_LONGTEXT = Text().with_variant(LONGTEXT, "mysql")
 
 
 class Collection(Base):
@@ -22,8 +27,8 @@ class Email(Base):
     subject            = Column(Text, default="")
     sender_name        = Column(String(500), default="")
     received_time      = Column(DateTime)
-    html_body          = Column(Text(4294967295), default="")   # LONGTEXT
-    markdown_body      = Column(Text(4294967295), default="")   # LONGTEXT，客户端直传的 markdown（有则服务端不再转）
+    html_body          = Column(_LONGTEXT, default="")
+    markdown_body      = Column(_LONGTEXT, default="")   # 客户端直传的 markdown（有则服务端不再转）
     upload_by          = Column(String(100), default="")
     created_at         = Column(DateTime, default=_now)
     updated_at         = Column(DateTime, default=_now, onupdate=_now)

@@ -2,11 +2,17 @@
 # cp server/utils/settings.example.py server/utils/settings.py
 
 # ==================== 数据库配置 ====================
+# 方言：postgresql（= GaussDB / openGauss，走 PG 协议）| mysql
+DB_DIALECT  = "postgresql"
 DB_HOST     = "localhost"
-DB_PORT     = 3306
-DB_USER     = "root"
+DB_PORT     = 8000                 # GaussDB 端口按实际改（MySQL 一般 3306）
+DB_USER     = "your_db_user"
 DB_PASSWORD = "your_db_password"
 DB_NAME     = "email_forwarder"
+# 可选：PG 驱动名（默认 psycopg2；GaussDB 装华为编译版 psycopg2 即可，仍填 psycopg2）
+# DB_DRIVER      = "psycopg2"
+# 可选：建库时连接的维护库（默认 postgres，建目标库时连它）
+# DB_MAINTENANCE = "postgres"
 
 # ==================== 图片服务器配置 ====================
 # 邮件内联图片上传目标，留空则跳过图片上传

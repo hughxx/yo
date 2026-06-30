@@ -1,7 +1,10 @@
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
 sqlalchemy>=2.0.0
-pymysql>=1.1.0
+# GaussDB/openGauss 走 PG 协议：装 psycopg2。注意 GaussDB 默认 SHA256 口令认证，
+# 标准 psycopg2-binary 可能认证失败——用华为 GaussDB 客户端自带的 psycopg2 替换即可。
+psycopg2-binary>=2.9.0
+pymysql>=1.1.0   # 仍保留，DB_DIALECT=mysql 时用
 requests>=2.31.0
 python-multipart>=0.0.6
 cryptography>=41.0.0
