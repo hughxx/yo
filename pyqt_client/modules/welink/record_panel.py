@@ -10,6 +10,7 @@ import store
 from utils import Worker
 from modules.welink import cli, process
 from modules.welink.toast import RecordToast
+from modules.welink.conv_input import ConvInput
 
 
 class RecordWorker(QThread):
@@ -62,7 +63,7 @@ class RecordPanel(QWidget):
         self._worker = None
         self._toast = None
         self._reminded = False
-        self._conv = None
+        self._recording_conv = None   # 正在录制的会话（self._conv 是输入组件）
         self._workers = []
         self._build_ui()
 
@@ -78,13 +79,8 @@ class RecordPanel(QWidget):
         lay.addWidget(hint)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel('会话：'))
-        self._combo = QComboBox()
-        self._combo.setMinimumWidth(280)
-        self._btn_reload = QPushButton('刷新会话')
-        self._btn_reload.setFixedWidth(72)
-        row.addWidget(self._combo, 1)
-        row.addWidget(self._btn_reload)
+        self._conv = ConvInput()
+        row.addWidget(self._conv, 1)
         lay.addLayout(row)
 
         self._btn_rec = QPushButton('开始录制')
@@ -98,14 +94,11 @@ class RecordPanel(QWidget):
         self._log.setStyleSheet('background:#1e1e1e;color:#d4d4d4;border:none;')
         lay.addWidget(self._log, 1)
 
-        self._btn_reload.clicked.connect(self._load_convs)
         self._btn_rec.clicked.connect(self._start_record)
 
     # ── 生命周期 ──────────────────────────────────────────
     def activate(self):
         self._settings = store.load_settings()
-        if self._combo.count() == 0:
-            self._load_convs()
 
     def deactivate(self):
         pass
@@ -116,31 +109,16 @@ class RecordPanel(QWidget):
     def _say(self, msg):
         self._log.appendPlainText(f'[{datetime.now().strftime("%H:%M:%S")}] {msg}')
 
-    # ── 会话 ──────────────────────────────────────────────
-    def _load_convs(self):
-        w = Worker(cli.recent_conversations, 60)
-        w.ok.connect(self._on_convs)
-        w.err.connect(lambda m: self._say(f'会话加载失败: {m}'))
-        w.start()
-        self._workers.append(w)
-
-    def _on_convs(self, res):
-        convs, err = res
-        self._combo.clear()
-        for c in convs:
-            tag = '群' if c['kind'] == 'group' else '人'
-            self._combo.addItem(f'[{tag}] {c["name"]}', c)
-        self._say(f'已加载 {len(convs)} 个会话' if convs else (err or '无会话'))
-
     # ── 录制 ──────────────────────────────────────────────
     def _start_record(self):
-        conv = self._combo.currentData()
+        conv = self._conv.current()
         if not conv:
-            QMessageBox.warning(self, '提示', '请先选会话')
+            QMessageBox.warning(self, '提示', '请先填会话 id')
             return
         if self._worker:
             return
-        self._conv = conv
+        self._conv.remember(conv)
+        self._recording_conv = conv
         self._reminded = False
         self._worker = RecordWorker(conv, max(1, int(self._settings.get('welinkPollInterval', 3))))
         self._worker.tick.connect(self._on_tick)
@@ -184,7 +162,7 @@ class RecordPanel(QWidget):
         if not msgs:
             QMessageBox.information(self, '录制结束', '这段时间没录到新消息。')
             return
-        dlg = ReviewDialog(self._settings, self._conv, msgs, parent=self)
+        dlg = ReviewDialog(self._settings, self._recording_conv, msgs, parent=self)
         dlg.exec_()
 
 

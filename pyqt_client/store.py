@@ -38,6 +38,7 @@ DEFAULT = {
     'welinkDailyTime':     '01:00',
     'welinkScheduleRules': [],
     'welinkScheduleTime':  '02:00',
+    'welinkRecentConvs':   [],   # 录制/提取里手填过的会话 id 历史
     'lastSyncTime':        '',
 }
 
