@@ -16,6 +16,7 @@ from server.utils.settings import (
     OCR_URL,
 )
 
+
 # ── OCR ──────────────────────────────────────────────────────────
 
 def ocr_sync(file_content: bytes, filename: str, timeout: int = 300) -> str:
@@ -38,7 +39,7 @@ async def ocr(file_content: bytes, filename: str, timeout: int = 300) -> str:
 
 # ── CloudDrive 下载 ───────────────────────────────────────────────
 
-_LOGIN_URL = 'https://clouddrive.huawei.com/api/v2/login'
+_TOKEN_URL = 'https://clouddrive.huawei.com/api/v2/token'
 
 
 class DownloadMsgFile(BaseModel):
@@ -49,26 +50,27 @@ class DownloadMsgFile(BaseModel):
 
 def _get_token():
     resp = requests.post(
-        url=_LOGIN_URL,
+        url=_TOKEN_URL,
         json={
+            "appId": "espace",
+            "domain": "huawei",
             "loginName": CLOUDDRIVE_ACCOUNT,
-            "password":  CLOUDDRIVE_PASSWORD,
-            "appId":     "espace",
-            "domain":    "huawei",
+            "password": CLOUDDRIVE_PASSWORD,
         },
         headers={
-            "Content-Type":     "application/json",
-            "x-device-sn":      "0123456789",
-            "x-device-type":    "web",
-            "x-client-version": "2.0",
-            "x-device-os":      "EulerOS",
-            "x-device-name":    "huawei",
+            "Content-Type": "application/json",
+            "x-device-sn": "device0123456789",
+            "x-device-type": "web",
+            "x-device-os": "win10",
+            "x-device-name": "machinec00100000",
+            "x-client-version": "10",
         },
         verify=False,
-        timeout=10,
+        timeout=300,
     )
     if resp.status_code == 200:
-        return True, json.loads(resp.text).get('token', '')
+        data = resp.json()
+        return True, data.get("token", "")
     return False, f"get token failed: {resp.text}"
 
 
@@ -77,24 +79,27 @@ def one_box_download(down_url: str, extraction_code: str) -> DownloadMsgFile:
     if not ok:
         return DownloadMsgFile(download_result=False, download_error_msg=token)
 
-    date = datetime.now().strftime('%a, %d %b %Y %H:%M:%S GMT')
-    str_sha = hashlib.sha256((extraction_code + "_sep_" + date).encode('utf-8')).hexdigest()
-    plain_access_code = (
-        base64.encodebytes(str_sha.encode('utf-8')).decode().strip().replace('\n', '')
+    im_authorization = (
+        f"/:um_begin{{{down_url}"
+        f"|File|123|abc.png|0|;;{extraction_code}"
+        f"|isOriginalImg: 0;md5:abc123;isCrossInstance:0;emotionId:;objectId:;cdnUrl:}}/:um_end"
     )
 
     resp = requests.post(
-        url=down_url,
-        headers={'Authorization': token, 'Date': date, 'Content-Type': 'application/json'},
-        json={"plainAccessCode": plain_access_code},
+        url="https://clouddrive.huawei.com/imchat/api/v3/links/imdownload",
+        headers={
+            "Authorization": token,
+            "Content-Type": "application/json",
+        },
+        json={"imAuthorization": im_authorization},
         verify=False,
-        timeout=30,
+        timeout=300,
     )
     if resp.status_code == 200:
         return DownloadMsgFile(download_result=True, file_content=resp.content)
     return DownloadMsgFile(
         download_result=False,
-        download_error_msg=f"download failed: {resp.status_code}",
+        download_error_msg=f"download failed: {resp.status_code}, {resp.text}",
     )
 
 

@@ -32,9 +32,8 @@ async def chat_with_tools(
     }
     url = f"{LLM_BASE_URL}/chat/completions"
 
-    # 限时 180s：配合处理端的并发闸，单次卡死不至于长期占住名额、拖垮整条队列
     async with httpx.AsyncClient(proxy=None, trust_env=False, verify=False) as client:
-        resp = await client.post(url, headers=headers, json=payload, timeout=180.0)
+        resp = await client.post(url, headers=headers, json=payload, timeout=999.0)
 
     logger.info("chat_with_tools status=%s body_len=%d body_preview=%r",
                 resp.status_code, len(resp.content), resp.text[:500])
@@ -83,7 +82,7 @@ async def chat(
     async def _stream() -> AsyncGenerator[str, None]:
         async with httpx.AsyncClient(proxy=None, trust_env=False, verify=False) as client:
             async with client.stream(
-                "POST", url, headers=headers, json=payload, timeout=999.0
+                "POST", url, headers=headers, json=payload, timeout=300.0
             ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
