@@ -35,6 +35,7 @@ class WelinkChatlog(Base):
     start_time = Column(DateTime)
     end_time   = Column(DateTime)
     html_body      = Column(_LONGTEXT, default="")
+    markdown_body  = Column(_LONGTEXT, default="")   # 客户端直传的 markdown（非按天路径有则直接用）
     upload_by      = Column(String(100), default="")
     process_status = Column(String(20), default="pending")
     is_daily       = Column(Integer, default=0)

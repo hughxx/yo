@@ -119,12 +119,13 @@ def _update_status(chat_id: str, status: str) -> None:
 
 
 async def process_chatlog(
-    html_body:  str,
-    group_name: str,
-    chat_id:    str,
-    upload_by:  str,
-    group_id:   str = '',
-    is_daily:   bool = False,
+    html_body:     str,
+    group_name:    str,
+    chat_id:       str,
+    upload_by:     str,
+    group_id:      str = '',
+    is_daily:      bool = False,
+    markdown_body: str = '',
 ) -> None:
     if is_daily:
         try:
@@ -142,12 +143,17 @@ async def process_chatlog(
         group_name, chat_id, upload_by, doc_id,
     )
     try:
-        markdown = html2md(html_body)
+        # 客户端直传 markdown 就用它（省一次转换）；否则服务端自己 html2md。按天路径不走这里，
+        # 它要在 HTML 层按手动记录时段过滤后再转，仍用 html2md(filtered_html)。
+        if markdown_body and markdown_body.strip():
+            markdown = markdown_body
+            logger.info("markdown from client: %d chars", len(markdown))
+        else:
+            markdown = html2md(html_body)
+            logger.info("html2md: %d chars", len(markdown))
         if not markdown.strip():
             logger.info("process_chatlog: empty markdown, skip")
             return
-
-        logger.info("html2md: %d chars", len(markdown))
         markdown = await asyncio.to_thread(replace_um_images, markdown)
         markdown = await _enrich_with_ocr(markdown)
         result   = await _call_llm(markdown)

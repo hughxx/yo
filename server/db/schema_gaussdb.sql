@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS t_collection_welink_chatlogs (
 	start_time TIMESTAMP WITHOUT TIME ZONE, 
 	end_time TIMESTAMP WITHOUT TIME ZONE, 
 	html_body TEXT, 
+	markdown_body TEXT, 
 	upload_by VARCHAR(100), 
 	process_status VARCHAR(20), 
 	is_daily INTEGER, 
@@ -113,8 +114,8 @@ CREATE TABLE IF NOT EXISTS t_process_logs (
 	PRIMARY KEY (id)
 );
 
-CREATE INDEX IF NOT EXISTS ix_t_process_logs_created_at ON t_process_logs (created_at);
-
 CREATE INDEX IF NOT EXISTS ix_t_process_logs_error_type ON t_process_logs (error_type);
 
 CREATE INDEX IF NOT EXISTS ix_t_process_logs_source ON t_process_logs (source);
+
+CREATE INDEX IF NOT EXISTS ix_t_process_logs_created_at ON t_process_logs (created_at);

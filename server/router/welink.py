@@ -86,7 +86,8 @@ async def receive_chatlog(
         logger.info("welink duplicate: chat_id=%r", chat_id)
         return {"Success": True, "Message": "Already exists", "Duplicate": True}
 
-    html_body  = data.get("HtmlBody", "")
+    html_body     = data.get("HtmlBody", "")
+    markdown_body = data.get("MarkdownBody", "")
     group_id   = (data.get("GroupId") or "").strip()
     group_name = (data.get("GroupName") or "").strip()
     upload_by  = (data.get("UploadBy") or "").strip()
@@ -99,6 +100,7 @@ async def receive_chatlog(
         start_time     = _parse_ms(data.get("StartTime")),
         end_time       = _parse_ms(data.get("EndTime")),
         html_body      = html_body,
+        markdown_body  = markdown_body,
         upload_by      = upload_by,
         process_status = "pending",
         is_daily       = 1 if is_daily else 0,
@@ -107,15 +109,16 @@ async def receive_chatlog(
     db.commit()
     logger.info("welink saved: chat_id=%r is_daily=%s", chat_id, is_daily)
 
-    if html_body:
+    if html_body or markdown_body:
         background_tasks.add_task(
             process_chatlog,
-            html_body  = html_body,
-            group_id   = group_id,
-            group_name = group_name,
-            chat_id    = chat_id,
-            upload_by  = upload_by,
-            is_daily   = is_daily,
+            html_body     = html_body,
+            markdown_body = markdown_body,
+            group_id      = group_id,
+            group_name    = group_name,
+            chat_id       = chat_id,
+            upload_by     = upload_by,
+            is_daily      = is_daily,
         )
 
     return {"Success": True, "Message": "Received successfully", "Duplicate": False}
