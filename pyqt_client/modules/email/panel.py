@@ -82,42 +82,35 @@ class _StatusLabel(QLabel):
 
 
 class _CheckHeader(QHeaderView):
-    """带「全选」复选框的表头：在第 0 列放一个**真实 QCheckBox** 子控件。
+    """表头「全选」：第 0 列用勾选字形显示（☐ / ☑），点击切换、发 toggled。
 
-    之前自绘(paintSection/drawPrimitive)在全局 QSS(QStyleSheetStyle)下会被吞掉、画不出来，
-    实测像素为 0。放真控件走原生样式，QSS 影响不到，稳定可见。
+    自绘和子控件在全局 QSS(QStyleSheetStyle)下都被吞掉过（实测像素 0）；表头**文字**
+    任何样式下都会被正常绘制，最稳，所以直接用字符当复选框。
     """
     toggled = pyqtSignal(bool)
 
-    def __init__(self, parent=None):
-        super().__init__(Qt.Horizontal, parent)
+    def __init__(self, table, parent=None):
+        super().__init__(Qt.Horizontal, table)
+        self._table = table
+        self._checked = False
         self.setSectionsClickable(True)
         self.setHighlightSections(False)
-        self._cb = QCheckBox(self)
-        self._cb.setToolTip('全选/取消（当前筛选下）')
-        self._cb.setStyleSheet('QCheckBox{background:transparent;margin:0;padding:0;}')
-        self._cb.toggled.connect(self.toggled)
-        self.sectionResized.connect(lambda *a: self._reposition())
+        self.sectionClicked.connect(self._on_click)
+
+    def _apply(self):
+        it = self._table.horizontalHeaderItem(0)
+        if it is not None:
+            it.setText('☑' if self._checked else '☐')
 
     def setChecked(self, c: bool):
-        self._cb.blockSignals(True)
-        self._cb.setChecked(bool(c))
-        self._cb.blockSignals(False)
+        self._checked = bool(c)
+        self._apply()
 
-    def _reposition(self):
-        w = self.sectionSize(0)
-        h = self.height()
-        sz = self._cb.sizeHint()
-        self._cb.setGeometry((w - sz.width()) // 2, (h - sz.height()) // 2,
-                             sz.width(), sz.height())
-
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        self._reposition()
-
-    def showEvent(self, e):
-        super().showEvent(e)
-        self._reposition()
+    def _on_click(self, idx):
+        if idx == 0:
+            self._checked = not self._checked
+            self._apply()
+            self.toggled.emit(self._checked)
 
 
 def _badge(text: str, bg: str, fg: str = '#fff') -> QTableWidgetItem:
@@ -266,7 +259,7 @@ class EmailPanel(QWidget):
         self._table.setHorizontalHeader(self._check_header)
         self._check_header.toggled.connect(self._on_header_toggle)
         self._table.setHorizontalHeaderLabels(
-            ['', '#', '状态', '时间', '发件人', '主题', '会话主题'])
+            ['☐', '#', '状态', '时间', '发件人', '主题', '会话主题'])
         hh = self._check_header
         hh.setSectionResizeMode(QHeaderView.Interactive)
         hh.setSectionResizeMode(5, QHeaderView.Stretch)
