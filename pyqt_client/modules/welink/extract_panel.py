@@ -1,14 +1,42 @@
 """在线拉取：自填会话 id → 起止时间/关键字粗筛 → 翻页拉取 →
-消息清单(勾选/搜索/全选) → 处理选中(html+md)上报。交互对齐邮件「立即处理」。"""
+消息清单(表头全选/搜索) → 处理选中(html+md)上报。交互对齐邮件。"""
 from datetime import datetime
 
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QDateTime
+from PyQt5.QtCore import Qt, QDateTime, pyqtSignal
 
 import store
 from utils import Worker
 from modules.welink import cli, process
 from modules.welink.conv_input import ConvInput
+
+
+class _TextCheckHeader(QHeaderView):
+    """表头第 0 列用文字「全选/取消」当全选开关（全局 QSS 下文字最稳、可见）。"""
+    toggled = pyqtSignal(bool)
+
+    def __init__(self, table, parent=None):
+        super().__init__(Qt.Horizontal, table)
+        self._table = table
+        self._checked = False
+        self.setSectionsClickable(True)
+        self.setHighlightSections(False)
+        self.sectionClicked.connect(self._on_click)
+
+    def _apply(self):
+        it = self._table.horizontalHeaderItem(0)
+        if it is not None:
+            it.setText('取消' if self._checked else '全选')
+
+    def setChecked(self, c: bool):
+        self._checked = bool(c)
+        self._apply()
+
+    def _on_click(self, idx):
+        if idx == 0:
+            self._checked = not self._checked
+            self._apply()
+            self.toggled.emit(self._checked)
 
 
 class ExtractPanel(QWidget):
@@ -26,17 +54,19 @@ class ExtractPanel(QWidget):
         lay.setContentsMargins(8, 8, 8, 6)
         lay.setSpacing(6)
 
-        # 第一行：会话输入 + 拉取
+        # 第一行：会话 + 关键字 + 拉取（拉取参数）
         row1 = QHBoxLayout()
         self._conv = ConvInput()
         row1.addWidget(self._conv, 1)
-        self._btn_fetch = QPushButton('拉取')
-        self._btn_fetch.setObjectName('btnRefresh')
-        self._btn_fetch.setFixedWidth(72)
+        self._kw_start = QLineEdit(); self._kw_start.setPlaceholderText('开始关键字(可选)'); self._kw_start.setFixedWidth(120)
+        self._kw_end = QLineEdit(); self._kw_end.setPlaceholderText('结束关键字(可选)'); self._kw_end.setFixedWidth(120)
+        row1.addWidget(self._kw_start)
+        row1.addWidget(self._kw_end)
+        self._btn_fetch = QPushButton('拉取'); self._btn_fetch.setObjectName('btnRefresh'); self._btn_fetch.setFixedWidth(64)
         row1.addWidget(self._btn_fetch)
         lay.addLayout(row1)
 
-        # 第二行：时间范围 + 关键字
+        # 第二行：时间 + 搜索 + 状态 + 处理选中（一行）
         row2 = QHBoxLayout()
         row2.addWidget(QLabel('从'))
         self._dt_start = QDateTimeEdit(QDateTime.currentDateTime().addDays(-1))
@@ -46,31 +76,23 @@ class ExtractPanel(QWidget):
         self._dt_end = QDateTimeEdit(QDateTime.currentDateTime())
         self._dt_end.setDisplayFormat('yyyy-MM-dd HH:mm')
         row2.addWidget(self._dt_end)
-        self._kw_start = QLineEdit(); self._kw_start.setPlaceholderText('开始关键字(可选)'); self._kw_start.setFixedWidth(130)
-        self._kw_end = QLineEdit(); self._kw_end.setPlaceholderText('结束关键字(可选)'); self._kw_end.setFixedWidth(130)
-        row2.addWidget(self._kw_start)
-        row2.addWidget(self._kw_end)
+        self._search = QLineEdit(); self._search.setPlaceholderText('🔍 搜索内容/发送人…'); self._search.setFixedWidth(180)
+        row2.addWidget(self._search)
         row2.addStretch()
+        self._status = QLabel('')
+        self._status.setStyleSheet('color:#666;')
+        row2.addWidget(self._status)
+        self._btn_proc = QPushButton('处理选中 (0)'); self._btn_proc.setObjectName('btnPrimary'); self._btn_proc.setEnabled(False)
+        row2.addWidget(self._btn_proc)
         lay.addLayout(row2)
 
-        # 第三行：搜索 + 全选 + 状态 + 处理选中
-        row3 = QHBoxLayout()
-        self._search = QLineEdit(); self._search.setPlaceholderText('🔍 搜索内容/发送人…'); self._search.setFixedWidth(200)
-        row3.addWidget(self._search)
-        self._btn_all = QPushButton('全选'); self._btn_all.setObjectName('pgBtn'); self._btn_all.setFixedWidth(56)
-        row3.addWidget(self._btn_all)
-        row3.addStretch()
-        self._status = QLabel('填会话 id 后点「拉取」')
-        self._status.setStyleSheet('color:#666;')
-        row3.addWidget(self._status)
-        self._btn_proc = QPushButton('处理选中 (0)'); self._btn_proc.setObjectName('btnPrimary'); self._btn_proc.setEnabled(False)
-        row3.addWidget(self._btn_proc)
-        lay.addLayout(row3)
-
         self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels(['', '时间', '发送人', '内容'])
+        self._check_header = _TextCheckHeader(self._table)
+        self._table.setHorizontalHeader(self._check_header)
+        self._check_header.toggled.connect(self._on_header_toggle)
+        self._table.setHorizontalHeaderLabels(['全选', '时间', '发送人', '内容'])
         self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self._table.setColumnWidth(0, 30); self._table.setColumnWidth(1, 150); self._table.setColumnWidth(2, 110)
+        self._table.setColumnWidth(0, 50); self._table.setColumnWidth(1, 150); self._table.setColumnWidth(2, 110)
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.verticalHeader().setVisible(False)
@@ -79,7 +101,6 @@ class ExtractPanel(QWidget):
 
         self._btn_fetch.clicked.connect(self._fetch)
         self._search.textChanged.connect(self._render)
-        self._btn_all.clicked.connect(self._toggle_all)
         self._btn_proc.clicked.connect(self._process)
 
     # ── 生命周期 ──────────────────────────────────────────
@@ -110,11 +131,10 @@ class ExtractPanel(QWidget):
         def _done(res):
             self._btn_fetch.setEnabled(True)
             msgs, err = res
-            msgs = self._apply_keywords(msgs)
-            self._msgs = msgs
+            self._msgs = self._apply_keywords(msgs)
             self._checked = set()
             self._render()
-            self._status.setText(f'拉取 {len(msgs)} 条' + (f'（{err}）' if err else ''))
+            self._status.setText(f'拉取 {len(self._msgs)} 条' + (f'（{err}）' if err else ''))
 
         w = Worker(_work)
         w.ok.connect(_done)
@@ -170,19 +190,21 @@ class ExtractPanel(QWidget):
             self._checked.discard(mid)
         self._update_proc()
 
-    def _toggle_all(self):
+    def _on_header_toggle(self, checked):
         ids = [int(m.get('msgId', 0)) for m in self._visible()]
-        if ids and all(i in self._checked for i in ids):
+        if checked:
+            self._checked.update(ids)
+        else:
             for i in ids:
                 self._checked.discard(i)
-        else:
-            self._checked.update(ids)
         self._render()
 
     def _update_proc(self):
         n = len(self._checked)
         self._btn_proc.setText(f'处理选中 ({n})')
         self._btn_proc.setEnabled(n > 0)
+        ids = [int(m.get('msgId', 0)) for m in self._visible()]
+        self._check_header.setChecked(bool(ids) and all(i in self._checked for i in ids))
 
     # ── 处理选中 ──────────────────────────────────────────
     def _process(self):
