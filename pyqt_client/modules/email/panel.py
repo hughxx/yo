@@ -100,7 +100,7 @@ class _CheckHeader(QHeaderView):
     def _apply(self):
         it = self._table.horizontalHeaderItem(0)
         if it is not None:
-            it.setText('☑' if self._checked else '☐')
+            it.setText('取消' if self._checked else '全选')
 
     def setChecked(self, c: bool):
         self._checked = bool(c)
@@ -259,12 +259,12 @@ class EmailPanel(QWidget):
         self._table.setHorizontalHeader(self._check_header)
         self._check_header.toggled.connect(self._on_header_toggle)
         self._table.setHorizontalHeaderLabels(
-            ['☐', '#', '状态', '时间', '发件人', '主题', '会话主题'])
+            ['全选', '#', '状态', '时间', '发件人', '主题', '会话主题'])
         hh = self._check_header
         hh.setSectionResizeMode(QHeaderView.Interactive)
         hh.setSectionResizeMode(5, QHeaderView.Stretch)
         hh.setSectionResizeMode(6, QHeaderView.Stretch)
-        self._table.setColumnWidth(0,  30)
+        self._table.setColumnWidth(0,  50)   # 放得下「全选」/「取消」两字
         self._table.setColumnWidth(1,  36)
         self._table.setColumnWidth(2,  80)
         self._table.setColumnWidth(3, 150)
