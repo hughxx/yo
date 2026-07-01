@@ -17,8 +17,10 @@ class FolderPane(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName('folderPane')
-        self.setStyleSheet('#folderPane { background:#fafafa; border-right:1px solid #d0d0d0; }')
-        self.setFixedWidth(220)
+        self.setStyleSheet(
+            '#folderPane { background:#ffffff; border:1px solid #dfe6ef; border-radius:8px; }'
+        )
+        self.setFixedWidth(236)
         self._scope = set(store.load_settings().get('scanFolders', []))
         self._building = False
         self._loading = False
@@ -27,12 +29,12 @@ class FolderPane(QWidget):
         self._workers = []
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(4)
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setSpacing(6)
 
         head = QHBoxLayout()
         title = QLabel('文件夹')
-        title.setStyleSheet('font-weight:bold;')
+        title.setStyleSheet('font-weight:600;color:#202020;')
         self._btn_reload = QPushButton('刷新')
         self._btn_reload.setObjectName('pgBtn')
         self._btn_reload.setFixedWidth(48)
@@ -42,7 +44,7 @@ class FolderPane(QWidget):
         lay.addLayout(head)
 
         sub = QLabel('勾选 = 处理 / 定时范围')
-        sub.setStyleSheet('color:#888;font-size:11px;')
+        sub.setStyleSheet('color:#667085;font-size:11px;')
         lay.addWidget(sub)
 
         self._tree = QTreeWidget()
@@ -53,7 +55,7 @@ class FolderPane(QWidget):
 
         self._hint = QLabel('点「刷新」加载 Outlook 文件夹')
         self._hint.setWordWrap(True)
-        self._hint.setStyleSheet('color:#aaa;font-size:11px;')
+        self._hint.setStyleSheet('color:#98a2b3;font-size:11px;')
         lay.addWidget(self._hint)
 
         self._btn_reload.clicked.connect(self.reload)

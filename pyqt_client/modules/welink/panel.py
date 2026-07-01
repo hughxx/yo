@@ -1,4 +1,4 @@
-"""WeLink 群聊录制面板：规则管理 + 后台监听"""
+﻿"""WeLink 群聊录制面板：规则管理 + 后台监听"""
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
@@ -80,7 +80,7 @@ class WelinkPanel(QWidget):
         self._dot = QLabel('●')
         self._dot.setStyleSheet('color:#ccc;font-size:14px')
         self._status_lbl = QLabel('未运行')
-        self._status_lbl.setStyleSheet('color:#888;font-size:11px')
+        self._status_lbl.setStyleSheet('color:#667085;font-size:11px')
         self._btn_toggle = QPushButton('开始监听')
         self._btn_toggle.setObjectName('btnSync')
         self._btn_toggle.setFixedWidth(80)
@@ -133,7 +133,7 @@ class WelinkPanel(QWidget):
 
         _sep = QLabel()
         _sep.setFixedHeight(1)
-        _sep.setStyleSheet('background:#ddd;margin:4px 0')
+        _sep.setStyleSheet('background:#e1e7ef;margin:4px 0')
         root.addWidget(_sep)
 
         # ── 规则表 + 日志（上下分割）──
@@ -187,7 +187,7 @@ class WelinkPanel(QWidget):
         self._log_edit.setReadOnly(True)
         self._log_edit.setMaximumBlockCount(300)
         self._log_edit.setStyleSheet(
-            'background:#1e1e1e;color:#d4d4d4;'
+            'background:#f8fafc;color:#344054;border:1px solid #e1e7ef;border-radius:8px;'
             'font-family:Consolas,monospace;font-size:11px'
         )
         log_lay.addWidget(self._log_edit)
@@ -314,15 +314,15 @@ class WelinkPanel(QWidget):
         self._end_cmd_edit.setEnabled(editable)
         self._summary_cmd_edit.setEnabled(editable)
         if running:
-            self._dot.setStyleSheet('color:#008C64;font-size:14px')
+            self._dot.setStyleSheet('color:#0067c0;font-size:14px')
             self._status_lbl.setText('监听中')
-            self._status_lbl.setStyleSheet('color:#008C64;font-size:11px;font-weight:bold')
+            self._status_lbl.setStyleSheet('color:#005a9e;font-size:11px;font-weight:bold')
             self._btn_toggle.setText('停止监听')
             self._btn_toggle.setObjectName('btnDanger')
         else:
             self._dot.setStyleSheet('color:#ccc;font-size:14px')
             self._status_lbl.setText('未运行')
-            self._status_lbl.setStyleSheet('color:#888;font-size:11px;font-weight:normal')
+            self._status_lbl.setStyleSheet('color:#667085;font-size:11px;font-weight:normal')
             self._btn_toggle.setText('开始监听')
             self._btn_toggle.setObjectName('btnSync')
         self._btn_toggle.style().unpolish(self._btn_toggle)
@@ -406,3 +406,4 @@ class WelinkPanel(QWidget):
     def closeEvent(self, event):
         self._stop_monitor()
         super().closeEvent(event)
+

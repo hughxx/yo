@@ -1,4 +1,4 @@
-"""自动回复面板：监听配置 + 关键词规则"""
+﻿"""自动回复面板：监听配置 + 关键词规则"""
 import json
 import os
 
@@ -181,7 +181,7 @@ class AutoReplyPanel(QWidget):
         # 状态行
         hdr = QHBoxLayout()
         pin_lbl = QLabel('置顶会话数:')
-        pin_lbl.setStyleSheet('color:#888;font-size:11px')
+        pin_lbl.setStyleSheet('color:#667085;font-size:11px')
         self._pinned_count_spin = QSpinBox()
         self._pinned_count_spin.setRange(0, 20)
         self._pinned_count_spin.setValue(0)
@@ -189,7 +189,7 @@ class AutoReplyPanel(QWidget):
         self._pinned_count_spin.setToolTip('查询最近会话时跳过前 N 个置顶会话')
         self._pinned_count_spin.valueChanged.connect(self._save_config)
         pin_hint = QLabel('（WeLink 置顶的会话排在列表最前，需填入置顶数量才能获取到真正的最新会话）')
-        pin_hint.setStyleSheet('color:#aaa;font-size:10px')
+        pin_hint.setStyleSheet('color:#98a2b3;font-size:10px')
         hdr.addWidget(pin_lbl)
         hdr.addWidget(self._pinned_count_spin)
         hdr.addWidget(pin_hint)
@@ -197,7 +197,7 @@ class AutoReplyPanel(QWidget):
         self._dot = QLabel('●')
         self._dot.setStyleSheet('color:#ccc;font-size:14px')
         self._status_lbl = QLabel('未运行')
-        self._status_lbl.setStyleSheet('color:#888;font-size:11px')
+        self._status_lbl.setStyleSheet('color:#667085;font-size:11px')
         self._btn_toggle = QPushButton('开始监听')
         self._btn_toggle.setObjectName('btnSync')
         self._btn_toggle.setFixedWidth(80)
@@ -210,7 +210,7 @@ class AutoReplyPanel(QWidget):
 
         sep = QLabel()
         sep.setFixedHeight(1)
-        sep.setStyleSheet('background:#ddd;margin:2px 0')
+        sep.setStyleSheet('background:#e1e7ef;margin:2px 0')
         root.addWidget(sep)
 
         outer_splitter = QSplitter(Qt.Vertical)
@@ -325,7 +325,7 @@ class AutoReplyPanel(QWidget):
         self._log_edit.setReadOnly(True)
         self._log_edit.setMaximumBlockCount(300)
         self._log_edit.setStyleSheet(
-            'background:#1e1e1e;color:#d4d4d4;'
+            'background:#f8fafc;color:#344054;border:1px solid #e1e7ef;border-radius:8px;'
             'font-family:Consolas,monospace;font-size:11px'
         )
         l_lay.addWidget(self._log_edit)
@@ -598,15 +598,15 @@ class AutoReplyPanel(QWidget):
 
     def _set_running(self, running: bool):
         if running:
-            self._dot.setStyleSheet('color:#008C64;font-size:14px')
+            self._dot.setStyleSheet('color:#0067c0;font-size:14px')
             self._status_lbl.setText('监听中')
-            self._status_lbl.setStyleSheet('color:#008C64;font-size:11px;font-weight:bold')
+            self._status_lbl.setStyleSheet('color:#005a9e;font-size:11px;font-weight:bold')
             self._btn_toggle.setText('停止监听')
             self._btn_toggle.setObjectName('btnDanger')
         else:
             self._dot.setStyleSheet('color:#ccc;font-size:14px')
             self._status_lbl.setText('未运行')
-            self._status_lbl.setStyleSheet('color:#888;font-size:11px;font-weight:normal')
+            self._status_lbl.setStyleSheet('color:#667085;font-size:11px;font-weight:normal')
             self._btn_toggle.setText('开始监听')
             self._btn_toggle.setObjectName('btnSync')
         self._btn_toggle.style().unpolish(self._btn_toggle)
@@ -621,3 +621,4 @@ class AutoReplyPanel(QWidget):
     def closeEvent(self, event):
         self._stop_monitor()
         super().closeEvent(event)
+

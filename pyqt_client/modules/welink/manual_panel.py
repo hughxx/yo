@@ -1,4 +1,4 @@
-"""WeLink 聊天记录手动导出面板
+﻿"""WeLink 聊天记录手动导出面板
 
 用户把 WeLink「导出聊天记录」打成的 zip 拖进来，解析 HistoryRecord（txt + 图片文件夹），
 按时间戳把 [图片] 占位符对齐到图片文件，上传图片后拼成 HTML，POST 到现有
@@ -115,7 +115,7 @@ class ManualExportPanel(QWidget):
             '系统会解析 txt 与图片文件夹，按时间戳还原图片位置，归档为经验。'
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet('color:#444')
+        intro.setStyleSheet('color:#344054')
         root.addWidget(intro)
 
         row = QHBoxLayout()
@@ -146,7 +146,7 @@ class ManualExportPanel(QWidget):
         self._log_edit.setReadOnly(True)
         self._log_edit.setMaximumBlockCount(500)
         self._log_edit.setStyleSheet(
-            'background:#1e1e1e;color:#d4d4d4;'
+            'background:#f8fafc;color:#344054;border:1px solid #e1e7ef;border-radius:8px;'
             'font-family:Consolas,monospace;font-size:11px'
         )
         root.addWidget(self._log_edit, stretch=1)
@@ -210,3 +210,4 @@ class ManualExportPanel(QWidget):
 
     def deactivate(self):
         pass
+

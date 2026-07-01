@@ -1,4 +1,4 @@
-"""主壳：侧边栏导航 + 模块切换"""
+﻿"""主壳：侧边栏导航 + 模块切换"""
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QStackedWidget, QSizePolicy, QLabel,
@@ -51,147 +51,52 @@ def _ver_tuple(v: str):
 # ── 样式表 ────────────────────────────────────────────────
 QSS = """
 * {
-    font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
     font-size: 12px;
+    color: #202020;
 }
-QMainWindow { background: #f0f0f0; }
-
-/* 侧边栏 */
-#sidebar {
-    background: #252526;
-    border-right: 1px solid #1a1a1a;
-}
-QPushButton#sideBtn {
-    background: transparent;
-    border: none;
-    border-left: 3px solid transparent;
-    color: #858585;
-    font-size: 11px;
-    padding: 6px 0;
-}
-QPushButton#sideBtn:hover {
-    color: #cccccc;
-    background: #2a2d2e;
-}
-QPushButton#sideBtn:checked {
-    color: #ffffff;
-    border-left: 3px solid #0078D4;
-    background: #37373d;
-}
-
-/* 工具栏 */
-#toolbar {
-    background: #ffffff;
-    border-bottom: 1px solid #d0d0d0;
-    padding: 4px 8px;
-}
-
-/* 按钮基础 */
-QPushButton {
-    border: 1px solid #bbb;
-    background: #f5f5f5;
-    padding: 4px 12px;
-    border-radius: 2px;
-    min-height: 24px;
-}
-QPushButton:hover    { background: #e8e8e8; }
-QPushButton:pressed  { background: #d8d8d8; }
-QPushButton:disabled { color: #aaa; background: #f0f0f0; }
-
-/* 刷新 */
-QPushButton#btnRefresh {
-    background: #008C64; color: white; border: none;
-}
-QPushButton#btnRefresh:hover   { background: #007a57; }
-QPushButton#btnRefresh:pressed { background: #006b4c; }
-QPushButton#btnRefresh:disabled { background: #99cbbf; }
-
-/* 同步 */
-QPushButton#btnSync {
-    background: #0078D4; color: white; border: none;
-}
-QPushButton#btnSync:hover   { background: #006abf; }
-QPushButton#btnSync:pressed { background: #005ca8; }
-QPushButton#btnSync:disabled { background: #99c4e8; }
-
-/* 设置 */
-QPushButton#btnSettings {
-    background: #505050; color: white; border: none;
-}
-QPushButton#btnSettings:hover   { background: #404040; }
-QPushButton#btnSettings:pressed { background: #303030; }
-
-/* 主要动作（蓝色） */
-QPushButton#btnPrimary {
-    background: #0078D4; color: white; border: none;
-    padding: 4px 14px;
-}
-QPushButton#btnPrimary:hover { background: #006abf; }
-
-/* 危险动作（红色） */
-QPushButton#btnDanger { color: #c00; border-color: #e88; }
-QPushButton#btnDanger:hover { background: #fff0f0; }
-
-/* 进度条 */
-QProgressBar {
-    max-height: 3px;
-    border: none;
-    background: #e0e0e0;
-}
-QProgressBar::chunk { background: #0078D4; }
-
-/* 表格 */
-QTableWidget {
-    border: none;
-    gridline-color: #e8e8e8;
-    background: white;
-    alternate-background-color: #f9f9f9;
-    selection-background-color: #cde8ff;
-    selection-color: #000;
-}
-QTableWidget::item { padding: 2px 6px; }
-QHeaderView::section {
-    background: #f5f5f5;
-    border: none;
-    border-bottom: 1px solid #d0d0d0;
-    border-right: 1px solid #e0e0e0;
-    padding: 4px 6px;
-    font-weight: bold;
-}
-
-/* 分页区 */
-#pagination {
-    background: #ffffff;
-    border-top: 1px solid #d0d0d0;
-    padding: 4px 8px;
-}
-QPushButton#pgBtn {
-    border: 1px solid #ccc;
-    background: #f5f5f5;
-    padding: 2px 8px;
-    min-height: 20px;
-    min-width: 28px;
-}
-QPushButton#pgBtn:disabled { color: #ccc; }
-QPushButton#pgBtn:hover:!disabled { background: #e0e0e0; }
-
-/* 标签页 */
-QTabWidget::pane  { border: 1px solid #d0d0d0; background: white; }
-QTabBar::tab {
-    padding: 5px 16px;
-    background: #f0f0f0;
-    border: 1px solid #d0d0d0;
-    border-bottom: none;
-    margin-right: 2px;
-}
-QTabBar::tab:selected { background: white; border-bottom: 1px solid white; }
-QTabBar::tab:hover:!selected { background: #e4e4e4; }
-
-/* 对话框 */
-QDialog { background: #f5f5f5; }
-QFormLayout { margin: 12px; }
+QMainWindow, QWidget { background: #f3f6fb; }
+#sidebar { background: #f8fbff; border-right: 1px solid #dbe3ee; }
+QPushButton#sideBtn { background: transparent; border: none; border-left: 3px solid transparent; color: #5f6b7a; font-size: 11px; padding: 7px 0; min-height: 30px; }
+QPushButton#sideBtn:hover { color: #005a9e; background: #edf5ff; }
+QPushButton#sideBtn:checked { color: #003e73; font-weight: 600; border-left: 3px solid #0067c0; background: #e5f1fb; }
+#toolbar, #pagination { background: #ffffff; border-bottom: 1px solid #e1e7ef; padding: 6px 10px; }
+#pagination { border-top: 1px solid #e1e7ef; border-bottom: none; }
+QFrame, QGroupBox { background: #ffffff; border: 1px solid #dfe6ef; border-radius: 8px; }
+QGroupBox { margin-top: 12px; padding: 12px 10px 10px 10px; font-weight: 600; }
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #475467; }
+QPushButton { border: 1px solid #cfd8e3; background: #ffffff; padding: 5px 13px; border-radius: 6px; min-height: 26px; }
+QPushButton:hover { background: #f7fbff; border-color: #8bbbe8; color: #005a9e; }
+QPushButton:pressed { background: #e8f2fc; border-color: #0067c0; }
+QPushButton:disabled { color: #a8b0bb; background: #f1f4f8; border-color: #dde3ea; }
+QPushButton#btnPrimary, QPushButton#btnRefresh, QPushButton#btnSync { background: #0067c0; color: white; border: 1px solid #0067c0; font-weight: 600; }
+QPushButton#btnPrimary:hover, QPushButton#btnRefresh:hover, QPushButton#btnSync:hover { background: #0f75cf; border-color: #0f75cf; color: white; }
+QPushButton#btnPrimary:pressed, QPushButton#btnRefresh:pressed, QPushButton#btnSync:pressed { background: #005a9e; border-color: #005a9e; }
+QPushButton#btnPrimary:disabled, QPushButton#btnRefresh:disabled, QPushButton#btnSync:disabled { background: #a9cceb; border-color: #a9cceb; color: #f8fbff; }
+QPushButton#btnSettings { background: #475467; color: white; border: 1px solid #475467; }
+QPushButton#btnSettings:hover { background: #344054; border-color: #344054; color: white; }
+QPushButton#btnDanger { color: #c42b1c; border-color: #f0b8b1; background: #fffafa; }
+QPushButton#btnDanger:hover { background: #fdecea; border-color: #e18b82; }
+QPushButton#pgBtn { padding: 2px 8px; min-height: 22px; min-width: 28px; }
+QPushButton#pgBtn:disabled { color: #b8c0ca; }
+QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox { background: #ffffff; border: 1px solid #cfd8e3; border-radius: 6px; padding: 5px 8px; selection-background-color: #cfe8ff; }
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #0067c0; }
+QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled { color: #98a2b3; background: #f1f4f8; }
+QComboBox::drop-down { border: none; width: 24px; }
+QTableWidget, QTreeWidget, QListWidget { border: 1px solid #dfe6ef; border-radius: 8px; gridline-color: #edf1f6; background: #ffffff; alternate-background-color: #f8fafc; selection-background-color: #d9ecff; selection-color: #111827; }
+QTableWidget::item, QTreeWidget::item, QListWidget::item { padding: 4px 7px; border-radius: 4px; }
+QTableWidget::item:hover, QTreeWidget::item:hover, QListWidget::item:hover { background: #eef6ff; }
+QHeaderView::section { background: #f7f9fc; border: none; border-bottom: 1px solid #dfe6ef; border-right: 1px solid #edf1f6; padding: 6px 7px; color: #475467; font-weight: 600; }
+QTabWidget::pane { border: 1px solid #dfe6ef; border-radius: 8px; background: #ffffff; top: -1px; }
+QTabBar::tab { padding: 8px 18px; background: #eef2f7; border: 1px solid #dfe6ef; border-bottom: none; border-top-left-radius: 7px; border-top-right-radius: 7px; margin-right: 3px; color: #5f6b7a; }
+QTabBar::tab:selected { background: #ffffff; color: #005a9e; font-weight: 600; border-bottom: 1px solid #ffffff; }
+QTabBar::tab:hover:!selected { background: #f8fbff; color: #005a9e; }
+QProgressBar { max-height: 4px; border: none; border-radius: 2px; background: #e1e7ef; }
+QProgressBar::chunk { border-radius: 2px; background: #0067c0; }
+QToolTip { color: #f8fafc; background: #202020; border: 1px solid #475467; border-radius: 6px; padding: 6px; }
+QDialog, QMessageBox { background: #f7f9fc; }
+QDialogButtonBox QPushButton { min-width: 78px; }
 """
-
 # ── 模块注册表 ────────────────────────────────────────────
 _MODULES = [
     ('邮件',   EmailPanel),
@@ -225,7 +130,7 @@ class MainShell(QMainWindow):
         self.setCentralWidget(root)
         lay = QHBoxLayout(root)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
+        lay.setSpacing(10)
 
         lay.addWidget(self._make_sidebar())
         lay.addWidget(self._stack, stretch=1)
@@ -233,12 +138,12 @@ class MainShell(QMainWindow):
     def _make_sidebar(self):
         sidebar = QWidget()
         sidebar.setObjectName('sidebar')
-        sidebar.setFixedWidth(56)
+        sidebar.setFixedWidth(68)
         sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
         lay = QVBoxLayout(sidebar)
-        lay.setContentsMargins(0, 8, 0, 8)
-        lay.setSpacing(2)
+        lay.setContentsMargins(6, 10, 6, 10)
+        lay.setSpacing(5)
 
         for idx, (name, PanelClass) in enumerate(_MODULES):
             panel = PanelClass()
@@ -398,3 +303,4 @@ class MainShell(QMainWindow):
         if 0 <= idx < len(self._panels):
             self._panels[idx].activate()
             self.setWindowTitle('问题定位助手')
+

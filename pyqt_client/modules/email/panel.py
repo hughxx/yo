@@ -1,4 +1,4 @@
-"""邮件模块主面板（基于 win32com Outlook）"""
+﻿"""邮件模块主面板（基于 win32com Outlook）"""
 import json
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
@@ -190,9 +190,10 @@ class EmailPanel(QWidget):
 
         # 分段筛选：全部 / 按规则匹配（参考 standalone）
         seg_style = (
-            'QPushButton{border:1px solid #bbb;background:#f5f5f5;padding:4px 12px;'
-            'min-height:24px;border-radius:0;}'
-            'QPushButton:checked{background:#008C64;color:white;border:1px solid #008C64;}')
+            'QPushButton{border:1px solid #cfd8e3;background:#ffffff;padding:5px 13px;'
+            'min-height:26px;border-radius:6px;}'
+            'QPushButton:hover{background:#f7fbff;border-color:#8bbbe8;color:#005a9e;}'
+            'QPushButton:checked{background:#0067c0;color:white;border:1px solid #0067c0;font-weight:600;}')
         self._seg_all     = QPushButton('全部 (0)')
         self._seg_matched = QPushButton('按规则匹配 (0)')
         seg_group = QButtonGroup(self)
@@ -371,13 +372,13 @@ class EmailPanel(QWidget):
         if self._monitoring:
             self._btn_timer.setText('停止定时')
             self._btn_timer.setStyleSheet(
-                'QPushButton{background:#B71C1C;color:white;border:none;}'
-                'QPushButton:hover{background:#a01818;}')
+                'QPushButton{background:#c42b1c;color:white;border:1px solid #c42b1c;border-radius:6px;font-weight:600;}'
+                'QPushButton:hover{background:#b3261e;border-color:#b3261e;color:white;}')
         else:
             self._btn_timer.setText('启动定时')
             self._btn_timer.setStyleSheet(
-                'QPushButton{background:#008C64;color:white;border:none;}'
-                'QPushButton:hover{background:#007a57;}')
+                'QPushButton{background:#0067c0;color:white;border:1px solid #0067c0;border-radius:6px;font-weight:600;}'
+                'QPushButton:hover{background:#0f75cf;border-color:#0f75cf;color:white;}')
 
     def activate(self):
         self._settings = store.load_settings()
@@ -652,8 +653,8 @@ class EmailPanel(QWidget):
             self._btn_process.setText('停止')
             self._btn_process.setEnabled(not self._cancel_sync)
             self._btn_process.setStyleSheet(
-                'QPushButton{background:#B71C1C;color:white;border:none;}'
-                'QPushButton:hover{background:#a01818;}')
+                'QPushButton{background:#c42b1c;color:white;border:1px solid #c42b1c;border-radius:6px;font-weight:600;}'
+                'QPushButton:hover{background:#b3261e;border-color:#b3261e;color:white;}')
         else:
             n = len(self._checked)
             self._btn_process.setText(f'处理选中 ({n})')
@@ -771,4 +772,5 @@ class EmailPanel(QWidget):
         w.err.connect(lambda _: None)
         w.start()
         self._workers.append(w)
+
 
