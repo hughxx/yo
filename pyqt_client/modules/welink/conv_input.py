@@ -23,7 +23,7 @@ class ConvInput(QWidget):
         self._id = QComboBox()
         self._id.setEditable(True)
         self._id.setMinimumWidth(260)
-        self._id.lineEdit().setPlaceholderText('群填 group_id；个人填工号（如 c00872275）')
+        self._id.lineEdit().setPlaceholderText('群填 group_id；个人填工号（如 a00123456）')
         lay.addWidget(self._id, 1)
 
         self._id.activated.connect(self._on_pick_history)
