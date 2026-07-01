@@ -2,7 +2,7 @@
 import json
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QPen, QPainter
+from PyQt5.QtGui import QColor, QFont
 
 from modules.email import outlook, rules as rules_mod, local_archive
 from modules.email.folder_pane import FolderPane
@@ -82,52 +82,42 @@ class _StatusLabel(QLabel):
 
 
 class _CheckHeader(QHeaderView):
-    """带「全选」复选框的表头（第 0 列绘制 checkbox，点击发 toggled 信号）。"""
+    """带「全选」复选框的表头：在第 0 列放一个**真实 QCheckBox** 子控件。
+
+    之前自绘(paintSection/drawPrimitive)在全局 QSS(QStyleSheetStyle)下会被吞掉、画不出来，
+    实测像素为 0。放真控件走原生样式，QSS 影响不到，稳定可见。
+    """
     toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(Qt.Horizontal, parent)
-        self._checked = False
         self.setSectionsClickable(True)
         self.setHighlightSections(False)
+        self._cb = QCheckBox(self)
+        self._cb.setToolTip('全选/取消（当前筛选下）')
+        self._cb.setStyleSheet('QCheckBox{background:transparent;margin:0;padding:0;}')
+        self._cb.toggled.connect(self.toggled)
+        self.sectionResized.connect(lambda *a: self._reposition())
 
     def setChecked(self, c: bool):
-        if self._checked != bool(c):
-            self._checked = bool(c)
-            self.updateSection(0)
+        self._cb.blockSignals(True)
+        self._cb.setChecked(bool(c))
+        self._cb.blockSignals(False)
 
-    def paintSection(self, painter, rect, logicalIndex):
-        super().paintSection(painter, rect, logicalIndex)
-        if logicalIndex != 0:
-            return
-        # 手绘复选框：全局 QSS 会把 style().drawPrimitive(PE_IndicatorCheckBox) 吞掉，
-        # 自己画才稳，和勾选状态联动。
-        sz = 14
-        x = rect.x() + (rect.width() - sz) // 2
-        y = rect.y() + (rect.height() - sz) // 2
-        box = QRect(x, y, sz, sz)
-        painter.save()
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        if self._checked:
-            painter.setPen(QPen(QColor('#0078D4'), 1))
-            painter.setBrush(QColor('#0078D4'))
-            painter.drawRoundedRect(box, 2, 2)
-            painter.setPen(QPen(QColor('#ffffff'), 2))
-            painter.drawLine(x + 3, y + 7, x + 6, y + 10)
-            painter.drawLine(x + 6, y + 10, x + 11, y + 4)
-        else:
-            painter.setPen(QPen(QColor('#888888'), 1))
-            painter.setBrush(QColor('#ffffff'))
-            painter.drawRoundedRect(box, 2, 2)
-        painter.restore()
+    def _reposition(self):
+        w = self.sectionSize(0)
+        h = self.height()
+        sz = self._cb.sizeHint()
+        self._cb.setGeometry((w - sz.width()) // 2, (h - sz.height()) // 2,
+                             sz.width(), sz.height())
 
-    def mousePressEvent(self, e):
-        if self.logicalIndexAt(e.pos()) == 0:
-            self._checked = not self._checked
-            self.updateSection(0)
-            self.toggled.emit(self._checked)
-            return
-        super().mousePressEvent(e)
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._reposition()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._reposition()
 
 
 def _badge(text: str, bg: str, fg: str = '#fff') -> QTableWidgetItem:
