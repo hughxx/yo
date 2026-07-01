@@ -176,7 +176,7 @@ class AutoReplyMonitor(QThread):
 
         if not reply:
             return
-        reply = '[自动回复] ' + reply   # 所有自动回复统一前缀，便于对方识别
+        reply = '[自动回复] ' + reply
         short = reply[:60] + ('…' if len(reply) > 60 else '')
         self._log(f'[{"群" if is_group else "私"}][{sender}] → {short}')
         if is_group:
