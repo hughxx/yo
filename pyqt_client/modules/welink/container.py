@@ -1,8 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 
 from modules.welink.record_panel import RecordPanel
-from modules.welink.history_panel import HistoryPanel
-from modules.welink.schedule_panel import SchedulePanel
+from modules.welink.extract_panel import ExtractPanel
 from modules.welink.autoreply_panel import AutoReplyPanel
 
 
@@ -15,17 +14,15 @@ class WelinkContainer(QWidget):
 
         self._tabs = QTabWidget()
         self._record     = RecordPanel()
-        self._history    = HistoryPanel()
-        self._schedule   = SchedulePanel()
+        self._extract    = ExtractPanel()
         self._autoreply  = AutoReplyPanel()
         self._tabs.addTab(self._record,     '录制')
-        self._tabs.addTab(self._history,    '历史聊天记录提取')   # 在线拉取 + 手动导入
-        self._tabs.addTab(self._schedule,   '定时采集')
+        self._tabs.addTab(self._extract,    '历史聊天记录提取')
         self._tabs.addTab(self._autoreply,  '自动回复')
         lay.addWidget(self._tabs)
 
-        # 旧的命令监听(定位过程记录/panel.py)已被 录制+提取+定时 替代，退役不再挂载
-        self._panels = [self._record, self._history, self._schedule, self._autoreply]
+        # 手动导入 / 定时采集 已下线（不常用，待重构再定）；旧命令监听也已退役
+        self._panels = [self._record, self._extract, self._autoreply]
 
     def activate(self):
         for p in self._panels:
