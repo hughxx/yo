@@ -2,13 +2,13 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 10px;
+  gap: 12px;
 }
 
 /* 两栏：左文件夹树 + 右内容 */
 .page {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   height: 100%;
 }
 .right {
@@ -21,15 +21,17 @@
 
 /* 搜索框 */
 .search {
-  height: 30px;
-  width: 200px;
-  padding: 0 10px;
-  font-size: 12px;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
+  height: 34px;
+  width: 220px;
+  padding: 0 12px;
+  font-size: 13px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.9);
   &:focus {
     outline: none;
-    border-color: #008c64;
+    border-color: #0067c0;
+    box-shadow: 0 0 0 3px rgba(0, 103, 192, 0.14);
   }
 }
 
@@ -42,10 +44,11 @@
   right: 0;
   top: 34px;
   z-index: 20;
-  background: #fff;
-  border: 1px solid #e3e5e9;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(16px);
   min-width: 180px;
   padding: 4px;
 }
@@ -56,12 +59,12 @@
   padding: 8px 10px;
   font-size: 12px;
   border: none;
-  background: none;
-  border-radius: 4px;
+  background: transparent;
+  border-radius: 6px;
   cursor: pointer;
   color: #333;
   &:hover {
-    background: #f4f6f8;
+    background: rgba(0, 103, 192, 0.08);
   }
 }
 
@@ -70,10 +73,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  background: #fff;
-  border: 1px solid #e3e5e9;
-  border-radius: 8px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
 
   .dot {
     font-size: 14px;
@@ -100,8 +104,8 @@
 
   .divider {
     width: 1px;
-    height: 20px;
-    background: #e3e5e9;
+    height: 22px;
+    background: rgba(17, 24, 39, 0.12);
     margin: 0 2px;
   }
   .spacer {
@@ -112,21 +116,24 @@
 /* 筛选+刷新行：紧贴下方表格 */
 .tableControls {
   padding-bottom: 6px;
-  border-bottom: 1px solid #eef0f2;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
   margin-bottom: -4px;
 }
 
 .btn {
-  height: 30px;
-  padding: 0 14px;
+  height: 34px;
+  padding: 0 15px;
   font-size: 13px;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
-  background: #f7f8fa;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.82);
   cursor: pointer;
+  color: #202020;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   &:hover {
-    border-color: #008c64;
-    color: #008c64;
+    border-color: rgba(0, 103, 192, 0.42);
+    color: #005a9e;
+    background: #fff;
   }
   &:disabled {
     opacity: 0.45;
@@ -134,26 +141,27 @@
   }
 }
 .btnPrimary {
-  background: #008c64;
+  background: linear-gradient(180deg, #147bd1 0%, #0067c0 100%);
   color: #fff;
-  border-color: #008c64;
+  border-color: #0067c0;
+  box-shadow: 0 8px 18px rgba(0, 103, 192, 0.22);
   &:hover {
     color: #fff;
     opacity: 0.92;
   }
 }
 .btnToggle {
-  height: 30px;
+  height: 34px;
   padding: 0 16px;
   font-size: 13px;
-  border-radius: 4px;
+  border-radius: 7px;
   border: none;
   color: #fff;
   cursor: pointer;
 }
 .linkBtn {
   font-size: 12px;
-  color: #b71c1c;
+  color: #c42b1c;
   background: none;
   border: none;
   cursor: pointer;
@@ -162,20 +170,21 @@
 /* 过滤分段 */
 .segment {
   display: inline-flex;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 8px;
   overflow: hidden;
+  background: rgba(255, 255, 255, 0.72);
 
   button {
-    height: 30px;
+    height: 32px;
     padding: 0 12px;
     font-size: 12px;
     border: none;
-    background: #fff;
+    background: transparent;
     cursor: pointer;
     color: #555;
     &.on {
-      background: #008c64;
+      background: #0067c0;
       color: #fff;
     }
   }
@@ -183,10 +192,10 @@
 
 .report {
   font-size: 12px;
-  color: #00714f;
-  background: #e9f7f1;
-  border: 1px solid #bfe6d6;
-  border-radius: 4px;
+  color: #005a9e;
+  background: rgba(0, 103, 192, 0.09);
+  border: 1px solid rgba(0, 103, 192, 0.16);
+  border-radius: 8px;
   padding: 6px 10px;
 }
 
@@ -194,9 +203,10 @@
   flex: 1;
   min-height: 120px;
   overflow: auto;
-  border: 1px solid #e3e5e9;
-  border-radius: 6px;
-  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
 .table {
@@ -207,17 +217,17 @@
   th {
     position: sticky;
     top: 0;
-    background: #f5f6f8;
+    background: rgba(248, 250, 252, 0.96);
     text-align: left;
     padding: 7px 10px;
-    color: #666;
-    border-bottom: 1px solid #e3e5e9;
+    color: #475467;
+    border-bottom: 1px solid rgba(17, 24, 39, 0.1);
     font-weight: 600;
     white-space: nowrap;
   }
   td {
     padding: 6px 10px;
-    border-bottom: 1px solid #f0f1f3;
+    border-bottom: 1px solid rgba(17, 24, 39, 0.06);
     color: #333;
     white-space: nowrap;
     overflow: hidden;
@@ -225,10 +235,10 @@
     max-width: 280px;
   }
   tr:hover td {
-    background: #fafbfc;
+    background: rgba(0, 103, 192, 0.05);
   }
   tr.sel td {
-    background: #eef7f3;
+    background: rgba(0, 103, 192, 0.1);
   }
   tr.done td {
     color: #b6bbc1;
@@ -249,16 +259,18 @@
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.28);
+  background: rgba(15, 23, 42, 0.32);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .dialog {
   width: 380px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
   padding: 18px 20px;
 }
 .dialogTitle {
@@ -281,11 +293,11 @@
   height: 32px;
   padding: 0 8px;
   font-size: 14px;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
   &:focus {
     outline: none;
-    border-color: #008c64;
+    border-color: #0067c0;
   }
 }
 .dialogActions {
@@ -298,8 +310,8 @@
   display: inline-block;
   font-size: 10px;
   padding: 1px 6px;
-  border-radius: 8px;
-  background: #008c64;
+  border-radius: 999px;
+  background: #0067c0;
   color: #fff;
 }
 .badgeMuted {

@@ -2,10 +2,10 @@
 
 /* Tailwind v4 主题（CSS-first 配置） */
 @theme {
-  --color-brand: #008c64;
+  --color-brand: #0067c0;
   --color-brand-fg: #ffffff;
-  --color-danger: #b71c1c;
-  --font-sans: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  --color-danger: #c42b1c;
+  --font-sans: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
 }
 
 html,
@@ -14,16 +14,67 @@ body {
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
-  color: #222;
-  background: #f5f6f8;
+  color: #202020;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(96, 165, 250, 0.18), transparent 30%),
+    linear-gradient(135deg, #f7fbff 0%, #f2f6fb 42%, #f8fafc 100%);
   -webkit-user-select: none;
   user-select: none;
+  font-size: 14px;
+  letter-spacing: 0;
 }
 
 /* 允许在输入框/正文预览里选择文本 */
 input,
 textarea,
+select,
 .selectable {
   -webkit-user-select: text;
   user-select: text;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+input,
+select,
+textarea {
+  color: #202020;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(96, 112, 128, 0.38);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(76, 92, 108, 0.58);
 }

@@ -1,8 +1,9 @@
 .editor {
-  border: 1px solid #e3e5e9;
-  border-radius: 8px;
-  background: #fbfcfd;
-  padding: 12px 14px;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 14px 16px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
 }
 
 .head {
@@ -13,7 +14,7 @@
   .title {
     font-size: 13px;
     font-weight: 600;
-    color: #008c64;
+    color: #005a9e;
   }
   .spacer {
     flex: 1;
@@ -43,29 +44,30 @@
 .input,
 .select {
   flex: 1;
-  height: 28px;
+  height: 32px;
   padding: 0 8px;
   font-size: 12px;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.9);
   &:focus {
     outline: none;
-    border-color: #008c64;
+    border-color: #0067c0;
+    box-shadow: 0 0 0 3px rgba(0, 103, 192, 0.14);
   }
 }
 
 .btn {
-  height: 28px;
+  height: 32px;
   padding: 0 12px;
   font-size: 12px;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
-  background: #f7f8fa;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.82);
   cursor: pointer;
   &:hover {
-    border-color: #008c64;
-    color: #008c64;
+    border-color: rgba(0, 103, 192, 0.42);
+    color: #005a9e;
   }
   &:disabled {
     opacity: 0.45;
@@ -73,17 +75,17 @@
   }
 }
 .btnPrimary {
-  background: #008c64;
+  background: linear-gradient(180deg, #147bd1 0%, #0067c0 100%);
   color: #fff;
-  border-color: #008c64;
+  border-color: #0067c0;
   &:hover {
     color: #fff;
     opacity: 0.92;
   }
 }
 .btnDanger {
-  color: #b71c1c;
-  border-color: #f0c4c4;
+  color: #c42b1c;
+  border-color: rgba(196, 43, 28, 0.24);
   background: #fff;
   &:hover {
     background: #fdecec;
@@ -91,11 +93,11 @@
 }
 
 .ruleCard {
-  border: 1px solid #e3e5e9;
-  border-radius: 6px;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 10px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .empty {

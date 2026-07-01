@@ -5,16 +5,18 @@
 }
 
 .section {
-  background: #fff;
-  border: 1px solid #e3e5e9;
-  border-radius: 8px;
-  padding: 16px 18px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 10px;
+  padding: 18px 20px;
   margin-bottom: 16px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(14px);
 
   > h3 {
     font-size: 14px;
     font-weight: 600;
-    color: #008c64;
+    color: #005a9e;
     margin: 0 0 12px;
   }
 }
@@ -49,45 +51,46 @@
 .input,
 .select {
   flex: 1;
-  height: 30px;
+  height: 34px;
   padding: 0 8px;
   font-size: 13px;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.9);
   &:focus {
     outline: none;
-    border-color: #008c64;
+    border-color: #0067c0;
+    box-shadow: 0 0 0 3px rgba(0, 103, 192, 0.14);
   }
 }
 
 .numInput {
   width: 90px;
-  height: 30px;
+  height: 34px;
   padding: 0 8px;
   font-size: 13px;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
 }
 
 .btn {
-  height: 30px;
+  height: 34px;
   padding: 0 12px;
   font-size: 13px;
-  border: 1px solid #d4d7dd;
-  border-radius: 4px;
-  background: #f7f8fa;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.82);
   cursor: pointer;
   &:hover {
-    border-color: #008c64;
-    color: #008c64;
+    border-color: rgba(0, 103, 192, 0.42);
+    color: #005a9e;
   }
 }
 
 .btnPrimary {
-  background: #008c64;
+  background: linear-gradient(180deg, #147bd1 0%, #0067c0 100%);
   color: #fff;
-  border-color: #008c64;
+  border-color: #0067c0;
   &:hover {
     opacity: 0.92;
     color: #fff;
@@ -95,8 +98,8 @@
 }
 
 .btnDanger {
-  color: #b71c1c;
-  border-color: #f0c4c4;
+  color: #c42b1c;
+  border-color: rgba(196, 43, 28, 0.24);
   background: #fff;
   &:hover {
     background: #fdecec;
@@ -111,11 +114,11 @@
 }
 
 .ruleCard {
-  border: 1px solid #e3e5e9;
-  border-radius: 6px;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 10px;
-  background: #fafbfc;
+  background: rgba(248, 250, 252, 0.8);
 }
 
 .saveBar {
@@ -128,9 +131,9 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 10px 24px;
-  background: #ffffffee;
-  border-top: 1px solid #e3e5e9;
-  backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.82);
+  border-top: 1px solid rgba(17, 24, 39, 0.1);
+  backdrop-filter: blur(18px);
 
   .dirty {
     font-size: 12px;

@@ -1,39 +1,55 @@
-$brand: #008c64;
-$border: #e3e5e9;
+$brand: #0067c0;
+$border: rgba(17, 24, 39, 0.1);
+$text: #202020;
+$muted: #667085;
+$surface: rgba(255, 255, 255, 0.72);
+$surface-solid: #ffffff;
+$shadow: 0 18px 45px rgba(15, 23, 42, 0.1);
 
 .shell {
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  padding: 12px;
+  gap: 12px;
 }
 
 .tabbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px 0;
-  background: #fff;
-  border-bottom: 1px solid $border;
+  gap: 6px;
+  padding: 6px;
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(18px) saturate(1.35);
 
   .tab {
-    padding: 8px 16px;
-    font-size: 14px;
-    color: #555;
+    min-width: 92px;
+    padding: 9px 16px;
+    font-size: 13px;
+    color: $muted;
     cursor: pointer;
     border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: 6px 6px 0 0;
+    border-radius: 8px;
+    text-align: center;
 
     &:hover {
-      color: $brand;
+      color: $text;
+      background: rgba(255, 255, 255, 0.68);
+      border-color: rgba(255, 255, 255, 0.9);
     }
 
     &.active {
-      color: $brand;
+      color: #0f172a;
       font-weight: 600;
-      background: #f5f6f8;
-      border-color: $border;
+      background: $surface-solid;
+      border-color: rgba(255, 255, 255, 0.96);
+      box-shadow:
+        0 3px 10px rgba(15, 23, 42, 0.08),
+        inset 0 -2px 0 $brand;
     }
   }
 
@@ -50,11 +66,16 @@ $border: #e3e5e9;
 .body {
   flex: 1;
   overflow: auto;
-  padding: 16px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 14px;
+  box-shadow: $shadow;
+  backdrop-filter: blur(18px) saturate(1.25);
 }
 
 .placeholder {
-  color: #888;
+  color: $muted;
   font-size: 13px;
   line-height: 1.8;
 }
