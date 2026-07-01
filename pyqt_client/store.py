@@ -36,6 +36,7 @@ DEFAULT = {
     'welinkPollInterval':  3,
     'welinkDailyRecord':   False,
     'welinkDailyTime':     '01:00',
+    'welinkScheduleGroups': [],
     'welinkScheduleRules': [],
     'welinkScheduleTime':  '02:00',
     'welinkRecentConvs':   [],   # 录制/提取里手填过的会话 id 历史
