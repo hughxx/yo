@@ -27,7 +27,27 @@ def _build_url(dbname: str) -> str:
     return f"postgresql+{DB_DRIVER}://{user}:{pwd}@{host}:{port}/{dbname}?client_encoding=utf8"
 
 
+def _patch_gaussdb_version() -> None:
+    """SQLAlchemy 的 PG 方言用正则从 version() 抠 PostgreSQL 版本号，
+    而 GaussDB 返回 'gaussdb (GaussDB Kernel 505.2.1 ...)' 匹配不上会抛 AssertionError，
+    导致每条连接初始化即失败。GaussDB/openGauss 内核基于 PG 9.2.4，解析失败时回退到该版本。"""
+    from sqlalchemy.dialects.postgresql.base import PGDialect
+
+    _orig = PGDialect._get_server_version_info
+
+    def _safe(self, connection):
+        try:
+            return _orig(self, connection)
+        except AssertionError:
+            return (9, 2, 4)
+
+    PGDialect._get_server_version_info = _safe
+
+
 DATABASE_URL = _build_url(_st.DB_NAME)
+
+if DB_DIALECT not in ("mysql", "mariadb"):
+    _patch_gaussdb_version()
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
