@@ -135,6 +135,7 @@ class SettingsDialog(QDialog):
 
         # 扫描间隔
         self._interval = QSpinBox()
+        self._interval.setButtonSymbols(QSpinBox.NoButtons)
         self._interval.setRange(1, 1440)
         self._interval.setValue(self._s.get('scanIntervalMinutes', 60))
         self._interval.setSuffix(' 分钟')

@@ -83,16 +83,6 @@ QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox { background: #ffffff;
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #0067c0; }
 QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled { color: #98a2b3; background: #f1f4f8; }
 QComboBox::drop-down { border: none; width: 24px; }
-QSpinBox, QDoubleSpinBox { padding-right: 20px; }
-QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { subcontrol-origin: border; width: 18px; background: #f2f6fb; border-left: 1px solid #cfd8e3; }
-QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 6px; border-bottom: 1px solid #e5ebf2; }
-QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 6px; }
-QSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background: #e4eefb; }
-QSpinBox::up-button:pressed, QSpinBox::down-button:pressed, QDoubleSpinBox::up-button:pressed, QDoubleSpinBox::down-button:pressed { background: #d3e4f7; }
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid #5a6b7b; }
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #5a6b7b; }
-QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled { border-bottom-color: #c0c8d2; }
-QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled { border-top-color: #c0c8d2; }
 QTableWidget, QTreeWidget, QListWidget { border: 1px solid #dfe6ef; border-radius: 8px; gridline-color: #edf1f6; background: #ffffff; alternate-background-color: #f8fafc; selection-background-color: #d9ecff; selection-color: #111827; }
 QTableWidget::item, QTreeWidget::item, QListWidget::item { padding: 4px 7px; border-radius: 4px; }
 QTableWidget::item:hover, QTreeWidget::item:hover, QListWidget::item:hover { background: #eef6ff; }

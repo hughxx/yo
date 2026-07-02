@@ -183,6 +183,7 @@ class AutoReplyPanel(QWidget):
         pin_lbl = QLabel('置顶会话数:')
         pin_lbl.setStyleSheet('color:#667085;font-size:11px')
         self._pinned_count_spin = QSpinBox()
+        self._pinned_count_spin.setButtonSymbols(QSpinBox.NoButtons)
         self._pinned_count_spin.setRange(0, 20)
         self._pinned_count_spin.setValue(0)
         self._pinned_count_spin.setFixedWidth(52)

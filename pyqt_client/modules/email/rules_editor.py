@@ -239,6 +239,7 @@ class StartTimerDialog(QDialog):
         self._rb_interval = QRadioButton('每隔')
         grp.addButton(self._rb_interval)
         self._spin = QSpinBox()
+        self._spin.setButtonSymbols(QSpinBox.NoButtons)
         self._spin.setRange(1, 1440)
         self._spin.setValue(max(1, int(interval or 60)))
         self._spin.setSuffix(' 分钟')
