@@ -397,8 +397,7 @@ class WelinkPanel(QWidget):
         backend.set_base(s.get('backendUrl', ''))
         self._load_config()
         self._load_rules()
-        if not (self._monitor and self._monitor.isRunning()):
-            self._start_monitor()
+        # 默认不自动开监听，由用户手动点「开始监听」
 
     def deactivate(self):
         pass
