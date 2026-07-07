@@ -8,8 +8,10 @@ from PyQt5.QtGui import QFont
 import backend
 from utils import Worker
 
+_OFFLINE_LABEL = '离线（仅本地导出）'
 _SERVER_PRESETS = {
     '云核心网': 'https://coreinsight-beta.rnd.huawei.com/collection',
+    _OFFLINE_LABEL: backend.OFFLINE,
 }
 _MANUAL_INPUT = '手动输入URL'
 
@@ -313,13 +315,16 @@ class SetupDialog(QDialog):
         if not url:
             QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
             return
+        if backend.is_offline_url(url):
+            QMessageBox.information(self, '离线模式', '离线模式不连接服务器，处理结果只保存到本地目录。')
+            return
         backend.set_base(url)
         ok = backend.ping()
         QMessageBox.information(self, '连接测试', '连接成功 ✓' if ok else '连接失败，请检查服务器地址')
 
     def _load_namespaces(self):
         url = self._get_url()
-        if not url:
+        if not url or backend.is_offline_url(url):
             return
         backend.set_base(url)
         cur = self._s.get('namespace', '')
@@ -341,7 +346,7 @@ class SetupDialog(QDialog):
     def _search_userinfo(self):
         query = self._user_id.text().strip()
         url = self._get_url()
-        if not query or not url:
+        if not query or not url or backend.is_offline_url(url):
             return
         backend.set_base(url)
 
@@ -367,11 +372,26 @@ class SetupDialog(QDialog):
 
     def _confirm(self):
         url = self._get_url()
-        ns = self._ns_combo.currentData() or ''
 
         if not url:
             QMessageBox.warning(self, '错误', '请选择或输入服务器地址')
             return
+
+        # 离线：不连服务器，工号/命名空间都无从校验，只要求填好本地保存目录
+        if backend.is_offline_url(url):
+            out = self._out_dir.text().strip()
+            if not out:
+                QMessageBox.warning(self, '错误', '离线模式请先设置「文件保存目录」')
+                return
+            self._s['backendUrl'] = url
+            self._s['userId'] = self._user_id.text().strip()
+            self._s['namespace'] = ''
+            self._s['customJsonConfig'] = self._custom_json.toPlainText()
+            self._s['outputDir'] = out
+            self.accept()
+            return
+
+        ns = self._ns_combo.currentData() or ''
         if not self._confirmed_uid:
             QMessageBox.warning(self, '错误', '请搜索并从下拉结果中选择工号')
             return

@@ -25,11 +25,14 @@ class _ImportWorker(QThread):
     done_signal = pyqtSignal(dict)   # {'duplicate': bool, 'count': int}
     err_signal  = pyqtSignal(str)
 
-    def __init__(self, zip_path: str, group_name: str, user_id: str):
+    def __init__(self, zip_path: str, group_name: str, user_id: str,
+                 offline: bool = False, output_dir: str = ''):
         super().__init__()
         self._zip_path   = zip_path
         self._group_name = group_name
         self._user_id    = user_id
+        self._offline    = offline
+        self._output_dir = output_dir
 
     def run(self):
         try:
@@ -47,13 +50,26 @@ class _ImportWorker(QThread):
             if match['summary']:
                 self._log(match['summary'])
 
-            self._upload_images(match)
+            if not self._offline:      # 离线不处理图片，不上传图床
+                self._upload_images(match)
 
             html = chatlog_import.build_html(messages, match)
 
             group_name = self._group_name or stem
             start_dt = messages[0]['ts']
             end_dt   = messages[-1]['ts']
+
+            if self._offline:          # 本地导出 HTML + MD，不连服务端
+                from modules.email.html2md import html2md
+                from modules.email import local_archive
+                md = html2md(html)
+                title = f'{group_name}_{start_dt.strftime("%Y%m%d_%H%M")}'
+                self._log('本地导出 HTML + MD…')
+                local_archive.save_email(self._output_dir, title, html, md)
+                self.done_signal.emit({'duplicate': False, 'count': len(messages),
+                                       'offline': True})
+                return
+
             chat_id = (
                 f'manual_{stem}_{int(start_dt.timestamp() * 1000)}_'
                 f'{hashlib.md5(text.encode("utf-8", "ignore")).hexdigest()[:8]}'
@@ -178,18 +194,27 @@ class ManualExportPanel(QWidget):
         s = store.load_settings()
         backend.set_base(s.get('backendUrl', ''))
         user_id = s.get('welinkUserId', '') or s.get('userId', '')
+        offline = backend.is_offline_url(s.get('backendUrl', ''))
+        output_dir = s.get('outputDir', '')
+
+        if offline and not output_dir:
+            QMessageBox.warning(self, '提示', '离线模式请先在设置里配置「文件保存目录」')
+            return
 
         self._btn_import.setEnabled(False)
         self._log_edit.clear()
 
-        self._worker = _ImportWorker(self._zip_path, self._name_edit.text().strip(), user_id)
+        self._worker = _ImportWorker(self._zip_path, self._name_edit.text().strip(), user_id,
+                                     offline=offline, output_dir=output_dir)
         self._worker.log_signal.connect(self._append_log)
         self._worker.done_signal.connect(self._on_done)
         self._worker.err_signal.connect(self._on_err)
         self._worker.start()
 
     def _on_done(self, info: dict):
-        if info.get('duplicate'):
+        if info.get('offline'):
+            self._append_log(f'已本地导出（{info.get("count", 0)} 条消息）：HTML + MD 已保存到文件保存目录。')
+        elif info.get('duplicate'):
             self._append_log('该记录已存在，服务端已跳过。')
         else:
             self._append_log(f'导入成功（{info.get("count", 0)} 条消息），服务端正在后台解析归档。')

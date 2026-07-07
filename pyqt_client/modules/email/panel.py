@@ -554,7 +554,9 @@ class EmailPanel(QWidget):
             return
 
         batch   = matched[offset:offset + BATCH]
-        img_api = self._settings.get('backendUrl', '')
+        offline = backend.is_offline_url(self._settings.get('backendUrl', ''))
+        # 离线不传图床（不处理图片），在线才把内联图片上传换 URL
+        img_api = '' if offline else self._settings.get('backendUrl', '')
 
         def _get():
             return [outlook.mail_get(e['item_id'], img_api) for e in batch]
@@ -565,25 +567,26 @@ class EmailPanel(QWidget):
                 if self._cancel_sync:   # 批次内也及时停，未推送的留待收尾
                     break
                 try:
-                    extra = {}
-                    try: extra = json.loads(self._settings.get('customJsonConfig', '{}'))
-                    except Exception: pass
-                    backend.receive_email({
-                        'EmailId':           item['item_id'],
-                        'ConversationTopic': item.get('conversation_topic', ''),
-                        'Subject':           item.get('subject', ''),
-                        'SenderName':        item.get('sender_name', ''),
-                        'SenderEmail':       item.get('sender_email', ''),
-                        'ReceivedTime':      item.get('received_time', ''),
-                        'HtmlBody':          item.get('html_body', ''),
-                        'MarkdownBody':      item.get('markdown_body', ''),
-                        'MatchedRuleName':   src.get('matched_rule') or '手动处理',
-                        'UserId':            self._settings.get('userId', ''),
-                        'Namespace':         self._settings.get('namespace', ''),
-                        'ExtraInfo':         extra,
-                        'Force':             force,
-                    })
-                    # 推送成功后，HTML + MD 两份都存到本地保存目录
+                    if not offline:
+                        extra = {}
+                        try: extra = json.loads(self._settings.get('customJsonConfig', '{}'))
+                        except Exception: pass
+                        backend.receive_email({
+                            'EmailId':           item['item_id'],
+                            'ConversationTopic': item.get('conversation_topic', ''),
+                            'Subject':           item.get('subject', ''),
+                            'SenderName':        item.get('sender_name', ''),
+                            'SenderEmail':       item.get('sender_email', ''),
+                            'ReceivedTime':      item.get('received_time', ''),
+                            'HtmlBody':          item.get('html_body', ''),
+                            'MarkdownBody':      item.get('markdown_body', ''),
+                            'MatchedRuleName':   src.get('matched_rule') or '手动处理',
+                            'UserId':            self._settings.get('userId', ''),
+                            'Namespace':         self._settings.get('namespace', ''),
+                            'ExtraInfo':         extra,
+                            'Force':             force,
+                        })
+                    # 离线：直接本地导出；在线：推送成功后再存。HTML + MD 两份写到本地保存目录
                     local_archive.save_email(
                         self._settings.get('outputDir', ''),
                         item.get('subject') or item.get('conversation_topic', ''),

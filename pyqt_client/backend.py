@@ -5,6 +5,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _base = 'http://localhost:8023'
 
+# backendUrl 取此值表示「离线」：不连服务端，只本地导出 html+md。
+OFFLINE = 'offline'
+
+def is_offline_url(url: str) -> bool:
+    return (url or '').strip().lower() == OFFLINE
+
 def set_base(url: str):
     global _base
     _base = url.rstrip('/')
