@@ -133,7 +133,7 @@ class WelinkPanel(QWidget):
 
         _sep = QLabel()
         _sep.setFixedHeight(1)
-        _sep.setStyleSheet('background:#e1e7ef;margin:4px 0')
+        _sep.setStyleSheet('background:#eceef1;margin:4px 0')
         root.addWidget(_sep)
 
         # ── 规则表 + 日志（上下分割）──
@@ -187,7 +187,7 @@ class WelinkPanel(QWidget):
         self._log_edit.setReadOnly(True)
         self._log_edit.setMaximumBlockCount(300)
         self._log_edit.setStyleSheet(
-            'background:#f8fafc;color:#344054;border:1px solid #e1e7ef;border-radius:8px;'
+            'background:#f7f8fa;color:#1f2329;border:1px solid #e5e6eb;border-radius:8px;'
             'font-family:Consolas,monospace;font-size:11px'
         )
         log_lay.addWidget(self._log_edit)

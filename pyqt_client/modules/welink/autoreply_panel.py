@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QPlainTextEdit, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView, QDialog, QRadioButton,
-    QButtonGroup, QMessageBox, QSplitter, QTabWidget, QSpinBox,
+    QButtonGroup, QMessageBox, QSplitter, QTabWidget, QSpinBox, QStackedWidget,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
@@ -173,35 +173,45 @@ class AutoReplyPanel(QWidget):
 
     # ── UI ────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _seg_btn(text: str) -> QPushButton:
+        b = QPushButton(text)
+        b.setCheckable(True)
+        b.setStyleSheet(
+            'QPushButton{border:none;background:transparent;padding:4px 14px;'
+            'border-radius:6px;color:#646a73;font-weight:600;}'
+            'QPushButton:hover{background:#f2f3f5;color:#1f2329;}'
+            'QPushButton:checked{background:#e1eaff;color:#3370ff;}')
+        return b
+
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 12, 16, 8)
-        root.setSpacing(8)
+        root.setContentsMargins(16, 14, 16, 10)
+        root.setSpacing(12)
 
-        # 状态行
+        # ── 状态行 ──
         hdr = QHBoxLayout()
-        pin_lbl = QLabel('置顶会话数:')
-        pin_lbl.setStyleSheet('color:#667085;font-size:11px')
+        pin_lbl = QLabel('置顶会话数')
+        pin_lbl.setStyleSheet('color:#646a73;')
         self._pinned_count_spin = QSpinBox()
         self._pinned_count_spin.setButtonSymbols(QSpinBox.NoButtons)
         self._pinned_count_spin.setRange(0, 20)
         self._pinned_count_spin.setValue(0)
-        self._pinned_count_spin.setFixedWidth(52)
+        self._pinned_count_spin.setFixedWidth(56)
         self._pinned_count_spin.setToolTip('查询最近会话时跳过前 N 个置顶会话')
         self._pinned_count_spin.valueChanged.connect(self._save_config)
-        pin_hint = QLabel('（WeLink 置顶的会话排在列表最前，需填入置顶数量才能获取到真正的最新会话）')
-        pin_hint.setStyleSheet('color:#98a2b3;font-size:10px')
+        pin_hint = QLabel('置顶会话排在列表最前，填数量才能读到真正最新的会话')
+        pin_hint.setStyleSheet('color:#8f959e;font-size:11px')
         hdr.addWidget(pin_lbl)
         hdr.addWidget(self._pinned_count_spin)
         hdr.addWidget(pin_hint)
         hdr.addStretch()
         self._dot = QLabel('●')
-        self._dot.setStyleSheet('color:#ccc;font-size:14px')
+        self._dot.setStyleSheet('color:#c0c4cc;font-size:12px')
         self._status_lbl = QLabel('未运行')
-        self._status_lbl.setStyleSheet('color:#667085;font-size:11px')
+        self._status_lbl.setStyleSheet('color:#646a73;font-size:12px')
         self._btn_toggle = QPushButton('开始监听')
         self._btn_toggle.setObjectName('btnSync')
-        self._btn_toggle.setFixedWidth(80)
         self._btn_toggle.clicked.connect(self._toggle_monitor)
         hdr.addWidget(self._dot)
         hdr.addWidget(self._status_lbl)
@@ -209,131 +219,105 @@ class AutoReplyPanel(QWidget):
         hdr.addWidget(self._btn_toggle)
         root.addLayout(hdr)
 
-        sep = QLabel()
-        sep.setFixedHeight(1)
-        sep.setStyleSheet('background:#e1e7ef;margin:2px 0')
-        root.addWidget(sep)
+        # ── 两栏：监听对象 | 关键词规则 ──
+        cols = QHBoxLayout()
+        cols.setSpacing(18)
 
-        outer_splitter = QSplitter(Qt.Vertical)
+        # 左：监听对象（群组/用户 分段控件 + 堆叠）
+        left = QVBoxLayout()
+        left.setSpacing(8)
+        lhead = QHBoxLayout()
+        lt = QLabel('监听对象')
+        lt.setStyleSheet('font-weight:700;font-size:13px;')
+        self._seg_grp = self._seg_btn('群组')
+        self._seg_usr = self._seg_btn('用户')
+        seg_group = QButtonGroup(self); seg_group.setExclusive(True)
+        seg_group.addButton(self._seg_grp); seg_group.addButton(self._seg_usr)
+        self._seg_grp.setChecked(True)
+        lhead.addWidget(lt)
+        lhead.addSpacing(10)
+        lhead.addWidget(self._seg_grp)
+        lhead.addWidget(self._seg_usr)
+        lhead.addStretch()
+        left.addLayout(lhead)
 
-        # ── Tab：群组 / 用户 ──
-        tabs = QTabWidget()
-
-        # 群组 Tab
-        grp_w = QWidget()
-        g_lay = QVBoxLayout(grp_w)
-        g_lay.setContentsMargins(0, 4, 0, 0)
-        g_lay.setSpacing(4)
+        self._obj_stack = QStackedWidget()
+        # 群组页
+        grp_w = QWidget(); g_lay = QVBoxLayout(grp_w)
+        g_lay.setContentsMargins(0, 0, 0, 0); g_lay.setSpacing(8)
         self._grp_table = _make_grp_table()
         self._grp_table.itemChanged.connect(self._on_grp_item_changed)
-        g_lay.addWidget(self._grp_table, stretch=1)
+        g_lay.addWidget(self._grp_table, 1)
         g_btn = QHBoxLayout()
-        self._grp_id_edit   = QLineEdit()
-        self._grp_id_edit.setPlaceholderText('群组 ID')
-        self._grp_id_edit.setFixedWidth(140)
-        self._grp_name_edit = QLineEdit()
-        self._grp_name_edit.setPlaceholderText('名称（可选）')
-        btn_gadd = QPushButton('+ 添加')
-        btn_gadd.setObjectName('btnSync')
-        btn_gadd.setFixedWidth(60)
-        btn_gadd.clicked.connect(self._add_group)
-        btn_gdel = QPushButton('删除')
-        btn_gdel.setFixedWidth(48)
-        btn_gdel.clicked.connect(self._del_group)
-        g_btn.addWidget(self._grp_id_edit)
-        g_btn.addWidget(self._grp_name_edit)
-        g_btn.addWidget(btn_gadd)
-        g_btn.addWidget(btn_gdel)
-        g_btn.addStretch()
+        self._grp_id_edit = QLineEdit(); self._grp_id_edit.setPlaceholderText('群组 ID')
+        self._grp_name_edit = QLineEdit(); self._grp_name_edit.setPlaceholderText('名称（可选）')
+        btn_gadd = QPushButton('+ 添加'); btn_gadd.setObjectName('btnSync'); btn_gadd.clicked.connect(self._add_group)
+        btn_gdel = QPushButton('删除'); btn_gdel.setObjectName('btnDanger'); btn_gdel.clicked.connect(self._del_group)
+        g_btn.addWidget(self._grp_id_edit, 1); g_btn.addWidget(self._grp_name_edit, 1)
+        g_btn.addWidget(btn_gadd); g_btn.addWidget(btn_gdel)
         g_lay.addLayout(g_btn)
-        tabs.addTab(grp_w, '群组')
-
-        # 用户 Tab
-        usr_w = QWidget()
-        u_lay = QVBoxLayout(usr_w)
-        u_lay.setContentsMargins(0, 4, 0, 0)
-        u_lay.setSpacing(4)
+        self._obj_stack.addWidget(grp_w)
+        # 用户页
+        usr_w = QWidget(); u_lay = QVBoxLayout(usr_w)
+        u_lay.setContentsMargins(0, 0, 0, 0); u_lay.setSpacing(8)
         self._usr_table = _make_usr_table()
-        u_lay.addWidget(self._usr_table, stretch=1)
+        u_lay.addWidget(self._usr_table, 1)
         u_btn = QHBoxLayout()
-        self._usr_acc_edit  = QLineEdit()
-        self._usr_acc_edit.setPlaceholderText('工号')
-        self._usr_acc_edit.setFixedWidth(120)
-        self._usr_name_edit = QLineEdit()
-        self._usr_name_edit.setPlaceholderText('名称（可选）')
-        btn_uadd = QPushButton('+ 添加')
-        btn_uadd.setObjectName('btnSync')
-        btn_uadd.setFixedWidth(60)
-        btn_uadd.clicked.connect(self._add_user)
-        btn_udel = QPushButton('删除')
-        btn_udel.setFixedWidth(48)
-        btn_udel.clicked.connect(self._del_user)
-        u_btn.addWidget(self._usr_acc_edit)
-        u_btn.addWidget(self._usr_name_edit)
-        u_btn.addWidget(btn_uadd)
-        u_btn.addWidget(btn_udel)
-        u_btn.addStretch()
+        self._usr_acc_edit = QLineEdit(); self._usr_acc_edit.setPlaceholderText('工号')
+        self._usr_name_edit = QLineEdit(); self._usr_name_edit.setPlaceholderText('名称（可选）')
+        btn_uadd = QPushButton('+ 添加'); btn_uadd.setObjectName('btnSync'); btn_uadd.clicked.connect(self._add_user)
+        btn_udel = QPushButton('删除'); btn_udel.setObjectName('btnDanger'); btn_udel.clicked.connect(self._del_user)
+        u_btn.addWidget(self._usr_acc_edit, 1); u_btn.addWidget(self._usr_name_edit, 1)
+        u_btn.addWidget(btn_uadd); u_btn.addWidget(btn_udel)
         u_lay.addLayout(u_btn)
-        tabs.addTab(usr_w, '用户')
+        self._obj_stack.addWidget(usr_w)
+        left.addWidget(self._obj_stack, 1)
+        self._seg_grp.clicked.connect(lambda: self._obj_stack.setCurrentIndex(0))
+        self._seg_usr.clicked.connect(lambda: self._obj_stack.setCurrentIndex(1))
 
-        outer_splitter.addWidget(tabs)
-
-        # ── 关键词规则 ──
-        rule_box = QWidget()
-        r_lay = QVBoxLayout(rule_box)
-        r_lay.setContentsMargins(0, 0, 0, 0)
-        r_lay.setSpacing(4)
-        r_lay.addWidget(QLabel('关键词规则'))
+        # 右：关键词规则
+        right = QVBoxLayout()
+        right.setSpacing(8)
+        rt = QLabel('关键词规则')
+        rt.setStyleSheet('font-weight:700;font-size:13px;')
+        right.addWidget(rt)
         self._rule_table = QTableWidget(0, 3)
         self._rule_table.setHorizontalHeaderLabels(['关键词', '类型', '内容'])
         self._rule_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
         self._rule_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
         self._rule_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self._rule_table.setColumnWidth(0, 150)
+        self._rule_table.setColumnWidth(0, 130)
         self._rule_table.setColumnWidth(1, 56)
         self._rule_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._rule_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._rule_table.verticalHeader().setVisible(False)
-        self._rule_table.verticalHeader().setDefaultSectionSize(22)
-        self._rule_table.setAlternatingRowColors(True)
+        self._rule_table.verticalHeader().setDefaultSectionSize(24)
         self._rule_table.doubleClicked.connect(self._edit_rule)
-        r_lay.addWidget(self._rule_table)
+        right.addWidget(self._rule_table, 1)
         r_btn = QHBoxLayout()
-        btn_radd  = QPushButton('+ 添加规则')
-        btn_radd.setObjectName('btnSync')
-        btn_radd.setFixedWidth(80)
-        btn_radd.clicked.connect(self._add_rule)
-        btn_redit = QPushButton('编辑')
-        btn_redit.setFixedWidth(48)
-        btn_redit.clicked.connect(self._edit_rule)
-        btn_rdel  = QPushButton('删除')
-        btn_rdel.setFixedWidth(48)
-        btn_rdel.clicked.connect(self._del_rule)
-        r_btn.addWidget(btn_radd)
-        r_btn.addWidget(btn_redit)
-        r_btn.addWidget(btn_rdel)
-        r_btn.addStretch()
-        r_lay.addLayout(r_btn)
-        outer_splitter.addWidget(rule_box)
+        btn_radd = QPushButton('+ 添加规则'); btn_radd.setObjectName('btnSync'); btn_radd.clicked.connect(self._add_rule)
+        btn_redit = QPushButton('编辑'); btn_redit.clicked.connect(self._edit_rule)
+        btn_rdel = QPushButton('删除'); btn_rdel.setObjectName('btnDanger'); btn_rdel.clicked.connect(self._del_rule)
+        r_btn.addWidget(btn_radd); r_btn.addWidget(btn_redit); r_btn.addWidget(btn_rdel); r_btn.addStretch()
+        right.addLayout(r_btn)
 
-        # ── 日志 ──
-        log_box = QWidget()
-        l_lay = QVBoxLayout(log_box)
-        l_lay.setContentsMargins(0, 0, 0, 0)
-        l_lay.setSpacing(4)
-        l_lay.addWidget(QLabel('运行日志'))
+        cols.addLayout(left, 1)
+        cols.addLayout(right, 1)
+        root.addLayout(cols, 1)
+
+        # ── 运行日志（收小） ──
+        log_head = QLabel('运行日志')
+        log_head.setStyleSheet('font-weight:700;font-size:13px;')
+        root.addWidget(log_head)
         self._log_edit = QPlainTextEdit()
         self._log_edit.setReadOnly(True)
         self._log_edit.setMaximumBlockCount(300)
+        self._log_edit.setFixedHeight(88)
         self._log_edit.setStyleSheet(
-            'background:#f8fafc;color:#344054;border:1px solid #e1e7ef;border-radius:8px;'
+            'background:#f7f8fa;color:#1f2329;border:1px solid #e5e6eb;border-radius:8px;'
             'font-family:Consolas,monospace;font-size:11px'
         )
-        l_lay.addWidget(self._log_edit)
-        outer_splitter.addWidget(log_box)
-
-        outer_splitter.setSizes([200, 160, 100])
-        root.addWidget(outer_splitter, stretch=1)
+        root.addWidget(self._log_edit)
 
     # ── config ────────────────────────────────────────────────────
 

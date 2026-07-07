@@ -162,7 +162,7 @@ class ManualExportPanel(QWidget):
         self._log_edit.setReadOnly(True)
         self._log_edit.setMaximumBlockCount(500)
         self._log_edit.setStyleSheet(
-            'background:#f8fafc;color:#344054;border:1px solid #e1e7ef;border-radius:8px;'
+            'background:#f7f8fa;color:#1f2329;border:1px solid #e5e6eb;border-radius:8px;'
             'font-family:Consolas,monospace;font-size:11px'
         )
         root.addWidget(self._log_edit, stretch=1)
