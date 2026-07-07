@@ -140,9 +140,9 @@ QCheckBox::indicator { width: 16px; height: 16px; border: 1.5px solid #c0c4cc; b
 QCheckBox::indicator:hover { border-color: #3370ff; }
 QCheckBox::indicator:checked { background: #3370ff; border-color: #3370ff; image: url(__CHECK__); }
 /* 树/表里的勾选框同款（否则又是原生白方块） */
-QTreeView::indicator, QTreeWidget::indicator {
+QTreeView::indicator, QTreeWidget::indicator, QTableView::indicator, QTableWidget::indicator {
     width: 15px; height: 15px; border: 1.5px solid #c0c4cc; border-radius: 4px; background: #ffffff; }
-QTreeView::indicator:checked, QTreeWidget::indicator:checked {
+QTreeView::indicator:checked, QTreeWidget::indicator:checked, QTableView::indicator:checked, QTableWidget::indicator:checked {
     background: #3370ff; border-color: #3370ff; image: url(__CHECK__); }
 
 /* ── 列表：无边框、圆角选中/悬停 ── */

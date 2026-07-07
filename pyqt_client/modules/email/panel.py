@@ -1,10 +1,9 @@
 ﻿"""邮件模块主面板（基于 win32com Outlook）"""
 import json
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, QSize, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 
-from modules import ui
 from modules.email import outlook, rules as rules_mod, local_archive
 from modules.email.folder_pane import FolderPane
 from modules.email.rules_editor import RulesDialog, StartTimerDialog
@@ -125,58 +124,6 @@ def _parse_status(raw: str) -> str:
     return {'done': '已解析', 'failed': '解析失败', 'pending': '解析中'}.get(raw, '-')
 
 
-_PS_CHIP = {'已解析': ('done', '已解析'), '解析失败': ('fail', '解析失败'),
-            '解析中': ('pend', '解析中')}
-
-
-class EmailRow(QWidget):
-    """飞书风邮件行：勾选框 + 首字母头像 + 主题/发件人·时间 + 状态胶囊。"""
-    def __init__(self, email: dict, checked: bool, on_toggle, parent=None):
-        super().__init__(parent)
-        self._email = email
-        iid = email['item_id']
-
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(10, 8, 12, 8)
-        lay.setSpacing(11)
-
-        self.chk = QCheckBox()
-        self.chk.setChecked(checked)
-        self.chk.toggled.connect(lambda c: on_toggle(iid, c))
-        lay.addWidget(self.chk, 0, Qt.AlignVCenter)
-
-        lay.addWidget(ui.Avatar(email.get('sender_name') or email.get('sender_email') or '?', 38),
-                      0, Qt.AlignVCenter)
-
-        mid = QVBoxLayout()
-        mid.setContentsMargins(0, 0, 0, 0)
-        mid.setSpacing(3)
-        subj = ui.ElidedLabel(email.get('subject') or '(无主题)')
-        subj.setStyleSheet(f'color:{ui.INK}; font-size:13px; font-weight:600;')
-        subj.setToolTip(email.get('subject') or '')
-        mid.addWidget(subj)
-
-        t = (email.get('received_time') or '').replace('T', ' ')[:16]
-        sender = email.get('sender_name') or email.get('sender_email') or ''
-        sub = ui.ElidedLabel(f'{sender}   ·   {t}')
-        sub.setStyleSheet(f'color:{ui.SUB}; font-size:11px;')
-        mid.addWidget(sub)
-        lay.addLayout(mid, 1)
-
-        rule = email.get('matched_rule')
-        if rule:
-            lay.addWidget(ui.Chip(rule, 'blue'), 0, Qt.AlignVCenter)
-
-        kind, label = _PS_CHIP.get(email.get('parseStatus'), (None, None))
-        if kind:
-            lay.addWidget(ui.StatusChip(label, kind), 0, Qt.AlignVCenter)
-
-    def set_checked(self, c: bool):
-        self.chk.blockSignals(True)
-        self.chk.setChecked(c)
-        self.chk.blockSignals(False)
-
-
 class EmailPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -224,7 +171,7 @@ class EmailPanel(QWidget):
         rlay.setSpacing(0)
         rlay.addWidget(self._make_toolbar())
         rlay.addWidget(self._make_progress())
-        rlay.addWidget(self._make_list(), stretch=1)
+        rlay.addWidget(self._make_table(), stretch=1)
         rlay.addWidget(self._make_pagination())
 
         self._log = LogPanel()
@@ -307,31 +254,29 @@ class EmailPanel(QWidget):
         self._progress.setVisible(False)
         return self._progress
 
-    def _make_list(self):
-        box = QWidget()
-        v = QVBoxLayout(box)
-        v.setContentsMargins(14, 8, 14, 2)
-        v.setSpacing(6)
-
-        head = QHBoxLayout()
-        head.setContentsMargins(4, 0, 4, 0)
-        self._chk_all = QCheckBox('全选')
-        self._chk_all.stateChanged.connect(self._on_select_all)
-        head.addWidget(self._chk_all)
-        self._total_label = QLabel('')
-        self._total_label.setStyleSheet(f'color:{ui.FAINT};')
-        head.addWidget(self._total_label)
-        head.addStretch()
-        v.addLayout(head)
-
-        self._list = QListWidget()
-        self._list.setSelectionMode(QAbstractItemView.NoSelection)
-        self._list.setFocusPolicy(Qt.NoFocus)
-        self._list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self._list.setUniformItemSizes(True)
-        self._row_widgets = {}
-        v.addWidget(self._list, 1)
-        return box
+    def _make_table(self):
+        self._table = QTableWidget(0, 7)
+        self._check_header = _CheckHeader(self._table)
+        self._table.setHorizontalHeader(self._check_header)
+        self._check_header.toggled.connect(self._on_header_toggle)
+        self._table.setHorizontalHeaderLabels(
+            ['全选', '#', '状态', '时间', '发件人', '主题', '会话主题'])
+        hh = self._check_header
+        hh.setSectionResizeMode(QHeaderView.Interactive)
+        hh.setSectionResizeMode(5, QHeaderView.Stretch)
+        hh.setSectionResizeMode(6, QHeaderView.Stretch)
+        self._table.setColumnWidth(0,  50)   # 放得下「全选」/「取消」两字
+        self._table.setColumnWidth(1,  36)
+        self._table.setColumnWidth(2,  80)
+        self._table.setColumnWidth(3, 150)
+        self._table.setColumnWidth(4, 110)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._table.setAlternatingRowColors(True)
+        self._table.verticalHeader().setVisible(False)
+        self._table.verticalHeader().setDefaultSectionSize(26)
+        self._table.itemChanged.connect(self._on_item_changed)
+        return self._table
 
     def _make_pagination(self):
         bar = QWidget()
@@ -352,6 +297,10 @@ class EmailPanel(QWidget):
         self._page_label = QLabel('第 1 / 1 页')
         lay.addWidget(self._page_label)
         lay.addStretch()
+
+        self._total_label = QLabel('')
+        self._total_label.setStyleSheet('color: #555;')
+        lay.addWidget(self._total_label)
 
         self._btn_first.clicked.connect(lambda: self._go_page(1))
         self._btn_prev.clicked.connect(lambda: self._go_page(self._page - 1))
@@ -423,13 +372,13 @@ class EmailPanel(QWidget):
         if self._monitoring:
             self._btn_timer.setText('停止定时')
             self._btn_timer.setStyleSheet(
-                'QPushButton{background:#e11d48;color:white;border:1px solid #e11d48;border-radius:999px;font-weight:600;}'
-                'QPushButton:hover{background:#c81a40;border-color:#c81a40;color:white;}')
+                'QPushButton{background:#e5484d;color:white;border:1px solid #e5484d;border-radius:6px;font-weight:600;}'
+                'QPushButton:hover{background:#c93b40;border-color:#c93b40;color:white;}')
         else:
             self._btn_timer.setText('启动定时')
             self._btn_timer.setStyleSheet(
-                'QPushButton{background:#5e7ce0;color:white;border:1px solid #5e7ce0;border-radius:999px;font-weight:600;}'
-                'QPushButton:hover{background:#4f6ed6;border-color:#4f6ed6;color:white;}')
+                'QPushButton{background:#3370ff;color:white;border:1px solid #3370ff;border-radius:6px;font-weight:600;}'
+                'QPushButton:hover{background:#245bdb;border-color:#245bdb;color:white;}')
 
     def activate(self):
         self._settings = store.load_settings()
@@ -679,30 +628,25 @@ class EmailPanel(QWidget):
         self._page = 1
         self._update_table()
 
-    def _on_row_toggle(self, iid, checked: bool):
-        if self._building:
+    def _on_item_changed(self, item):
+        if self._building or item.column() != 0:
             return
-        if checked:
+        iid = item.data(Qt.UserRole)
+        if item.checkState() == Qt.Checked:
             self._checked.add(iid)
         else:
             self._checked.discard(iid)
         self._update_selection_ui()
 
-    def _on_select_all(self, state):
-        """「全选」：勾选/取消当前筛选下的全部（跨分页）。"""
-        if self._building:
-            return
+    def _on_header_toggle(self, checked: bool):
+        """表头「全选」：勾选/取消当前筛选下的全部（跨分页）。"""
         vis_ids = [e['item_id'] for e in self._visible_emails()]
-        if state == Qt.Checked:
+        if checked:
             self._checked.update(vis_ids)
         else:
             for i in vis_ids:
                 self._checked.discard(i)
-        self._building = True
-        for iid, w in self._row_widgets.items():
-            w.set_checked(iid in self._checked)
-        self._building = False
-        self._update_selection_ui()
+        self._update_table()
 
     def _update_selection_ui(self):
         if not hasattr(self, '_btn_process'):
@@ -712,8 +656,8 @@ class EmailPanel(QWidget):
             self._btn_process.setText('停止')
             self._btn_process.setEnabled(not self._cancel_sync)
             self._btn_process.setStyleSheet(
-                'QPushButton{background:#e11d48;color:white;border:1px solid #e11d48;border-radius:999px;font-weight:600;}'
-                'QPushButton:hover{background:#c81a40;border-color:#c81a40;color:white;}')
+                'QPushButton{background:#e5484d;color:white;border:1px solid #e5484d;border-radius:6px;font-weight:600;}'
+                'QPushButton:hover{background:#c93b40;border-color:#c93b40;color:white;}')
         else:
             n = len(self._checked)
             self._btn_process.setText(f'处理选中 ({n})')
@@ -721,10 +665,7 @@ class EmailPanel(QWidget):
             self._btn_process.setStyleSheet('')
         vis_ids = [e['item_id'] for e in self._visible_emails()]
         all_checked = bool(vis_ids) and all(i in self._checked for i in vis_ids)
-        if hasattr(self, '_chk_all'):
-            self._chk_all.blockSignals(True)
-            self._chk_all.setChecked(all_checked)
-            self._chk_all.blockSignals(False)
+        self._check_header.setChecked(all_checked)
 
     # ── 处理选中 / 停止 ───────────────────────────────────
     def _on_process_clicked(self):
@@ -748,15 +689,44 @@ class EmailPanel(QWidget):
         rows  = rows_data[start:start + PAGE_SIZE]
 
         self._building = True
-        self._list.clear()
-        self._row_widgets = {}
-        for e in rows:
-            it = QListWidgetItem(self._list)
-            it.setSizeHint(QSize(0, 58))
-            w = EmailRow(e, e['item_id'] in self._checked, self._on_row_toggle)
-            self._list.addItem(it)
-            self._list.setItemWidget(it, w)
-            self._row_widgets[e['item_id']] = w
+        self._table.setRowCount(0)
+        for idx, e in enumerate(rows):
+            r = self._table.rowCount()
+            self._table.insertRow(r)
+
+            chk = QTableWidgetItem()
+            chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            chk.setCheckState(Qt.Checked if e['item_id'] in self._checked else Qt.Unchecked)
+            chk.setData(Qt.UserRole, e['item_id'])
+            self._table.setItem(r, 0, chk)
+
+            num = QTableWidgetItem(str(start + idx + 1))
+            num.setTextAlignment(Qt.AlignCenter)
+            self._table.setItem(r, 1, num)
+
+            ps = e['parseStatus']
+            if ps == '已解析':
+                self._table.setItem(r, 2, _badge('已解析',   '#2EA043'))
+            elif ps == '解析失败':
+                self._table.setItem(r, 2, _badge('解析失败', '#B43C3C'))
+            elif ps == '解析中':
+                self._table.setItem(r, 2, _badge('解析中',   '#B48200'))
+            else:
+                dash = QTableWidgetItem('-')
+                dash.setForeground(QColor('#aaa'))
+                dash.setTextAlignment(Qt.AlignCenter)
+                self._table.setItem(r, 2, dash)
+
+            self._table.setItem(r, 3, QTableWidgetItem(e['received_time'].replace('T', ' ')))
+            self._table.setItem(r, 4, QTableWidgetItem(e['sender_name']))
+
+            subj_item = QTableWidgetItem(e['subject'])
+            subj_item.setToolTip(e['subject'])
+            self._table.setItem(r, 5, subj_item)
+
+            topic_item = QTableWidgetItem(e['conversation_topic'])
+            topic_item.setToolTip(e['conversation_topic'])
+            self._table.setItem(r, 6, topic_item)
         self._building = False
 
         self._seg_all.setText(f'全部 ({len(self._emails)})')
