@@ -45,12 +45,6 @@ POST /api/email/parse_status
   请求体: {"topics": ["会话主题A", ...], "namespace": "xxx"}
   响应:   {"会话主题A": "done|pending|failed", ...}
 
-━━ 可选接口（云端规则管理）━━━━━━━━━━━━━━━━━━
-GET    /api/email/rules?namespace=xxx
-POST   /api/email/rules
-PUT    /api/email/rules/{id}
-DELETE /api/email/rules/{id}
-
 ━━ 必需接口（用户搜索）━━━━━━━━━━━━━━━━━━━━━━
 GET /api/config/userinfo?info=xxx
   响应: [{"label": "姓名", "value": "账号"}, ...]

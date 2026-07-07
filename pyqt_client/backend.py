@@ -52,33 +52,6 @@ def receive_email(payload: dict) -> dict:
     r.raise_for_status()
     return r.json()
 
-def get_cloud_rules(namespace: str) -> list:
-    try:
-        r = requests.get(f'{_base}/api/email/rules', params={'namespace': namespace}, timeout=10, verify=False)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return []
-
-def add_cloud_rule(namespace: str, name: str, keywords: list, body_keywords: list, senders: list, logic: str) -> dict:
-    r = requests.post(f'{_base}/api/email/rules', json={
-        'namespace': namespace, 'name': name,
-        'keywords': keywords, 'body_keywords': body_keywords,
-        'senders': senders, 'logic': logic,
-    }, timeout=10, verify=False)
-    r.raise_for_status()
-    return r.json()
-
-def edit_cloud_rule(rule_id: int, patch: dict) -> dict:
-    r = requests.put(f'{_base}/api/email/rules/{rule_id}', json=patch, timeout=10, verify=False)
-    r.raise_for_status()
-    return r.json()
-
-def delete_cloud_rule(rule_id: int) -> dict:
-    r = requests.delete(f'{_base}/api/email/rules/{rule_id}', timeout=10, verify=False)
-    r.raise_for_status()
-    return r.json()
-
 def get_userinfo(query: str) -> list:
     try:
         r = requests.get(f'{_base}/api/config/userinfo', params={'info': query}, timeout=10, verify=False)
@@ -107,5 +80,7 @@ def upload_image(file_bytes: bytes, filename: str):
     except Exception:
         return None
 
-# WeLink 监听群规则已改为本地存储（modules/welink/rules.py），不再走云端。
-# 服务端 /api/welink/rules 端点保留，供旧版本客户端继续使用。
+# 规则（邮件 + WeLink 监听群）已全部改为本地存储，不再走云端：
+#   邮件   → modules/email/rules.py（email_rules.json / email_blacklist.json）
+#   WeLink → modules/welink/rules.py
+# 服务端 /api/email/rules、/api/welink/rules 端点保留，供旧版本客户端继续使用。
