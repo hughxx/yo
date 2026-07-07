@@ -21,7 +21,7 @@ class LogPanel(QWidget):
         head = QWidget()
         head.setObjectName('logHead')
         head.setStyleSheet(
-            '#logHead{background:#ffffff;border-top:1px solid #e1e7ef;border-bottom:1px solid #edf1f6;}'
+            '#logHead{background:#ffffff;border-top:1px solid #eceef1;}'
         )
         hl = QHBoxLayout(head)
         hl.setContentsMargins(8, 2, 8, 2)
@@ -30,16 +30,16 @@ class LogPanel(QWidget):
         self._toggle = QToolButton()
         self._toggle.setAutoRaise(True)
         self._toggle.setText('日志 ▸')   # 默认折叠
-        self._toggle.setStyleSheet('QToolButton{color:#5e7ce0;border:none;font-weight:600;}')
+        self._toggle.setStyleSheet('QToolButton{color:#3370ff;border:none;font-weight:600;}')
         self._toggle.clicked.connect(self._toggle_log)
 
         self._last = QLabel('')
-        self._last.setStyleSheet('color:#667085;')
+        self._last.setStyleSheet('color:#646a73;')
 
         self._btn_clear = QToolButton()
         self._btn_clear.setAutoRaise(True)
         self._btn_clear.setText('清空')
-        self._btn_clear.setStyleSheet('QToolButton{color:#667085;border:none;} QToolButton:hover{color:#5e7ce0;}')
+        self._btn_clear.setStyleSheet('QToolButton{color:#646a73;border:none;} QToolButton:hover{color:#3370ff;}')
         self._btn_clear.clicked.connect(self.clear_log)
 
         hl.addWidget(self._toggle)
@@ -53,8 +53,8 @@ class LogPanel(QWidget):
         self._edit.setFixedHeight(height)
         self._edit.setFont(QFont('Consolas', 9))
         self._edit.setStyleSheet(
-            'background:#f8fafc;color:#344054;border:1px solid #e1e7ef;border-top:none;'
-            'selection-background-color:#cfe8ff;'
+            'background:#f7f8fa;color:#1f2329;border:none;border-top:1px solid #eceef1;'
+            'selection-background-color:#d4e2ff;'
         )
         self._edit.setVisible(False)   # 默认折叠
         lay.addWidget(self._edit)

@@ -96,9 +96,10 @@ QToolButton#sideBtn:checked { background: #e1eaff; color: #3370ff; font-weight: 
 #toolbar { background: #ffffff; border-bottom: 1px solid #eceef1; padding: 8px 14px; }
 #pagination { background: #ffffff; border-top: 1px solid #eceef1; padding: 7px 14px; }
 
-QFrame, QGroupBox { background: #ffffff; border: 1px solid #e5e6eb; border-radius: 10px; }
-QGroupBox { margin-top: 12px; padding: 12px 12px 10px 12px; font-weight: 700; }
-QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; color: #646a73; }
+/* 卡片用 QFrame#card 显式声明；GroupBox 一律无框（只留标题），避免「卡片框套表格框」双层框 */
+QFrame#card { background: #ffffff; border: 1px solid #e5e6eb; border-radius: 10px; }
+QGroupBox { background: transparent; border: none; margin-top: 16px; padding: 4px 0 0 0; font-weight: 700; }
+QGroupBox::title { subcontrol-origin: margin; left: 2px; padding: 0 2px; color: #1f2329; }
 /* QLabel 继承自 QFrame，务必复位：否则每个文字都被套一个边框白框 */
 QLabel { background: transparent; border: none; }
 
@@ -138,6 +139,11 @@ QCheckBox { spacing: 6px; color: #1f2329; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1.5px solid #c0c4cc; border-radius: 4px; background: #ffffff; }
 QCheckBox::indicator:hover { border-color: #3370ff; }
 QCheckBox::indicator:checked { background: #3370ff; border-color: #3370ff; image: url(__CHECK__); }
+/* 树/表里的勾选框同款（否则又是原生白方块） */
+QTreeView::indicator, QTreeWidget::indicator {
+    width: 15px; height: 15px; border: 1.5px solid #c0c4cc; border-radius: 4px; background: #ffffff; }
+QTreeView::indicator:checked, QTreeWidget::indicator:checked {
+    background: #3370ff; border-color: #3370ff; image: url(__CHECK__); }
 
 /* ── 列表：无边框、圆角选中/悬停 ── */
 QListWidget { border: none; background: transparent; outline: none; }

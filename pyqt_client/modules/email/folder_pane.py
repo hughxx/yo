@@ -18,9 +18,10 @@ class FolderPane(QWidget):
         super().__init__(parent)
         self.setObjectName('folderPane')
         self.setStyleSheet(
-            '#folderPane { background:#ffffff; border:1px solid #dfe6ef; border-radius:8px; }'
+            '#folderPane { background:#ffffff; border:none; border-right:1px solid #eceef1; }'
+            '#folderPane QTreeWidget { border:none; }'
         )
-        self.setFixedWidth(236)
+        self.setFixedWidth(210)
         self._scope = set(store.load_settings().get('scanFolders', []))
         self._building = False
         self._loading = False
@@ -34,7 +35,7 @@ class FolderPane(QWidget):
 
         head = QHBoxLayout()
         title = QLabel('文件夹')
-        title.setStyleSheet('font-weight:600;color:#202020;')
+        title.setStyleSheet('font-weight:700;color:#1f2329;font-size:13px;')
         self._btn_reload = QPushButton('刷新')
         self._btn_reload.setObjectName('pgBtn')
         self._btn_reload.setFixedWidth(48)
