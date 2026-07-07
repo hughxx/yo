@@ -32,7 +32,7 @@ def _help_btn(text: str) -> QToolButton:
     b.setAutoRaise(True)
     b.setCursor(Qt.PointingHandCursor)
     b.setToolTip(text)
-    b.setStyleSheet('QToolButton{color:#0078D4;font-weight:bold;border:1px solid #0078D4;'
+    b.setStyleSheet('QToolButton{color:#5e7ce0;font-weight:bold;border:1px solid #5e7ce0;'
                     'border-radius:8px;min-width:16px;max-width:16px;min-height:16px;max-height:16px;}')
     b.clicked.connect(lambda: QMessageBox.information(b, '说明', text))
     return b

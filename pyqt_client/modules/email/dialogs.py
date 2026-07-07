@@ -195,7 +195,7 @@ class SetupDialog(QDialog):
 
         btn_api_doc = QPushButton('接口实现说明 ↗')
         btn_api_doc.setFlat(True)
-        btn_api_doc.setStyleSheet('color: #0078D4; text-align: left; border: none; padding: 0 2px;')
+        btn_api_doc.setStyleSheet('color: #5e7ce0; text-align: left; border: none; padding: 0 2px;')
         btn_api_doc.setCursor(Qt.PointingHandCursor)
         btn_api_doc.clicked.connect(lambda: _show_api_doc(self))
         form.addRow('', btn_api_doc)

@@ -314,9 +314,9 @@ class WelinkPanel(QWidget):
         self._end_cmd_edit.setEnabled(editable)
         self._summary_cmd_edit.setEnabled(editable)
         if running:
-            self._dot.setStyleSheet('color:#0067c0;font-size:14px')
+            self._dot.setStyleSheet('color:#5e7ce0;font-size:14px')
             self._status_lbl.setText('监听中')
-            self._status_lbl.setStyleSheet('color:#005a9e;font-size:11px;font-weight:bold')
+            self._status_lbl.setStyleSheet('color:#4f6ed6;font-size:11px;font-weight:bold')
             self._btn_toggle.setText('停止监听')
             self._btn_toggle.setObjectName('btnDanger')
         else:
