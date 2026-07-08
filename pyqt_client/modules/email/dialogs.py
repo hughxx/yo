@@ -2,7 +2,7 @@
 import time
 import webbrowser
 
-_REPO_URL = 'https://open.codehub.huawei.com/innersource/ProblemLocating_G/ProblemLocating/files?ref=master'
+_REPO_URL = 'https://openx.huawei.com/ProblemLocating/overview'
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QStringListModel, QEvent
