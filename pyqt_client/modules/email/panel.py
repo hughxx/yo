@@ -272,7 +272,7 @@ class EmailPanel(QWidget):
         self._table.setColumnWidth(4, 110)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._table.setAlternatingRowColors(True)
+        self._table.setAlternatingRowColors(False)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(26)
         self._table.itemChanged.connect(self._on_item_changed)
