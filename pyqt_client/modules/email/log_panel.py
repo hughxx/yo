@@ -67,6 +67,12 @@ class LogPanel(QWidget):
         if not self._expanded:
             self._last.setText(msg)
 
+    def set_live(self, msg: str):
+        """只更新折叠条的实时状态（如处理进度），不写入日志历史，避免刷屏。"""
+        self._last_msg = msg
+        if not self._expanded:
+            self._last.setText(msg)
+
     def clear_log(self):
         self._edit.clear()
         self._last_msg = ''

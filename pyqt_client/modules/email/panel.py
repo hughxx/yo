@@ -549,9 +549,20 @@ class EmailPanel(QWidget):
                 summary = f'{verb}完成：{len(matched)} 封，成功 {success}，失败 {failed}'
             self._cancel_sync = False
             self._set_status(summary, 'red' if failed else 'green')
+            if hasattr(self, '_progress'):
+                self._progress.setRange(0, 0)   # 复位为不确定态，供后续「刷新」用
             self._set_busy()
             self._do_refresh()
             return
+
+        # ── 实时进度：底部日志条（不刷屏）+ 进度条 + 「停止」按钮计数 ──
+        total = len(matched)
+        self._log.set_live(f'{verb}中…  {offset}/{total}   成功 {success}  失败 {failed}')
+        if hasattr(self, '_progress'):
+            self._progress.setRange(0, total)
+            self._progress.setValue(offset)
+        if self._syncing and hasattr(self, '_btn_process'):
+            self._btn_process.setText(f'停止  {offset}/{total}')
 
         batch   = matched[offset:offset + BATCH]
         offline = backend.is_offline_url(self._settings.get('backendUrl', ''))
