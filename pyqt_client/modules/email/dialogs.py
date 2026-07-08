@@ -195,7 +195,7 @@ class SetupDialog(QDialog):
         srv_row.addWidget(btn_test)
         form.addRow('服务器：', srv_row)
 
-        btn_repo = QPushButton('内源代码仓地址 ↗')
+        btn_repo = QPushButton('用户手册及内源代码仓地址 ↗')
         btn_repo.setFlat(True)
         btn_repo.setStyleSheet('color: #2b54cc; text-align: left; border: none; padding: 0 2px;')
         btn_repo.setCursor(Qt.PointingHandCursor)
