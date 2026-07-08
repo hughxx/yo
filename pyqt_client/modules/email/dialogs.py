@@ -1,5 +1,8 @@
 """邮件模块：设置对话框 + 规则编辑对话框"""
 import time
+import webbrowser
+
+_REPO_URL = 'https://open.codehub.huawei.com/innersource/ProblemLocating_G/ProblemLocating/files?ref=master'
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QStringListModel, QEvent
@@ -187,18 +190,17 @@ class SetupDialog(QDialog):
         self._server_combo.setCurrentText(_url_to_display(self._s.get('backendUrl', '')) or '云核心网')
         self._server_combo.activated.connect(self._on_server_activated)
         btn_test = QPushButton('测试')
-        btn_test.setFixedWidth(50)
         btn_test.clicked.connect(self._test_conn)
         srv_row.addWidget(self._server_combo, stretch=1)
         srv_row.addWidget(btn_test)
         form.addRow('服务器：', srv_row)
 
-        btn_api_doc = QPushButton('接口实现说明 ↗')
-        btn_api_doc.setFlat(True)
-        btn_api_doc.setStyleSheet('color: #5e7ce0; text-align: left; border: none; padding: 0 2px;')
-        btn_api_doc.setCursor(Qt.PointingHandCursor)
-        btn_api_doc.clicked.connect(lambda: _show_api_doc(self))
-        form.addRow('', btn_api_doc)
+        btn_repo = QPushButton('内源代码仓地址 ↗')
+        btn_repo.setFlat(True)
+        btn_repo.setStyleSheet('color: #2b54cc; text-align: left; border: none; padding: 0 2px;')
+        btn_repo.setCursor(Qt.PointingHandCursor)
+        btn_repo.clicked.connect(lambda: webbrowser.open(_REPO_URL))
+        form.addRow('', btn_repo)
 
         # 工号
         self._user_id = QLineEdit(self._s.get('userId', ''))
@@ -220,7 +222,6 @@ class SetupDialog(QDialog):
         ns_row.setSpacing(6)
         self._ns_combo = QComboBox()
         btn_ns = QPushButton('刷新')
-        btn_ns.setFixedWidth(50)
         btn_ns.clicked.connect(self._load_namespaces)
         ns_row.addWidget(self._ns_combo, stretch=1)
         ns_row.addWidget(btn_ns)
@@ -232,7 +233,6 @@ class SetupDialog(QDialog):
         self._out_dir = QLineEdit(self._s.get('outputDir', ''))
         self._out_dir.setPlaceholderText('html / md 本地保存目录')
         btn_dir = QPushButton('更改目录')
-        btn_dir.setFixedWidth(72)
         btn_dir.clicked.connect(self._pick_out_dir)
         dir_row.addWidget(self._out_dir, stretch=1)
         dir_row.addWidget(btn_dir)
