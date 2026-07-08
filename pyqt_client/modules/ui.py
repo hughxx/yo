@@ -10,8 +10,8 @@ from PyQt5.QtCore import Qt
 
 
 # ── 调色板（飞书） ──────────────────────────────────────────
-ACCENT       = '#3370ff'   # 主蓝
-ACCENT_HOVER = '#245bdb'
+ACCENT       = '#2b54cc'   # 主蓝
+ACCENT_HOVER = '#21419e'
 ACCENT_WEAK  = '#eff2fb'   # 选中/悬停 淡蓝
 ACCENT_WEAK2 = '#e1eaff'   # chip 蓝底
 INK          = '#1f2329'   # 正文
@@ -32,7 +32,7 @@ STATUS = {
 
 # 头像色板：(底, 字)
 _AVATAR = [
-    ('#e1eaff', '#3370ff'), ('#ffe9d6', '#d9720b'), ('#e3f6ec', '#2ba471'),
+    ('#e1eaff', '#2b54cc'), ('#ffe9d6', '#d9720b'), ('#e3f6ec', '#2ba471'),
     ('#efe6ff', '#7a4ddb'), ('#ffe2ec', '#d9436b'), ('#fff2d6', '#b8860b'),
     ('#d9f4f4', '#0e9aa7'), ('#e6e9ff', '#4f46e5'),
 ]

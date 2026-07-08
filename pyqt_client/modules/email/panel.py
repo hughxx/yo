@@ -193,7 +193,7 @@ class EmailPanel(QWidget):
             'QPushButton{border:none;background:transparent;padding:5px 14px;'
             'min-height:26px;border-radius:6px;color:#646a73;font-weight:600;}'
             'QPushButton:hover{background:#f2f3f5;color:#1f2329;}'
-            'QPushButton:checked{background:#e1eaff;color:#3370ff;}')
+            'QPushButton:checked{background:#e1eaff;color:#2b54cc;}')
         self._seg_all     = QPushButton('全部 (0)')
         self._seg_matched = QPushButton('按规则匹配 (0)')
         seg_group = QButtonGroup(self)
@@ -377,8 +377,8 @@ class EmailPanel(QWidget):
         else:
             self._btn_timer.setText('启动定时')
             self._btn_timer.setStyleSheet(
-                'QPushButton{background:#3370ff;color:white;border:1px solid #3370ff;border-radius:6px;font-weight:600;}'
-                'QPushButton:hover{background:#245bdb;border-color:#245bdb;color:white;}')
+                'QPushButton{background:#2b54cc;color:white;border:1px solid #2b54cc;border-radius:6px;font-weight:600;}'
+                'QPushButton:hover{background:#21419e;border-color:#21419e;color:white;}')
 
     def activate(self):
         self._settings = store.load_settings()

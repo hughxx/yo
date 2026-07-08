@@ -181,7 +181,7 @@ class AutoReplyPanel(QWidget):
             'QPushButton{border:none;background:transparent;padding:4px 14px;'
             'border-radius:6px;color:#646a73;font-weight:600;}'
             'QPushButton:hover{background:#f2f3f5;color:#1f2329;}'
-            'QPushButton:checked{background:#e1eaff;color:#3370ff;}')
+            'QPushButton:checked{background:#e1eaff;color:#2b54cc;}')
         return b
 
     def _build_ui(self):

@@ -30,7 +30,7 @@ class LogPanel(QWidget):
         self._toggle = QToolButton()
         self._toggle.setAutoRaise(True)
         self._toggle.setText('日志 ▸')   # 默认折叠
-        self._toggle.setStyleSheet('QToolButton{color:#3370ff;border:none;font-weight:600;}')
+        self._toggle.setStyleSheet('QToolButton{color:#2b54cc;border:none;font-weight:600;}')
         self._toggle.clicked.connect(self._toggle_log)
 
         self._last = QLabel('')
@@ -39,7 +39,7 @@ class LogPanel(QWidget):
         self._btn_clear = QToolButton()
         self._btn_clear.setAutoRaise(True)
         self._btn_clear.setText('清空')
-        self._btn_clear.setStyleSheet('QToolButton{color:#646a73;border:none;} QToolButton:hover{color:#3370ff;}')
+        self._btn_clear.setStyleSheet('QToolButton{color:#646a73;border:none;} QToolButton:hover{color:#2b54cc;}')
         self._btn_clear.clicked.connect(self.clear_log)
 
         hl.addWidget(self._toggle)

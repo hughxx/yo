@@ -30,7 +30,7 @@ def _tint_pixmap(svg_path: str, size: int, color: str) -> QPixmap:
     return pm
 
 
-def _nav_icon(name: str, off: str = '#646a73', on: str = '#3370ff') -> QIcon:
+def _nav_icon(name: str, off: str = '#646a73', on: str = '#2b54cc') -> QIcon:
     """侧栏导航图标：未选中 off 色，选中(On)/悬停(Active) on 色。渲染 2× 保证清晰。"""
     path = _asset(_os.path.join('icons', f'{name}.svg'))
     ic = QIcon()
@@ -93,7 +93,7 @@ QMainWindow, QWidget { background: #ffffff; }
 QPushButton#sideBtn { background: transparent; border: none; border-left: 3px solid transparent;
     border-radius: 0; text-align: left; padding: 9px 12px 9px 16px; color: #4e5969; font-size: 13px; font-weight: 500; }
 QPushButton#sideBtn:hover { background: #eef0f3; color: #1f2329; }
-QPushButton#sideBtn:checked { background: #e8f0ff; color: #3370ff; font-weight: 700; border-left: 3px solid #3370ff; }
+QPushButton#sideBtn:checked { background: #e8f0ff; color: #2b54cc; font-weight: 700; border-left: 3px solid #2b54cc; }
 
 #toolbar { background: #ffffff; border-bottom: 1px solid #eceef1; padding: 8px 14px; }
 #pagination { background: #ffffff; border-top: 1px solid #eceef1; padding: 7px 14px; }
@@ -107,18 +107,18 @@ QLabel { background: transparent; border: none; }
 
 /* ── 按钮：白底 + 6px 圆角（飞书） ── */
 QPushButton { border: 1px solid #dee0e3; background: #ffffff; padding: 6px 14px; border-radius: 6px; min-height: 26px; color: #1f2329; }
-QPushButton:hover { background: #f5f6f7; border-color: #c9cdd4; color: #3370ff; }
-QPushButton:pressed { background: #eff2fb; border-color: #3370ff; }
+QPushButton:hover { background: #f5f6f7; border-color: #c9cdd4; color: #2b54cc; }
+QPushButton:pressed { background: #eff2fb; border-color: #2b54cc; }
 QPushButton:disabled { color: #bbc0c9; background: #f7f8fa; border-color: #eceef1; }
 
 /* 主行动：飞书蓝 */
-QPushButton#btnPrimary, QPushButton#btnSync { background: #3370ff; color: #ffffff; border: 1px solid #3370ff; font-weight: 600; }
-QPushButton#btnPrimary:hover, QPushButton#btnSync:hover { background: #245bdb; border-color: #245bdb; color: #ffffff; }
-QPushButton#btnPrimary:pressed, QPushButton#btnSync:pressed { background: #1c4fc0; border-color: #1c4fc0; }
+QPushButton#btnPrimary, QPushButton#btnSync { background: #2b54cc; color: #ffffff; border: 1px solid #2b54cc; font-weight: 600; }
+QPushButton#btnPrimary:hover, QPushButton#btnSync:hover { background: #21419e; border-color: #21419e; color: #ffffff; }
+QPushButton#btnPrimary:pressed, QPushButton#btnSync:pressed { background: #1a3f96; border-color: #1a3f96; }
 QPushButton#btnPrimary:disabled, QPushButton#btnSync:disabled { background: #a8c0ff; border-color: #a8c0ff; color: #f2f6ff; }
 
 QPushButton#btnRefresh { color: #1f2329; }
-QPushButton#btnRefresh:hover { color: #3370ff; }
+QPushButton#btnRefresh:hover { color: #2b54cc; }
 QPushButton#btnDanger { color: #e5484d; border-color: #f6c6c8; background: #ffffff; }
 QPushButton#btnDanger:hover { background: #fdecec; border-color: #eea3a6; }
 QPushButton#pgBtn { padding: 2px 9px; min-height: 22px; min-width: 26px; border-radius: 6px; }
@@ -128,7 +128,7 @@ QPushButton#pgBtn:disabled { color: #c6cad2; }
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QTimeEdit {
     background: #ffffff; border: 1px solid #dee0e3; border-radius: 6px; padding: 5px 9px;
     selection-background-color: #d4e2ff; selection-color: #1f2329; }
-QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus, QTimeEdit:focus { border: 1px solid #3370ff; }
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus, QTimeEdit:focus { border: 1px solid #2b54cc; }
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled { color: #9ca3af; background: #f7f8fa; }
 QComboBox::drop-down { border: none; width: 22px; }
 QComboBox::down-arrow { image: url(__CHEVRON__); width: 12px; height: 12px; }
@@ -139,13 +139,13 @@ QSpinBox::up-button, QSpinBox::down-button, QTimeEdit::up-button, QTimeEdit::dow
 /* ── 复选框：QSS indicator（不再是原生白方块） ── */
 QCheckBox { spacing: 6px; color: #1f2329; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1.5px solid #c0c4cc; border-radius: 4px; background: #ffffff; }
-QCheckBox::indicator:hover { border-color: #3370ff; }
-QCheckBox::indicator:checked { background: #3370ff; border-color: #3370ff; image: url(__CHECK__); }
+QCheckBox::indicator:hover { border-color: #2b54cc; }
+QCheckBox::indicator:checked { background: #2b54cc; border-color: #2b54cc; image: url(__CHECK__); }
 /* 树/表里的勾选框同款（否则又是原生白方块） */
 QTreeView::indicator, QTreeWidget::indicator, QTableView::indicator, QTableWidget::indicator {
     width: 15px; height: 15px; border: 1.5px solid #c0c4cc; border-radius: 4px; background: #ffffff; }
 QTreeView::indicator:checked, QTreeWidget::indicator:checked, QTableView::indicator:checked, QTableWidget::indicator:checked {
-    background: #3370ff; border-color: #3370ff; image: url(__CHECK__); }
+    background: #2b54cc; border-color: #2b54cc; image: url(__CHECK__); }
 
 /* ── 列表：无边框、圆角选中/悬停 ── */
 QListWidget { border: none; background: transparent; outline: none; }
@@ -163,11 +163,11 @@ QHeaderView::section { background: #fafbfc; border: none; border-bottom: 1px sol
 QTabWidget::pane { border: none; border-top: 1px solid #eceef1; background: #ffffff; top: -1px; }
 QTabBar::tab { padding: 9px 4px; margin-right: 22px; background: transparent; border: none;
     border-bottom: 2px solid transparent; color: #646a73; }
-QTabBar::tab:selected { color: #3370ff; border-bottom: 2px solid #3370ff; font-weight: 700; }
+QTabBar::tab:selected { color: #2b54cc; border-bottom: 2px solid #2b54cc; font-weight: 700; }
 QTabBar::tab:hover:!selected { color: #1f2329; }
 
 QProgressBar { max-height: 3px; border: none; border-radius: 2px; background: #eceef1; }
-QProgressBar::chunk { border-radius: 2px; background: #3370ff; }
+QProgressBar::chunk { border-radius: 2px; background: #2b54cc; }
 QScrollBar:vertical { background: transparent; width: 9px; margin: 2px; }
 QScrollBar::handle:vertical { background: #d5d8dd; border-radius: 4px; min-height: 30px; }
 QScrollBar::handle:vertical:hover { background: #c0c4cc; }
