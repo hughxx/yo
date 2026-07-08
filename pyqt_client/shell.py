@@ -87,11 +87,13 @@ _QSS_TEMPLATE = """
 }
 QMainWindow, QWidget { background: #ffffff; }
 
-/* ── 侧栏：浅灰底 + 淡蓝圆角选中块 ── */
-#sidebar { background: #f5f6f7; border-right: 1px solid #eceef1; }
-QToolButton#sideBtn { background: transparent; border: none; border-radius: 10px; color: #646a73; font-size: 11px; padding: 8px 0; }
-QToolButton#sideBtn:hover { background: #eceef1; color: #1f2329; }
-QToolButton#sideBtn:checked { background: #e1eaff; color: #3370ff; font-weight: 700; }
+/* ── 侧栏：宽版横排 + 选中淡蓝底 + 左侧蓝竖条（UU 风） ── */
+#sidebar { background: #f7f8fa; border-right: 1px solid #eceef1; }
+#brandTitle { font-weight: 700; font-size: 14px; color: #1f2329; }
+QPushButton#sideBtn { background: transparent; border: none; border-left: 3px solid transparent;
+    border-radius: 0; text-align: left; padding: 9px 12px 9px 16px; color: #4e5969; font-size: 13px; font-weight: 500; }
+QPushButton#sideBtn:hover { background: #eef0f3; color: #1f2329; }
+QPushButton#sideBtn:checked { background: #e8f0ff; color: #3370ff; font-weight: 700; border-left: 3px solid #3370ff; }
 
 #toolbar { background: #ffffff; border-bottom: 1px solid #eceef1; padding: 8px 14px; }
 #pagination { background: #ffffff; border-top: 1px solid #eceef1; padding: 7px 14px; }
@@ -212,21 +214,19 @@ class MainShell(QMainWindow):
         self.setCentralWidget(root)
         lay = QHBoxLayout(root)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(10)
+        lay.setSpacing(0)
 
         lay.addWidget(self._make_sidebar())
         lay.addWidget(self._stack, stretch=1)
 
     @staticmethod
-    def _side_button(text: str, icon_name: str, checkable: bool) -> QToolButton:
-        btn = QToolButton()
+    def _side_button(text: str, icon_name: str, checkable: bool) -> QPushButton:
+        btn = QPushButton(text)
         btn.setObjectName('sideBtn')
-        btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         btn.setIcon(_nav_icon(icon_name))
-        btn.setIconSize(QSize(22, 22))
-        btn.setText(text)
+        btn.setIconSize(QSize(18, 18))
         btn.setCheckable(checkable)
-        btn.setFixedHeight(54)
+        btn.setFixedHeight(40)
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn.setCursor(Qt.PointingHandCursor)
         return btn
@@ -234,12 +234,27 @@ class MainShell(QMainWindow):
     def _make_sidebar(self):
         sidebar = QWidget()
         sidebar.setObjectName('sidebar')
-        sidebar.setFixedWidth(80)
+        sidebar.setFixedWidth(188)
         sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
         lay = QVBoxLayout(sidebar)
-        lay.setContentsMargins(8, 12, 8, 12)
-        lay.setSpacing(6)
+        lay.setContentsMargins(0, 0, 0, 12)
+        lay.setSpacing(2)
+
+        # 顶部品牌
+        head = QWidget()
+        hl = QHBoxLayout(head)
+        hl.setContentsMargins(16, 16, 12, 14)
+        hl.setSpacing(9)
+        brand = QLabel()
+        brand.setFixedSize(24, 24)
+        brand.setPixmap(_app_icon().pixmap(24, 24))
+        title = QLabel('问题定位助手')
+        title.setObjectName('brandTitle')
+        hl.addWidget(brand)
+        hl.addWidget(title)
+        hl.addStretch()
+        lay.addWidget(head)
 
         for idx, (name, PanelClass) in enumerate(_MODULES):
             panel = PanelClass()
@@ -259,9 +274,9 @@ class MainShell(QMainWindow):
         lay.addWidget(btn_gear)
 
         ver = QLabel(f'v{APP_VERSION}')
-        ver.setAlignment(Qt.AlignCenter)
+        ver.setAlignment(Qt.AlignLeft)
         ver.setToolTip(f'客户端版本 v{APP_VERSION}')
-        ver.setStyleSheet('color:#9ca3af; font-size:9px; padding:2px 0;')
+        ver.setStyleSheet('color:#a9b0ba; font-size:10px; padding:6px 0 0 16px;')
         lay.addWidget(ver)
 
         return sidebar
