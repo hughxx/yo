@@ -706,11 +706,11 @@ class EmailPanel(QWidget):
 
             ps = e['parseStatus']
             if ps == '已解析':
-                self._table.setItem(r, 2, _badge('已解析',   '#2EA043'))
+                self._table.setItem(r, 2, _badge('已解析',   '#e8f7f0', '#2ba471'))
             elif ps == '解析失败':
-                self._table.setItem(r, 2, _badge('解析失败', '#B43C3C'))
+                self._table.setItem(r, 2, _badge('解析失败', '#fdecec', '#e5484d'))
             elif ps == '解析中':
-                self._table.setItem(r, 2, _badge('解析中',   '#B48200'))
+                self._table.setItem(r, 2, _badge('解析中',   '#fff4e5', '#d98800'))
             else:
                 dash = QTableWidgetItem('-')
                 dash.setForeground(QColor('#aaa'))

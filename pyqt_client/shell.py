@@ -238,23 +238,8 @@ class MainShell(QMainWindow):
         sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
         lay = QVBoxLayout(sidebar)
-        lay.setContentsMargins(0, 0, 0, 12)
+        lay.setContentsMargins(0, 12, 0, 12)
         lay.setSpacing(2)
-
-        # 顶部品牌
-        head = QWidget()
-        hl = QHBoxLayout(head)
-        hl.setContentsMargins(16, 16, 12, 14)
-        hl.setSpacing(9)
-        brand = QLabel()
-        brand.setFixedSize(24, 24)
-        brand.setPixmap(_app_icon().pixmap(24, 24))
-        title = QLabel('问题定位助手')
-        title.setObjectName('brandTitle')
-        hl.addWidget(brand)
-        hl.addWidget(title)
-        hl.addStretch()
-        lay.addWidget(head)
 
         for idx, (name, PanelClass) in enumerate(_MODULES):
             panel = PanelClass()
