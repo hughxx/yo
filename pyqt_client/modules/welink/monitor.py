@@ -12,7 +12,7 @@ import urllib3
 
 urllib3.disable_warnings()
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from modules.threading_compat import QThread, pyqtSignal
 
 from modules.welink import rules as wl_rules
 

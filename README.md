@@ -45,13 +45,13 @@ Windows 单个 exe，双击即用，无需安装 Python。
 | 问题 | 怎么办 |
 |---|---|
 | 文件夹列不出来 | 点文件夹面板「刷新」；确认 Outlook 已登录 |
-| 定时同步没反应 | 确认已「启动定时」，窗口最小化到托盘后台跑 |
+| 定时同步没反应 | 确认已点击「启动定时」，并保持客户端运行 |
 | 离线没生成文件 | 确认「保存目录」已填且有写权限 |
-| 彻底退出 | 右键系统托盘图标 → 退出（点 × 只是最小化） |
+| 彻底退出 | 关闭客户端窗口并在确认框中选择退出 |
 
 ---
 
 **用户手册及内源代码仓地址**：<https://openx.huawei.com/ProblemLocating/overview>
 
-> 目录：`pyqt_client/` 桌面客户端 · `server/` 后端服务（FastAPI）。
-> 客户端打包：`cd pyqt_client && python build.py`（产物 `dist/extension.exe`）。
+> 目录：`pyqt_client/` pywebview + WebView2 桌面客户端 · `server/` 后端服务（FastAPI）。
+> 客户端打包：`cd pyqt_client && python build.py`（onefile 产物 `dist/问题定位助手.exe`）。

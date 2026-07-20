@@ -8,6 +8,7 @@ __pycache__/
 pyqt_client/build/
 pyqt_client/dist/
 pyqt_client/*.spec
+!pyqt_client/pywebview.spec
 
 # 服务端敏感配置（clone 后自行复制 settings.example.py 并填写）
 server/utils/settings.py

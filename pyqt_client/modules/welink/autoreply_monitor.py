@@ -8,7 +8,7 @@ import unicodedata
 from datetime import datetime
 
 import requests
-from PyQt5.QtCore import QThread, pyqtSignal
+from modules.threading_compat import QThread, pyqtSignal
 
 _STARTUPINFO = None
 if sys.platform == 'win32':

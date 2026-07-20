@@ -1,8 +1,13 @@
-import subprocess, sys, os
+"""Install dependencies and build the pywebview/WebView2 onefile executable."""
+from __future__ import annotations
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+import os
+import subprocess
+import sys
+from pathlib import Path
 
-EXE_NAME = "extension"
+ROOT = Path(__file__).resolve().parent
+os.chdir(ROOT)
 
 print("===== 安装依赖 =====")
 subprocess.run(
@@ -10,22 +15,13 @@ subprocess.run(
     check=True,
 )
 
-print("===== 打包 =====")
+print("===== PyInstaller onefile 打包 =====")
 subprocess.run(
-    [
-        sys.executable, "-m", "PyInstaller",
-        "--onefile", "--windowed",
-        "--name", EXE_NAME,
-        "--icon", "assets/icon.ico",
-        "--add-data", "assets;assets",
-        "--hidden-import", "win32com.client",
-        "--hidden-import", "pythoncom",
-        "--hidden-import", "pywintypes",
-        "--hidden-import", "win32timezone",
-        "main.py",
-    ],
+    [sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", "pywebview.spec"],
     check=True,
 )
 
+target = ROOT / "dist" / "问题定位助手.exe"
 print("\n===== 完成 =====")
-print("产物：", os.path.abspath(os.path.join("dist", f"{EXE_NAME}.exe")))
+print(f"产物：{target}")
+print("目标电脑需要 Microsoft Edge WebView2 Runtime（Windows 10/11 通常已预装）。")

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>问题定位助手</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app loading">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">Q</span><span>问题定位助手</span></div>
+      <button class="nav active" data-page="email"><span>✉</span>邮件</button>
+      <button class="nav" data-page="welink"><span>◎</span>WeLink</button>
+      <div class="spacer"></div>
+      <button class="nav" id="open-settings"><span>⚙</span>设置</button>
+      <div class="version" id="version">v--</div>
+    </aside>
+
+    <main>
+      <section class="page active" id="page-email">
+        <header class="toolbar">
+          <div class="segments">
+            <button class="segment active" data-filter="all">全部 <b id="all-count">0</b></button>
+            <button class="segment" data-filter="matched">规则匹配 <b id="matched-count">0</b></button>
+          </div>
+          <button id="open-rules">规则</button>
+          <button id="refresh-emails">刷新邮件</button>
+          <button id="toggle-email-timer">启动定时</button>
+          <input id="email-search" class="search" placeholder="搜索主题 / 发件人…">
+          <button id="process-selected" class="primary" disabled>处理选中 (0)</button>
+        </header>
+        <div class="progress hidden" id="progress"><i></i></div>
+        <div class="email-layout">
+          <aside class="folders">
+            <div class="panel-title"><span>扫描文件夹</span><button class="icon-btn" id="refresh-folders" title="读取 Outlook 文件夹">↻</button></div>
+            <div id="folder-list" class="folder-list"><div class="empty small">尚未读取</div></div>
+          </aside>
+          <div class="content-column">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th class="check"><input type="checkbox" id="check-all"></th><th>状态</th><th>时间</th><th>发件人</th><th>主题</th><th>会话主题</th></tr></thead>
+                <tbody id="email-body"><tr><td colspan="6" class="empty">点击“刷新邮件”从 Outlook 读取邮件</td></tr></tbody>
+              </table>
+            </div>
+            <footer class="pager">
+              <button id="prev-page">‹</button><span id="page-info">第 1 / 1 页</span><button id="next-page">›</button>
+              <span class="spacer"></span><span id="total-info">共 0 封</span>
+            </footer>
+            <div class="log" id="email-log">就绪</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-welink">
+        <header class="page-header"><div><h1>WeLink 聊天记录</h1><p>导入 HistoryRecord ZIP，恢复文本与图片并归档到服务端或本地。</p></div></header>
+        <div class="cards two-col">
+          <article class="card">
+            <h2>手动导入</h2>
+            <label>聊天记录压缩包</label>
+            <div class="input-row"><input id="zip-path" readonly placeholder="请选择 ZIP 文件"><button id="choose-zip">选择</button></div>
+            <label>群名（可选）</label><input id="group-name" placeholder="留空则使用记录文件名">
+            <button id="import-welink" class="primary wide">开始导入</button>
+            <pre id="welink-log">等待选择文件…</pre>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>定位过程监听</h2><p id="monitor-status">未运行</p></div><button id="toggle-monitor" class="primary">开始监听</button></div>
+            <div class="card-head"><strong>监听群组</strong><button id="add-welink-rule">+ 添加</button></div>
+            <div id="welink-rules" class="rule-list"></div>
+            <pre id="monitor-log">监听日志…</pre>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="settings-modal">
+    <div class="modal large">
+      <div class="modal-head"><h2>设置</h2><button class="close" data-close="settings-modal">×</button></div>
+      <div class="form-grid">
+        <label class="span-2">服务地址<input id="set-backend" placeholder="https://… 或 offline"></label>
+        <label>工号<input id="set-user"></label><label>命名空间<select id="set-namespace"></select></label>
+        <label>扫描间隔（分钟）<input id="set-interval" type="number" min="1"></label>
+        <label>WeLink 工号<input id="set-welink-user"></label>
+        <label class="span-2">本地保存目录<div class="input-row"><input id="set-output"><button id="choose-output">浏览</button></div></label>
+        <label class="span-2">自定义 JSON<textarea id="set-json" rows="5"></textarea></label>
+      </div>
+      <div class="modal-actions"><span id="settings-status"></span><button id="test-server">测试连接</button><button class="primary" id="save-settings">保存</button></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="rules-modal">
+    <div class="modal xlarge">
+      <div class="modal-head"><h2>邮件规则</h2><button class="close" data-close="rules-modal">×</button></div>
+      <div class="rule-tabs"><button class="active" data-rule-kind="rules">匹配规则</button><button data-rule-kind="blacklist">黑名单</button></div>
+      <div id="email-rules" class="rule-editor"></div>
+      <div class="modal-actions"><button id="add-email-rule">+ 添加规则</button><span class="spacer"></span><button class="primary" id="save-rules">保存规则</button></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
