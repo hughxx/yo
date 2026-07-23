@@ -1,6 +1,7 @@
 """设置 + 已处理邮件 ID 持久化"""
 import json
 import sys
+import threading
 from pathlib import Path
 
 from paths import config_dir, default_output_dir, migrate
@@ -14,6 +15,7 @@ def _app_dir() -> Path:
 _CFG       = config_dir()
 _SETTINGS  = _CFG / 'settings.json'
 _PROCESSED = _CFG / 'processed.json'
+_LOCK      = threading.RLock()
 # 迁移旧位置（exe/脚本目录）的配置到新的 D 盘 config 目录
 migrate(_app_dir() / '.email_assistant.json',           _SETTINGS)
 migrate(_app_dir() / '.email_assistant_processed.json', _PROCESSED)
@@ -28,31 +30,30 @@ DEFAULT = {
     'customJsonConfig':    '{}',
     'scanFolders':         [],
     'outputDir':           str(default_output_dir()),   # html/md 本地保存目录
-    # WeLink settings
-    'welinkStartCmd':      '@云见 开始定位',
-    'welinkEndCmd':        '@云见 结束定位',
-    'welinkSummaryCmd':    '@云见 总结经验',
-    'welinkUserId':        '',
-    'welinkPollInterval':  3,
-    'welinkDailyRecord':   False,
-    'welinkDailyTime':     '01:00',
-    'welinkScheduleGroups': [],
-    'welinkScheduleRules': [],
-    'welinkScheduleTime':  '02:00',
-    'welinkRecentConvs':   [],   # 录制/提取里手填过的会话 id 历史
+    # WeLink 历史聊天挖掘
+    'welinkScheduleMode':      'interval',
+    'welinkScheduleInterval':  60,
+    'welinkScheduleDailyTime': '02:00',
+    'welinkScheduleRangeMode': 'incremental',
+    'welinkScheduleSources':   [],
+    'welinkScheduleCursors':   {},
     'lastSyncTime':        '',
 }
 
 def load_settings() -> dict:
-    if _SETTINGS.exists():
-        try:
-            return {**DEFAULT, **json.loads(_SETTINGS.read_text('utf-8'))}
-        except Exception:
-            pass
+    with _LOCK:
+        if _SETTINGS.exists():
+            try:
+                return {**DEFAULT, **json.loads(_SETTINGS.read_text('utf-8'))}
+            except Exception:
+                pass
     return dict(DEFAULT)
 
 def save_settings(s: dict):
-    _SETTINGS.write_text(json.dumps(s, ensure_ascii=False, indent=2), 'utf-8')
+    with _LOCK:
+        tmp = _SETTINGS.with_suffix('.tmp')
+        tmp.write_text(json.dumps(s, ensure_ascii=False, indent=2), 'utf-8')
+        tmp.replace(_SETTINGS)
 
 def load_processed() -> set:
     if _PROCESSED.exists():

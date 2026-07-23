@@ -1,34 +1,39 @@
-"""Python business facade exposed through pywebview's JavaScript Bridge."""
+"""JSON-only business facade exposed through pywebview's JavaScript Bridge."""
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import threading
+import logging
 import uuid
-from datetime import datetime
-from pathlib import Path
+import webbrowser
 
 import backend
 import store
-from modules.email import local_archive, outlook, rules as email_rules
-from modules.welink import chatlog_import, rules as welink_rules
-from modules.welink.monitor import WelinkMonitor
+from modules.email import rules as email_rules
+from modules.welink import rules as welink_rules
+from runtime import EmailRuntime, EmailScheduler, EventStream, WelinkRuntime, WelinkScheduler
 from version import APP_VERSION
 
 
 class AppApi:
-    """All public methods return JSON-serialisable envelopes for predictable UI errors."""
+    SERVER_PRESETS = [
+        {"label": "云核心网", "value": "https://coreinsight-beta.rnd.huawei.com/collection"},
+        {"label": "离线（仅本地导出）", "value": backend.OFFLINE},
+    ]
 
     def __init__(self):
         self._window = None
-        self._outlook_lock = threading.Lock()
-        self._monitor = None
-        self._monitor_events = []
-        self._monitor_lock = threading.Lock()
+        self._host = None
+        self.events = EventStream()
+        self.email = EmailRuntime(self.events)
+        self.email_scheduler = EmailScheduler(self.email, self.events)
+        self.welink = WelinkRuntime(self.events)
+        self.welink_scheduler = WelinkScheduler(self.welink, self.events)
 
     def bind_window(self, window) -> None:
         self._window = window
+
+    def bind_host(self, host) -> None:
+        self._host = host
 
     @staticmethod
     def _ok(**data) -> dict:
@@ -36,7 +41,14 @@ class AppApi:
 
     @staticmethod
     def _error(exc) -> dict:
+        logging.getLogger("bridge").exception("操作失败：%s", exc)
         return {"ok": False, "error": str(exc)}
+
+    @staticmethod
+    def _configured(settings: dict) -> bool:
+        if backend.is_offline_url(settings.get("backendUrl", "")):
+            return bool(settings.get("outputDir"))
+        return bool(settings.get("backendUrl") and settings.get("userId") and settings.get("namespace"))
 
     def bootstrap(self) -> dict:
         settings = store.load_settings()
@@ -44,30 +56,55 @@ class AppApi:
         return self._ok(
             version=APP_VERSION,
             settings=settings,
+            configured=self._configured(settings),
+            serverPresets=self.SERVER_PRESETS,
             rules=email_rules.load(),
             blacklist=email_rules.load_blacklist(),
-            welinkRules=welink_rules.load(),
-            platform=os.name,
+            welinkSources=welink_rules.load(),
+            emailTask=self.email.status(),
+            emailSchedule=self.email_scheduler.status(),
+            welinkTask=self.welink.status(),
+            welinkSchedule=self.welink_scheduler.status(),
         )
 
+    def poll_events(self, after: int = 0) -> dict:
+        return self._ok(**self.events.read(after))
+
+    # ── settings / setup / version ──────────────────────────────
     def save_settings(self, settings: dict) -> dict:
         try:
             merged = {**store.load_settings(), **(settings or {})}
             json.loads(merged.get("customJsonConfig") or "{}")
-            merged["scanIntervalMinutes"] = max(1, int(merged.get("scanIntervalMinutes", 60)))
+            merged["scanIntervalMinutes"] = max(1, min(1440, int(merged.get("scanIntervalMinutes", 60))))
             merged["welinkPollInterval"] = max(1, int(merged.get("welinkPollInterval", 3)))
+            if not merged.get("backendUrl"):
+                raise ValueError("请选择或输入服务器地址")
+            if backend.is_offline_url(merged["backendUrl"]):
+                merged["namespace"] = ""
+                if not merged.get("outputDir"):
+                    raise ValueError("离线模式请先设置文件保存目录")
+            else:
+                if not merged.get("userId"):
+                    raise ValueError("请搜索并从结果中选择工号")
+                if not merged.get("namespace"):
+                    raise ValueError("请选择命名空间")
             store.save_settings(merged)
             backend.set_base(merged.get("backendUrl", ""))
-            return self._ok(settings=merged)
+            self.events.emit("system", "设置已保存", type="settings")
+            return self._ok(settings=merged, configured=self._configured(merged))
         except Exception as exc:
             return self._error(exc)
 
     def test_server(self, url: str) -> dict:
+        if backend.is_offline_url(url):
+            return self._ok(reachable=True, offline=True)
         backend.set_base(url)
-        return self._ok(reachable=backend.ping())
+        return self._ok(reachable=backend.ping(), offline=False)
 
     def get_namespaces(self, url: str = "") -> dict:
         try:
+            if backend.is_offline_url(url):
+                return self._ok(items=[])
             if url:
                 backend.set_base(url)
             return self._ok(items=backend.get_namespaces())
@@ -76,244 +113,186 @@ class AppApi:
 
     def get_userinfo(self, query: str, url: str = "") -> dict:
         try:
+            if not query.strip() or backend.is_offline_url(url):
+                return self._ok(items=[])
             if url:
                 backend.set_base(url)
-            return self._ok(items=backend.get_userinfo(query))
+            return self._ok(items=backend.get_userinfo(query.strip()))
         except Exception as exc:
             return self._error(exc)
 
     def choose_output_dir(self) -> dict:
         try:
             import webview
-            dialog_type = (webview.FileDialog.FOLDER if hasattr(webview, "FileDialog")
-                           else webview.FOLDER_DIALOG)
+            dialog_type = webview.FileDialog.FOLDER if hasattr(webview, "FileDialog") else webview.FOLDER_DIALOG
             result = self._window.create_file_dialog(dialog_type)
             return self._ok(path=result[0] if result else "")
         except Exception as exc:
             return self._error(exc)
 
-    def choose_zip(self) -> dict:
+    def version_info(self) -> dict:
+        settings = store.load_settings()
+        if not settings.get("backendUrl") or backend.is_offline_url(settings.get("backendUrl", "")):
+            return self._ok(info={})
+        backend.set_base(settings["backendUrl"])
+        return self._ok(info=backend.get_latest_version())
+
+    def open_external(self, url: str) -> dict:
         try:
-            import webview
-            dialog_type = (webview.FileDialog.OPEN if hasattr(webview, "FileDialog")
-                           else webview.OPEN_DIALOG)
-            result = self._window.create_file_dialog(
-                dialog_type, file_types=("ZIP archive (*.zip)",)
-            )
-            return self._ok(path=result[0] if result else "")
+            webbrowser.open(url)
+            return self._ok()
         except Exception as exc:
             return self._error(exc)
 
+    def quit_app(self) -> dict:
+        if self._host:
+            threading.Thread(target=self._host.quit, daemon=True).start()
+        return self._ok()
+
+    # ── Outlook mail ─────────────────────────────────────────────
     def list_folders(self) -> dict:
         try:
-            return self._ok(items=outlook.folder_list())
+            items = self.email.list_folders()
+            self.events.emit("email", f"读取 Outlook 文件夹：{len(items)} 个", type="outlook_folders")
+            return self._ok(items=items)
         except Exception as exc:
             return self._error(exc)
-
-    @staticmethod
-    def _match(items: list, scan_folders: list) -> list:
-        whitelist = email_rules.load()
-        blacklist = email_rules.load_blacklist()
-        wl_maps = email_rules.build_match_maps(whitelist, scan_folders)
-        bl_maps = email_rules.build_match_maps(blacklist, scan_folders)
-        for item in items:
-            if item.get("_diag") or item.get("_folder_error"):
-                continue
-            allowed = email_rules.match(item, whitelist, wl_maps)
-            blocked = email_rules.match(item, blacklist, bl_maps)
-            item["matched_rule"] = allowed if allowed and not blocked else ""
-            item["parseStatus"] = "-"
-        return items
 
     def list_emails(self) -> dict:
-        if not self._outlook_lock.acquire(blocking=False):
-            return self._error("已有 Outlook 操作正在执行")
         try:
-            settings = store.load_settings()
-            folders = settings.get("scanFolders") or []
-            raw = self._match(outlook.mail_list(folders or None), folders)
-            return self._ok(
-                items=[x for x in raw if not x.get("_diag") and not x.get("_folder_error")],
-                errors=[x["_folder_error"] for x in raw if x.get("_folder_error")],
-                diagnostics=[x["_diag"] for x in raw if x.get("_diag")],
-            )
+            result = self.email.list_emails()
+            self.events.emit("email", f"读取 Outlook 邮件：{len(result['items'])} 封", type="outlook_emails")
+            return self._ok(**result)
         except Exception as exc:
             return self._error(exc)
-        finally:
-            self._outlook_lock.release()
 
     def parse_status(self, topics: list[str]) -> dict:
         try:
             settings = store.load_settings()
+            if backend.is_offline_url(settings.get("backendUrl", "")):
+                return self._ok(items={})
             backend.set_base(settings.get("backendUrl", ""))
             return self._ok(items=backend.get_parse_status(topics, settings.get("namespace", "")))
         except Exception as exc:
             return self._error(exc)
 
-    def process_emails(self, item_ids: list[str], force: bool = True) -> dict:
-        if not item_ids:
-            return self._error("未选择邮件")
-        if not self._outlook_lock.acquire(blocking=False):
-            return self._error("已有 Outlook 操作正在执行")
-        succeeded, failed, messages = 0, 0, []
+    def preview_email_rule(self, rules: list[dict]) -> dict:
         try:
-            settings = store.load_settings()
-            backend.set_base(settings.get("backendUrl", ""))
-            offline = backend.is_offline_url(settings.get("backendUrl", ""))
-            img_api = "" if offline else settings.get("backendUrl", "")
-            extra = json.loads(settings.get("customJsonConfig") or "{}")
-            folders = settings.get("scanFolders") or []
-            summaries = self._match(outlook.mail_list(folders or None), folders)
-            lookup = {x.get("item_id"): x for x in summaries}
-            for item_id in item_ids:
-                try:
-                    item = outlook.mail_get(item_id, img_api)
-                    source = lookup.get(item_id, {})
-                    if not offline:
-                        backend.receive_email({
-                            "EmailId": item["item_id"],
-                            "ConversationTopic": item.get("conversation_topic", ""),
-                            "Subject": item.get("subject", ""),
-                            "SenderName": item.get("sender_name", ""),
-                            "SenderEmail": item.get("sender_email", ""),
-                            "ReceivedTime": item.get("received_time", ""),
-                            "HtmlBody": item.get("html_body", ""),
-                            "MarkdownBody": item.get("markdown_body", ""),
-                            "MatchedRuleName": source.get("matched_rule") or "手动处理",
-                            "UserId": settings.get("userId", ""),
-                            "Namespace": settings.get("namespace", ""),
-                            "ExtraInfo": extra,
-                            "Force": bool(force),
-                        })
-                    local_archive.save_email(
-                        settings.get("outputDir", ""),
-                        item.get("subject") or item.get("conversation_topic", ""),
-                        item.get("html_body", ""), item.get("markdown_body", ""),
-                    )
-                    succeeded += 1
-                except Exception as exc:
-                    failed += 1
-                    messages.append(f"{item_id}: {exc}")
-            settings["lastSyncTime"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            store.save_settings(settings)
-            return self._ok(success=succeeded, failed=failed, messages=messages)
+            if isinstance(rules, dict):
+                rules = [rules]
+            return self._ok(itemIds=self.email.preview_rules(rules or []))
         except Exception as exc:
             return self._error(exc)
-        finally:
-            self._outlook_lock.release()
 
+    def start_email_processing(self, item_ids: list[str]) -> dict:
+        try:
+            if not item_ids:
+                raise ValueError("未选择邮件")
+            return self._ok(task=self.email.start(item_ids, True, False, "处理选中"))
+        except Exception as exc:
+            return self._error(exc)
+
+    def cancel_email_processing(self) -> dict:
+        return self._ok(task=self.email.cancel())
+
+    def email_task_status(self) -> dict:
+        return self._ok(task=self.email.status(), schedule=self.email_scheduler.status())
+
+    def start_email_schedule(self, mode: str, interval: int, daily_time: str) -> dict:
+        try:
+            return self._ok(schedule=self.email_scheduler.start(mode, interval, daily_time))
+        except Exception as exc:
+            return self._error(exc)
+
+    def stop_email_schedule(self) -> dict:
+        return self._ok(schedule=self.email_scheduler.stop())
+
+    # ── email rules ──────────────────────────────────────────────
     def save_rules(self, kind: str, rules: list[dict]) -> dict:
         try:
             normalized = []
             for rule in rules or []:
+                name = str(rule.get("name", "")).strip()
+                if not name:
+                    raise ValueError("规则名称不能为空")
                 normalized.append({
                     "id": rule.get("id") or str(uuid.uuid4()),
-                    "name": str(rule.get("name", "")).strip(),
-                    "keywords": list(rule.get("keywords") or []),
-                    "body_keywords": list(rule.get("body_keywords") or []),
-                    "senders": list(rule.get("senders") or []),
+                    "name": name,
+                    "keywords": [str(x).strip() for x in rule.get("keywords", []) if str(x).strip()],
+                    "body_keywords": [str(x).strip() for x in rule.get("body_keywords", []) if str(x).strip()],
+                    "senders": [str(x).strip() for x in rule.get("senders", []) if str(x).strip()],
                     "logic": "AND" if rule.get("logic") == "AND" else "OR",
-                    "enabled": bool(rule.get("enabled", True)),
                 })
             (email_rules.save_blacklist if kind == "blacklist" else email_rules.save)(normalized)
+            self.events.emit("email", "规则已变更，请刷新邮件重新匹配", type="rules_changed", refresh=True)
             return self._ok(items=normalized)
         except Exception as exc:
             return self._error(exc)
 
-    def save_welink_rules(self, rules: list[dict]) -> dict:
+    # ── WeLink history mining ────────────────────────────────────
+    def save_welink_sources(self, sources: list[dict]) -> dict:
         try:
-            normalized = [{
-                "id": rule.get("id") or str(uuid.uuid4()),
-                "group_id": str(rule.get("group_id", "")).strip(),
-                "group_name": str(rule.get("group_name", "")).strip(),
-            } for rule in (rules or [])]
+            normalized = []
+            seen = set()
+            for source in sources or []:
+                source_type = "user" if source.get("type") == "user" else "group"
+                source_id = str(source.get("source_id", "")).strip()
+                source_name = str(source.get("source_name", "")).strip()
+                if not source_id or not source_name:
+                    raise ValueError("来源 ID 和显示名称均不能为空")
+                key = (source_type, source_id)
+                if key in seen:
+                    raise ValueError(f"聊天来源重复：{source_name}")
+                seen.add(key)
+                normalized.append({
+                    "id": source.get("id") or str(uuid.uuid4()),
+                    "type": source_type,
+                    "source_id": source_id,
+                    "source_name": source_name,
+                    "enabled": bool(source.get("enabled", True)),
+                })
             welink_rules.save(normalized)
-            return self._ok(items=normalized)
+            stopped = self.welink_scheduler.status().get("active", False)
+            schedule = self.welink_scheduler.stop() if stopped else self.welink_scheduler.status()
+            return self._ok(items=normalized, schedule=schedule, scheduleStopped=stopped)
         except Exception as exc:
             return self._error(exc)
 
-    def toggle_welink_monitor(self, start: bool) -> dict:
+    def list_welink_history(self, source: dict, start_ms: int = 0, end_ms: int = 0) -> dict:
         try:
-            if start:
-                if self._monitor and self._monitor.isRunning():
-                    return self._ok(running=True)
-                settings = store.load_settings()
-                self._monitor = WelinkMonitor(
-                    backend_base=settings.get("backendUrl", "http://localhost:8023"),
-                    start_cmd=settings.get("welinkStartCmd", "@云见 开始定位"),
-                    end_cmd=settings.get("welinkEndCmd", "@云见 结束定位"),
-                    summary_cmd=settings.get("welinkSummaryCmd", "@云见 总结经验"),
-                    user_id=settings.get("welinkUserId") or settings.get("userId", ""),
-                    poll_interval=int(settings.get("welinkPollInterval", 3)),
-                )
-                self._monitor.log_signal.connect(self._monitor_event)
-                self._monitor.uploaded_signal.connect(
-                    lambda info: self._monitor_event(f"归档完成：{info.get('group_name', '')}，{info.get('count', 0)} 条")
-                )
-                self._monitor.start()
-            elif self._monitor:
-                self._monitor.stop()
-                self._monitor.wait(4000)
-                self._monitor = None
-            return self._ok(running=bool(self._monitor and self._monitor.isRunning()))
+            items = self.welink.list_history(source or {}, start_ms, end_ms)
+            self.events.emit("welink", f"读取聊天记录：{len(items)} 条", type="welink_history")
+            return self._ok(items=items)
         except Exception as exc:
             return self._error(exc)
 
-    def _monitor_event(self, text: str) -> None:
-        with self._monitor_lock:
-            self._monitor_events.append(str(text))
+    def start_welink_processing(self, jobs: list[dict]) -> dict:
+        try:
+            return self._ok(task=self.welink.start(jobs or [], "处理选中"))
+        except Exception as exc:
+            return self._error(exc)
 
-    def welink_monitor_status(self, after: int = 0) -> dict:
-        with self._monitor_lock:
-            events = self._monitor_events[max(0, int(after)):]
-            cursor = len(self._monitor_events)
-        return self._ok(
-            running=bool(self._monitor and self._monitor.isRunning()),
-            events=events,
-            cursor=cursor,
-        )
+    def cancel_welink_processing(self) -> dict:
+        return self._ok(task=self.welink.cancel())
+
+    def welink_task_status(self) -> dict:
+        return self._ok(task=self.welink.status(), schedule=self.welink_scheduler.status())
+
+    def start_welink_schedule(self, sources: list[dict], mode: str, interval: int,
+                              daily_time: str, range_mode: str) -> dict:
+        try:
+            schedule = self.welink_scheduler.start(
+                sources or [], mode, interval, daily_time, range_mode
+            )
+            return self._ok(schedule=schedule)
+        except Exception as exc:
+            return self._error(exc)
+
+    def stop_welink_schedule(self) -> dict:
+        return self._ok(schedule=self.welink_scheduler.stop())
 
     def shutdown(self, *_args) -> None:
-        if self._monitor:
-            self._monitor.stop()
-            self._monitor.wait(3000)
-
-    def import_welink(self, zip_path: str, group_name: str = "") -> dict:
-        try:
-            if not zip_path or Path(zip_path).suffix.lower() != ".zip":
-                raise ValueError("请选择 ZIP 格式的聊天记录")
-            settings = store.load_settings()
-            backend.set_base(settings.get("backendUrl", ""))
-            offline = backend.is_offline_url(settings.get("backendUrl", ""))
-            stem, text, images = chatlog_import.read_zip(zip_path)
-            messages = chatlog_import.parse_chatlog(text)
-            if not messages:
-                raise ValueError("未解析到任何消息，请确认聊天记录格式")
-            match = chatlog_import.match_images(messages, images)
-            if not offline:
-                seen = set()
-                for image in [x for x in match["assign"] if x] + list(match["leftover"]):
-                    if id(image) in seen:
-                        continue
-                    seen.add(id(image))
-                    image["url"] = backend.upload_image(image["data"], image["name"])
-            html = chatlog_import.build_html(messages, match)
-            name = group_name.strip() or stem
-            start_dt, end_dt = messages[0]["ts"], messages[-1]["ts"]
-            if offline:
-                from modules.email.html2md import html2md
-                title = f'{name}_{start_dt.strftime("%Y%m%d_%H%M")}'
-                local_archive.save_email(settings.get("outputDir", ""), title, html, html2md(html))
-                return self._ok(count=len(messages), offline=True, duplicate=False,
-                                summary=match.get("summary", ""))
-            chat_id = f'manual_{stem}_{int(start_dt.timestamp()*1000)}_{hashlib.md5(text.encode("utf-8", "ignore")).hexdigest()[:8]}'
-            result = backend.receive_welink_chatlog({
-                "ChatId": chat_id, "GroupId": stem, "GroupName": name,
-                "StartTime": int(start_dt.timestamp() * 1000),
-                "EndTime": int(end_dt.timestamp() * 1000), "HtmlBody": html,
-                "UploadBy": settings.get("welinkUserId") or settings.get("userId", ""),
-            })
-            return self._ok(count=len(messages), offline=False,
-                            duplicate=bool(result.get("Duplicate")), summary=match.get("summary", ""))
-        except Exception as exc:
-            return self._error(exc)
+        self.email_scheduler.shutdown()
+        self.welink_scheduler.shutdown()
+        self.email.cancel()
+        self.welink.cancel()

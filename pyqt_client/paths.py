@@ -1,12 +1,14 @@
 """统一数据目录：配置与存档优先放 D 盘（D 不可用时退回用户主目录）。"""
+import shutil
 import sys
 from pathlib import Path
 
-_APP_NAME = '问题定位助手'
+_APP_NAME = 'CoreMiner'
+_LEGACY_APP_NAME = '问题定位助手'
 
 
 def app_data_dir() -> Path:
-    """数据根目录：优先 D:\\问题定位助手；D 盘不可用则 ~/问题定位助手；再不行用程序目录。"""
+    """数据根目录：优先 D:\\CoreMiner；不可用时退回用户目录或程序目录。"""
     for base in (Path('D:/') / _APP_NAME, Path.home() / _APP_NAME):
         try:
             base.mkdir(parents=True, exist_ok=True)
@@ -20,6 +22,16 @@ def config_dir() -> Path:
     p = app_data_dir() / 'config'
     try:
         p.mkdir(parents=True, exist_ok=True)
+        # First CoreMiner launch keeps existing settings/rules from the old
+        # product name without copying potentially large mail archives.
+        for legacy_root in (Path('D:/') / _LEGACY_APP_NAME, Path.home() / _LEGACY_APP_NAME):
+            legacy_config = legacy_root / 'config'
+            if not legacy_config.exists():
+                continue
+            for source in legacy_config.iterdir():
+                target = p / source.name
+                if source.is_file() and not target.exists():
+                    shutil.copy2(source, target)
     except Exception:
         pass
     return p

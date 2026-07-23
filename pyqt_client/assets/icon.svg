@@ -1,11 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="40" height="40" viewBox="0 0 40 40">
   <defs>
-    <linearGradient id="ext-fill" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#E24B4A"/>
-      <stop offset="33%" stop-color="#EF9F27"/>
-      <stop offset="66%" stop-color="#639922"/>
-      <stop offset="100%" stop-color="#185FA5"/>
-    </linearGradient>
+    <style>.a,.d{fill:#fff}.a{stroke:#707070}.b{clip-path:url(#a)}.c{fill:url(#b)}.e{opacity:.72;fill:url(#e)}.f{opacity:.8;fill:url(#g)}</style>
+    <clipPath id="a"><rect class="a" width="40" height="40" transform="translate(37 397)"/></clipPath>
+    <linearGradient id="b" x1=".5" x2=".5" y2="1" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#1e70ff"/><stop offset="1" stop-color="#833df4"/></linearGradient>
+    <linearGradient id="e" x1=".5" x2=".5" y2="1" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#2070ff"/><stop offset="1" stop-color="#833df4"/></linearGradient>
+    <linearGradient id="g" x1=".5" x2=".5" y2="1" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#1e6fff"/><stop offset="1" stop-color="#833df4"/></linearGradient>
   </defs>
-  <circle cx="12" cy="12" r="10" fill="url(#ext-fill)"/>
+  <g class="b" transform="translate(-37 -397)"><g transform="translate(37 402.833)">
+    <rect class="c" width="33.333" height="25" rx="8" transform="translate(3.333)"/>
+    <path class="d" d="M170.4,304.943a5.27,5.27,0,0,0,5.581,5.049h7.992l-1.437,2.41,5.292-2.41c5.448-.1,6.593-2.616,6.593-5.049a4.616,4.616,0,0,0-4.95-4.745c0-3.754-3.224-6.486-7.239-6.486s-7.3,2.407-7.3,6.182C172.238,299.894,170.4,302.266,170.4,304.943Z" transform="translate(-162.411 -290.204)"/>
+    <rect class="c" width="2.5" height="3.75" rx="1.25" transform="translate(15 11.25)"/>
+    <rect class="c" width="2.5" height="3.75" rx="1.25" transform="translate(21.667 11.25)"/>
+    <path class="e" d="M0,0H.5a2,2,0,0,1,2,2V7.167a2,2,0,0,1-2,2H0V0Z" transform="translate(37.5 8.333)"/>
+    <path class="e" d="M2,0h.5V9.167H2a2,2,0,0,1-2-2V2A2,2,0,0,1,2,0Z" transform="translate(0 8.333)"/>
+    <path class="f" d="M2,0h9.333a2,2,0,0,1,2,2v.5H0V2A2,2,0,0,1,2,0Z" transform="translate(13.333 26.667)"/>
+  </g></g>
 </svg>

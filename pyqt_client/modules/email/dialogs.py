@@ -150,7 +150,7 @@ class SetupDialog(QDialog):
     """
     def __init__(self, settings: dict, parent=None, mandatory: bool = False):
         super().__init__(parent)
-        self.setWindowTitle('初始配置 — 问题定位助手')
+        self.setWindowTitle('初始配置 — CoreMiner')
         self.setFixedWidth(420)
         flags = self.windowFlags() & ~Qt.WindowContextHelpButtonHint
         self._mandatory = mandatory

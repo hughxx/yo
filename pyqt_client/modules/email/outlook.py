@@ -29,6 +29,13 @@ def _session():
         yield ns
     finally:
         ns = None
+        # Flush released COM wrappers while this thread is still initialized.
+        # Public helpers below also clear their last local Folder/Items/Mail refs
+        # before leaving this context so no COM proxy escapes past CoUninitialize.
+        try:
+            pythoncom.CoFreeUnusedLibraries()
+        except Exception:
+            pass
         pythoncom.CoUninitialize()
 
 
@@ -48,6 +55,7 @@ def folder_list() -> list:
                 _collect(store.GetRootFolder(), result, '')
             except Exception:
                 pass
+        store = None
     return result
 
 
@@ -165,7 +173,8 @@ def _search(scan_folders: list, fields: list, keywords: list) -> set:
         return set()
     matched = set()
     with _session() as ns:
-        for folder in _resolve_folders(ns, scan_folders):
+        folders = _resolve_folders(ns, scan_folders)
+        for folder in folders:
             try:
                 _collect_matches(folder, _dasl(fields, keywords), matched)
             except Exception:
@@ -173,6 +182,8 @@ def _search(scan_folders: list, fields: list, keywords: list) -> set:
                     _collect_matches(folder, _dasl(fields, keywords, force_like=True), matched)
                 except Exception:
                     pass
+        folder = None
+        folders.clear()
     return matched
 
 
@@ -248,6 +259,13 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
             except Exception as e:
                 result.append({'_folder_error': str(e)})
 
+        # Release the last loop variables and the folder collection before
+        # _session() calls CoUninitialize on this worker thread.
+        m = None
+        items = None
+        folder = None
+        folders.clear()
+
     diag_entries = [x for x in result if '_diag' in x or '_folder_error' in x]
     email_entries = [x for x in result if '_diag' not in x and '_folder_error' not in x]
     email_entries.sort(key=lambda x: x['received_time'], reverse=True)
@@ -281,7 +299,7 @@ def mail_get(entry_id: str, img_api: str = '') -> dict:
         except Exception:
             pass
 
-        return {
+        result = {
             'item_id':            entry_id,
             'subject':            m.Subject or '',
             'sender_name':        m.SenderName or '',
@@ -291,6 +309,8 @@ def mail_get(entry_id: str, img_api: str = '') -> dict:
             'html_body':          html,
             'markdown_body':      markdown,
         }
+        m = None
+    return result
 
 
 def _process_images(mail_item, html: str, img_api: str) -> str:

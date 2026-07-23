@@ -3,13 +3,14 @@
 from PyInstaller.utils.hooks import collect_all
 
 webview_datas, webview_binaries, webview_hidden = collect_all('webview')
+pystray_datas, pystray_binaries, pystray_hidden = collect_all('pystray')
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=webview_binaries,
-    datas=webview_datas + [('assets', 'assets'), ('web', 'web')],
-    hiddenimports=webview_hidden + [
+    binaries=webview_binaries + pystray_binaries,
+    datas=webview_datas + pystray_datas + [('assets', 'assets'), ('web', 'web')],
+    hiddenimports=webview_hidden + pystray_hidden + [
         'webview.platforms.edgechromium',
         'webview.platforms.winforms',
         'win32com.client',
@@ -33,7 +34,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='问题定位助手',
+    name='CoreMiner',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

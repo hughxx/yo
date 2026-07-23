@@ -21,7 +21,7 @@ subprocess.run(
     check=True,
 )
 
-target = ROOT / "dist" / "问题定位助手.exe"
+target = ROOT / "dist" / "CoreMiner.exe"
 print("\n===== 完成 =====")
 print(f"产物：{target}")
 print("目标电脑需要 Microsoft Edge WebView2 Runtime（Windows 10/11 通常已预装）。")
