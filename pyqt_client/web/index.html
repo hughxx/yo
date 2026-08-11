@@ -50,7 +50,7 @@
               <div class="quick-tags"><button data-wl-range="all" class="active">所有</button><button data-wl-range="today">今天</button><button data-wl-range="week">一周</button></div>
               <label>从<input id="wl-start-time" type="datetime-local"></label><label>到<input id="wl-end-time" type="datetime-local"></label>
               <span class="spacer"></span><button id="refresh-welink">↻ 刷新</button>
-              <div class="start-control"><button id="open-welink-start" class="primary"><span class="button-icon">▶</span>启动<span class="start-caret"></span></button><div id="welink-start-menu" class="start-menu hidden"><button id="welink-process-selected"><b>处理选中</b><span id="welink-selected-count">当前共选中 0 条</span></button><button id="welink-schedule-option"><b>启动定时</b><span>按来源独立执行</span></button></div></div>
+              <div class="start-control"><button id="open-welink-start" class="primary"><span class="button-icon">▶</span>启动<span class="start-caret"></span></button><div id="welink-start-menu" class="start-menu hidden"><button id="welink-process-current"><b>处理当前</b><span id="welink-current-count">当前 Tab 选中 0 条</span></button><button id="welink-process-all"><b>处理全部已选来源</b><span id="welink-all-count">左侧已选 0 个来源</span></button><button id="welink-schedule-option"><b>启动定时</b><span>使用左侧勾选的来源</span></button></div></div>
             </div>
             <div class="chat-query-status" id="wl-query-status">请在左侧勾选并点击一个群组或用户</div>
             <div class="table-wrap"><table class="chat-table"><thead><tr><th class="check"><input type="checkbox" id="wl-check-all"></th><th class="number">#</th><th>时间</th><th>发送人</th><th>类型</th><th>聊天内容</th></tr></thead><tbody id="wl-message-body"></tbody></table></div>

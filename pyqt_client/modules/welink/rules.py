@@ -18,13 +18,19 @@ def load() -> list:
         try:
             rows = json.loads(_FILE.read_text('utf-8'))
             normalized = []
+            seen = set()
             for row in rows:
                 source_id = str(row.get('source_id') or row.get('group_id') or '').strip()
                 if not source_id:
                     continue
+                source_type = 'user' if row.get('type') == 'user' else 'group'
+                key = (source_type, source_id)
+                if key in seen:
+                    continue
+                seen.add(key)
                 normalized.append({
                     'id': row.get('id') or str(uuid.uuid4()),
-                    'type': 'user' if row.get('type') == 'user' else 'group',
+                    'type': source_type,
                     'source_id': source_id,
                     'source_name': str(row.get('source_name') or row.get('group_name') or source_id).strip(),
                     'enabled': bool(row.get('enabled', True)),
