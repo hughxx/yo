@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoreInsight · WeLink 消息提取</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar"><div class="brand"><span class="brand-mark">CI</span><span>CoreInsight</span></div><div class="agent-state"><i></i><span>Local Agent 已连接</span></div></header>
+    <main>
+      <section class="page-head"><div class="step">03</div><div><h1>群组管理</h1><p>绑定 WeLink 群组，配置消息范围并执行经验提取</p></div><span class="phase-tag">CHAT MINING</span></section>
+      <section class="workspace">
+        <aside class="sidebar">
+          <div class="sidebar-head"><div><b>群组列表</b><small id="group-count">0 个群组</small></div><button class="icon-button" id="show-add" title="添加群组">＋</button></div>
+          <form class="add-form hidden" id="add-form"><input id="new-group-id" placeholder="群组 ID（必填）" autocomplete="off"><input id="new-group-name" placeholder="群组名称（可选）" autocomplete="off"><div><button type="button" class="ghost small" id="cancel-add">取消</button><button class="primary small">添加</button></div></form>
+          <div class="group-list" id="group-list"></div><div class="sidebar-empty" id="group-empty"><span>◎</span><b>还没有绑定群组</b><p>点击右上角＋添加一个 WeLink 群组</p></div>
+        </aside>
+        <section class="config-panel">
+          <div class="blank-state" id="blank-state"><span>↖</span><h2>选择一个群组</h2><p>从左侧选择群组后配置提取参数</p></div>
+          <form id="config-form" class="hidden">
+            <div class="panel-head"><div><small>GROUP CONFIGURATION</small><h2 id="config-title">群组配置</h2></div><span class="status-pill" id="status-pill">空闲</span></div>
+            <div class="form-section"><div class="section-title"><span>01</span><div><b>群组基本信息</b><small>用于识别 WeLink 消息来源</small></div></div><div class="field-grid"><label><span>群组 ID <em>*</em></span><input id="group-id" required readonly></label><label><span>群组名称</span><input id="group-name" placeholder="便于识别的名称"></label></div></div>
+            <div class="form-section"><div class="section-title"><span>02</span><div><b>提取时间范围</b><small>限定需要加载和处理的聊天消息</small></div></div><div class="range-buttons" id="range-buttons"><button type="button" data-range="all">所有</button><button type="button" data-range="7d">最近 7 天</button><button type="button" data-range="3d">最近 3 天</button><button type="button" data-range="2d">最近 2 天</button><button type="button" data-range="today">今天</button><button type="button" data-range="custom">自定义</button></div><div class="field-grid time-grid"><label><span>起始时间</span><input type="datetime-local" id="start-time"></label><label><span>结束时间</span><input type="datetime-local" id="end-time"></label></div></div>
+            <div class="form-section preview-section"><div class="section-title"><span>03</span><div><b>消息预览</b><small id="preview-summary">查看群组消息，取消勾选不需要提取的内容</small></div></div><button type="button" class="outline" id="preview-button"><span>▤</span> 预览消息</button></div>
+            <div class="form-section split-section"><div><div class="section-title"><span>04</span><div><b>提取方式</b><small>配置本次内容分析方式</small></div></div><div class="radio-row"><label><input type="radio" name="method" value="prompt" checked><span>Prompt</span></label><label class="disabled"><input type="radio" name="method" value="codeagent" disabled><span>CodeAgent <i>待上线</i></span></label></div></div><div><div class="section-title"><span>05</span><div><b>入库方式</b><small>控制提取结果的审核流程</small></div></div><div class="radio-row"><label><input type="radio" name="mode" value="direct" checked><span>直接入库</span></label><label><input type="radio" name="mode" value="draft"><span>确认后入库</span></label></div></div></div>
+            <div class="prompt-wrap"><label><span>PROMPT 内容</span><textarea id="prompt-content" rows="4"></textarea></label></div>
+            <div class="actions"><button type="button" class="danger-link" id="delete-group">删除群组</button><span></span><button type="submit" class="ghost">保存配置</button><button type="button" class="ghost disabled-action" title="下一阶段接入">定时提取</button><button type="button" class="primary disabled-action" title="下一阶段接入">提取 <span>→</span></button></div>
+          </form>
+        </section>
+      </section>
+    </main>
+  </div>
+  <div class="modal-backdrop hidden" id="preview-modal"><section class="modal"><header><div><small>MESSAGE PREVIEW</small><h2 id="modal-title">消息预览</h2><p id="modal-range"></p></div><button class="modal-close" id="close-preview">×</button></header><div class="modal-tools"><label><input type="checkbox" id="check-all" checked> 全选</label><span id="selected-count">已选 0 条</span><span></span><button class="ghost small" id="refresh-preview">↻ 刷新</button></div><div class="message-wrap"><div class="loading hidden" id="message-loading"><i></i><span>正在从 WeLink 读取聊天记录…</span></div><div class="message-empty hidden" id="message-empty">当前时间范围内没有消息</div><table id="message-table"><thead><tr><th></th><th>时间</th><th>发送人</th><th>类型</th><th>聊天内容</th></tr></thead><tbody id="message-body"></tbody></table></div><footer><span id="message-total">共 0 条消息</span><button class="primary" id="confirm-preview">确认选择</button></footer></section></div>
+  <div class="toast hidden" id="toast"></div><script src="app.js"></script>
+</body></html>
