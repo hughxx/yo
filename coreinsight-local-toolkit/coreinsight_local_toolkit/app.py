@@ -44,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         f"http://127.0.0.1:{settings.port}",
         f"http://localhost:{settings.port}",
     }
-    app = FastAPI(title="CoreInsight Local Agent", version=__version__)
+    app = FastAPI(title="CoreInsight Local Toolkit", version=__version__)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=sorted(browser_origins),
@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "service": "coreinsight-local-agent", "version": __version__}
+        return {"status": "ok", "service": "coreinsight-local-toolkit", "version": __version__}
 
     @app.get("/capabilities")
     def capabilities():

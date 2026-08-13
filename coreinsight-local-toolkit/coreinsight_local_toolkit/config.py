@@ -12,12 +12,13 @@ DEFAULT_ORIGINS = (
 
 
 def _data_dir() -> Path:
-    configured = os.getenv("COREINSIGHT_AGENT_DATA_DIR", "").strip()
+    configured = (
+        os.getenv("COREINSIGHT_TOOLKIT_DATA_DIR", "").strip()
+        or os.getenv("COREINSIGHT_AGENT_DATA_DIR", "").strip()
+    )
     if configured:
         return Path(configured).expanduser()
-    local_app_data = os.getenv("LOCALAPPDATA", "").strip()
-    root = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
-    return root / "CoreInsight" / "LocalAgent"
+    return Path("D:/CoreInsight/LocalToolkit")
 
 
 def _origins() -> tuple[str, ...]:

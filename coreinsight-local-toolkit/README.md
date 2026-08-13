@@ -1,6 +1,6 @@
-# CoreInsight Local Agent
+# CoreInsight Local Toolkit
 
-CoreInsight Local Agent 是运行在用户电脑上的**本地伴生服务**（local companion
+CoreInsight Local Toolkit 是运行在用户电脑上的**本地工具服务**（local companion
 service）。它不是插件，也不是面向用户操作的 CLI：正式域名上的 CoreInsight 前端通过
 HTTP 调用它，由它访问只能在本机使用的 WeLink CLI、Outlook 等能力。最终只有一个常驻
 Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI。
@@ -19,18 +19,18 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 草稿审核尚未接入；当前提取仅支持 `extractMode=direct`。定时任务支持每天、每周、每月
 和五字段 Cron，并在本机持久化。只有提取和入库成功后才推进增量起点，失败会在下次重试。
 
-## 为什么叫 Local Agent
+## 为什么叫 Local Toolkit
 
 它是正式域名网页与本机能力之间的长期驻留桥梁，后续还会承载 Outlook、自动更新、托盘和
-调度。`coreinsight-local-agent` 比 `plugin`、`cli` 或 `desktop-ui` 更准确，也给后续扩展留
+调度。`coreinsight-local-toolkit` 比 `plugin`、`cli` 或 `desktop-ui` 更准确，也给后续扩展留
 出了空间。
 
 ## 开发运行
 
 ```powershell
-cd coreinsight-local-agent
+cd coreinsight-local-toolkit
 python -m pip install -r requirements.txt
-python -m coreinsight_local_agent
+python -m coreinsight_local_toolkit
 ```
 
 默认监听 `http://127.0.0.1:17831`。健康检查：
@@ -39,6 +39,10 @@ python -m coreinsight_local_agent
 GET http://127.0.0.1:17831/health
 ```
 
+本地配置和运行数据默认写入 `D:\CoreInsight\LocalToolkit`，滚动日志位于
+`D:\CoreInsight\LocalToolkit\logs\toolkit.log`（单文件 5 MB，保留 5 个备份）。日志不记录
+完整聊天正文、密码或 API Key。
+
 演示前端直接访问 `http://127.0.0.1:17831/demo/`，不需要另外启动 Node 服务。
 
 可通过环境变量配置：
@@ -46,7 +50,8 @@ GET http://127.0.0.1:17831/health
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
 | `COREINSIGHT_AGENT_PORT` | `17831` | 本地端口 |
-| `COREINSIGHT_AGENT_DATA_DIR` | `%LOCALAPPDATA%/CoreInsight/LocalAgent` | 配置目录 |
+| `COREINSIGHT_TOOLKIT_DATA_DIR` | `D:\CoreInsight\LocalToolkit` | 配置、定时状态和日志目录；不默认写入 C 盘 |
+| `COREINSIGHT_AGENT_DATA_DIR` | 空 | 旧版数据目录环境变量，仅作为兼容回退 |
 | `COREINSIGHT_ALLOWED_ORIGINS` | beta/正式 CoreInsight 域名 | 逗号分隔的网页来源白名单 |
 | `COREINSIGHT_WELINK_CLI` | `welink-cli` | WeLink CLI 可执行文件名或绝对路径 |
 | `COREINSIGHT_UPLOAD_BY` | 空 | 兼容旧调用的默认用户工号；正式调用由前端在请求中传 `uploadBy` |
@@ -105,8 +110,8 @@ GET http://127.0.0.1:17831/health
 手动提取每次创建新的临时 workspace，成功或失败后删除；同一个定时任务使用由
 `用户 + 群组 + Skill` 确定的固定 workspace 和 Hermes session，只追加本轮增量输入。
 workspace 里只有一个结果文件 `output/experiences.jsonl`，每行是一条完整经验版本。新经验
-不带 `doc_id`，Local Agent 通过 POST 新建并将接口返回的真实 `doc_id` 写回该行；后续聊天
-补充同一经验时，Skill 使用原 `doc_id` 追加合并后的新版本，Local Agent 通过 PUT 部分更新。
+不带 `doc_id`，Local Toolkit 通过 POST 新建并将接口返回的真实 `doc_id` 写回该行；后续聊天
+补充同一经验时，Skill 使用原 `doc_id` 追加合并后的新版本，Local Toolkit 通过 PUT 部分更新。
 每个定时 workspace 的下一个分片序号和已入库行号仅在本机持久化，失败不会越过未成功的
 输入或输出。
 

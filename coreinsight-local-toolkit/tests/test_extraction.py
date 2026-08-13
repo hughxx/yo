@@ -3,9 +3,9 @@ import time
 import unittest
 from pathlib import Path
 
-from coreinsight_local_agent.extraction import ExtractionRuntime
-from coreinsight_local_agent.models import ExtractRequest, GroupCreate
-from coreinsight_local_agent.store import GroupStore
+from coreinsight_local_toolkit.extraction import ExtractionRuntime
+from coreinsight_local_toolkit.models import ExtractRequest, GroupCreate
+from coreinsight_local_toolkit.store import GroupStore
 
 
 class FakeHistory:

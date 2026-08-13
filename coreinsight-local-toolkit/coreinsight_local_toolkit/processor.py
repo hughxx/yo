@@ -270,7 +270,7 @@ class LocalExperienceProcessor:
                   "loginName": self.settings.clouddrive_account,
                   "password": self.settings.clouddrive_password},
             headers={"Content-Type": "application/json",
-                     "x-device-sn": "coreinsight-local-agent", "x-device-type": "web",
+                     "x-device-sn": "coreinsight-local-toolkit", "x-device-type": "web",
                      "x-device-os": "win10", "x-device-name": "coreinsight",
                      "x-client-version": "10"}, timeout=60, verify=False)
         token_response.raise_for_status()

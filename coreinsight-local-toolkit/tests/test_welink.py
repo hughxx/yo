@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from coreinsight_local_agent.welink import WelinkHistory
+from coreinsight_local_toolkit.welink import WelinkHistory
 
 
 def message(message_id: int, timestamp: int):

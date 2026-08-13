@@ -3,9 +3,9 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from coreinsight_local_agent.models import GroupCreate, ScheduleSetRequest
-from coreinsight_local_agent.scheduler import ScheduleRuntime, next_cron, next_run
-from coreinsight_local_agent.store import GroupStore
+from coreinsight_local_toolkit.models import GroupCreate, ScheduleSetRequest
+from coreinsight_local_toolkit.scheduler import ScheduleRuntime, next_cron, next_run
+from coreinsight_local_toolkit.store import GroupStore
 
 
 class FakeProcessor:

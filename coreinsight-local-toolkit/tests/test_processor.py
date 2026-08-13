@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from coreinsight_local_agent.config import Settings
-from coreinsight_local_agent.processor import ExtractionCancelled, LocalExperienceProcessor
+from coreinsight_local_toolkit.config import Settings
+from coreinsight_local_toolkit.processor import ExtractionCancelled, LocalExperienceProcessor
 
 
 RESULT = {"title": "标题", "summary": "摘要", "experience": "## 方案\n内容",
@@ -93,9 +93,9 @@ class ProcessorTests(unittest.TestCase):
         update_response = Mock()
         update_response.raise_for_status.return_value = None
         update_response.json.return_value = {"code": 200, "data": {"doc_id": 123}}
-        with patch("coreinsight_local_agent.processor.requests.post",
+        with patch("coreinsight_local_toolkit.processor.requests.post",
                    return_value=create_response) as post, \
-                patch("coreinsight_local_agent.processor.requests.put",
+                patch("coreinsight_local_toolkit.processor.requests.put",
                       return_value=update_response) as put:
             self.assertEqual("123", processor._push_experience(RESULT, "u1"))
             self.assertEqual("123", processor._push_experience(
@@ -151,7 +151,7 @@ class ProcessorTests(unittest.TestCase):
         ocr_response = Mock(); ocr_response.raise_for_status.return_value = None
         ocr_response.json.return_value = {"result": "错误码 500\n连接失败"}
         with patch.object(processor, "_download", return_value=b"image"), \
-                patch("coreinsight_local_agent.processor.requests.post",
+                patch("coreinsight_local_toolkit.processor.requests.post",
                       side_effect=[upload_response, ocr_response]):
             markdown = processor._to_markdown([
                 {"id": "1", "sender": "u", "timestamp": 1, "rawContent": content}])

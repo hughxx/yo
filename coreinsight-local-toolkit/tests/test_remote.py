@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 
-from coreinsight_local_agent.remote import HermesClient, WorkspaceClient
+from coreinsight_local_toolkit.remote import HermesClient, WorkspaceClient
 
 
 class RemoteClientsTests(unittest.TestCase):

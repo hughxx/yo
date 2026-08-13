@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from coreinsight_local_agent.models import GroupConfig, GroupCreate
-from coreinsight_local_agent.store import GroupStore
+from coreinsight_local_toolkit.models import GroupConfig, GroupCreate
+from coreinsight_local_toolkit.store import GroupStore
 
 
 class GroupStoreTests(unittest.TestCase):
