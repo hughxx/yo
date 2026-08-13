@@ -43,8 +43,18 @@ class Settings:
     workspace_file_server_url: str = os.getenv(
         "COREINSIGHT_WORKSPACE_FILE_SERVER_URL", "http://7.183.107.92:31454"
     ).strip().rstrip("/")
-    experience_engine_url: str = os.getenv("COREINSIGHT_EXPERIENCE_ENGINE_URL", "").strip()
-    ocr_url: str = os.getenv("COREINSIGHT_OCR_URL", "").strip()
+    experience_engine_url: str = os.getenv(
+        "COREINSIGHT_EXPERIENCE_ENGINE_URL", "https://fuyao.rnd.huawei.com"
+    ).strip().rstrip("/")
+    ocr_url: str = os.getenv(
+        "COREINSIGHT_OCR_URL", "http://10.90.113.228:5678/ocr"
+    ).strip()
+    image_file_server_url: str = os.getenv(
+        "COREINSIGHT_FILE_SERVER_URL", "http://7.224.100.105:32169"
+    ).strip().rstrip("/")
+    rag_pic_public_base: str = os.getenv(
+        "COREINSIGHT_RAG_PIC_PUBLIC_BASE", "https://fuyao-data-server.rnd.huawei.com"
+    ).strip().rstrip("/")
     clouddrive_account: str = os.getenv("COREINSIGHT_CLOUDDRIVE_ACCOUNT", "").strip()
     clouddrive_password: str = os.getenv("COREINSIGHT_CLOUDDRIVE_PASSWORD", "").strip()
     hermes_timeout_seconds: int = 1800

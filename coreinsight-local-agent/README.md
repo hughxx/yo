@@ -11,8 +11,9 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 - 按时间范围从 `welink-cli` 分页读取群消息；
 - 将消息标准化后返回给浏览器预览；
 - 按 `msgId` 应用全选排除或明确选择，原始正文不经浏览器传递；
-- 在 EXE 内生成 Markdown 并处理附件/OCR，通过 file-server 写入共享 workspace；
-- Hermes Remote Agent 读取 workspace 中的 `SKILL.md`、聊天和附件，执行 Skill 后由 EXE 写入经验引擎；
+- EXE 下载图片、上传到公开图片服务，并生成 `![OCR结果](公开URL)` Markdown；
+- workspace file-server 只传递转换好的 Markdown 和 `SKILL.md`；
+- Hermes Remote Agent 通过 Skill 处理超长 Markdown，并保留图片超链接；
 - 提供健康检查和能力声明。
 
 草稿审核尚未接入；当前提取仅支持 `extractMode=direct`。定时任务支持每天、每周、每月
@@ -53,8 +54,10 @@ GET http://127.0.0.1:17831/health
 | `COREINSIGHT_HERMES_API_KEY` | 内部开发 Key | Hermes Bearer Token |
 | `COREINSIGHT_WORKSPACE_FILE_SERVER_URL` | `http://7.183.107.92:31454` | 共享 workspace 文件服务 |
 | `COREINSIGHT_HERMES_TIMEOUT_SECONDS` | `1800` | 单次 Skill 最长等待时间 |
-| `COREINSIGHT_EXPERIENCE_ENGINE_URL` | 空 | 经验引擎写入接口完整地址 |
-| `COREINSIGHT_OCR_URL` | 空 | OCR 接口完整地址 |
+| `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
+| `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |
+| `COREINSIGHT_FILE_SERVER_URL` | `http://7.224.100.105:32169` | 永久图片上传服务 |
+| `COREINSIGHT_RAG_PIC_PUBLIC_BASE` | `https://fuyao-data-server.rnd.huawei.com` | Markdown 图片公开地址 |
 | `COREINSIGHT_CLOUDDRIVE_ACCOUNT` | 空 | WeLink 附件下载账号 |
 | `COREINSIGHT_CLOUDDRIVE_PASSWORD` | 空 | WeLink 附件下载密码 |
 
@@ -95,9 +98,21 @@ GET http://127.0.0.1:17831/health
 器。WeLink 返回的 `msgTotalCount` 实际是当前页条数，不是会话历史总数，因此协议中的
 `totalHint` 固定为 0，仅为兼容已接入的前端保留。
 
-提取请求只携带 `skillId`，不再向用户暴露 Prompt 或 CodeAgent。EXE 为每个任务创建独立
-workspace，写入 `input/chat.md`、`attachments/` 和 `skills/<skillId>/SKILL.md`；Hermes 按
-Skill 生成 `output/experience.json`。任务结束后临时 workspace 会被删除。
+提取请求只携带 `skillId`，不再向用户暴露 Prompt 或 CodeAgent。聊天 Markdown 以约
+40,000 字符为目标自动分片，但只在完整消息边界切分；文件名使用
+`input/000001_<起止时间>.md` 形式保证顺序。单条消息超过目标大小时单独占一个文件。
+
+手动提取每次创建新的临时 workspace，成功或失败后删除；同一个定时任务使用由
+`用户 + 群组 + Skill` 确定的固定 workspace 和 Hermes session，只追加本轮增量输入。
+workspace 里只有一个结果文件 `output/experiences.jsonl`，每行是一条完整经验版本。新经验
+不带 `doc_id`，Local Agent 通过 POST 新建并将接口返回的真实 `doc_id` 写回该行；后续聊天
+补充同一经验时，Skill 使用原 `doc_id` 追加合并后的新版本，Local Agent 通过 PUT 部分更新。
+每个定时 workspace 的下一个分片序号和已入库行号仅在本机持久化，失败不会越过未成功的
+输入或输出。
+
+图片在进入 workspace 前已经上传到永久图片服务，Markdown 中是
+`![OCR结果](公开URL)`，Skill 必须在最终经验中原样保留 OCR alt 文本和 URL。删除手动
+workspace 不会删除已经进入经验正文的永久图片。
 
 取消任务时 EXE 会调用 Hermes stop 接口，并保证不会继续写入经验引擎。
 

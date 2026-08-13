@@ -19,11 +19,6 @@ class WorkspaceClient:
         self._request("put", f"/api/workspaces/{workspace_id}/file",
                       json={"path": path, "content": content})
 
-    def upload(self, workspace_id: str, path: str, filename: str, content: bytes) -> str:
-        data = self._request("post", f"/api/workspaces/{workspace_id}/upload",
-                             data={"path": path}, files={"file": (filename, content)})
-        return str(data.get("path") or f"{path}/{filename}")
-
     def read_text(self, workspace_id: str, path: str) -> str:
         data = self._request("get", f"/api/workspaces/{workspace_id}/file",
                              params={"path": path})
@@ -51,11 +46,18 @@ class HermesClient:
         self.session = requests.Session()
         self.session.trust_env = False
 
-    def submit(self, workspace_id: str, session_id: str, skill_id: str) -> str:
+    def submit(self, workspace_id: str, session_id: str, skill_id: str,
+               input_paths: list[str] | None = None, scheduled: bool = False) -> str:
         workspace_path = f"/workspace/{workspace_id}"
+        paths = input_paths or []
+        path_text = "、".join(paths)
+        run_kind = "定时增量" if scheduled else "手动"
         prompt = (
-            f"使用 `{skill_id}` Skill 执行本次 WeLink 经验提取。"
-            "读取 input/chat.md 和 attachments/，严格按 Skill 要求写出 output/experience.json。"
+            f"使用 `{skill_id}` Skill 执行本次 WeLink {run_kind}经验提取。"
+            f"本轮新增输入文件为：{path_text}。"
+            "按文件名顺序读取；需要合并时可参考 workspace 内更早的输入和已有输出。"
+            "严格原样保留 `![OCR结果](公开URL)`，并按 Skill 要求将本轮新增或更新的经验"
+            "逐行追加到 output/experiences.jsonl。不要改写已有行。"
         )
         instructions = (
             f"当前工作目录是 {workspace_path}。所有文件操作只能在该目录内进行。"

@@ -91,7 +91,8 @@ class ExtractionRuntime:
                 self._cancelled(payload.groupId); return
             def progress(status, message): self._set(status=status, message=message)
             result = self.processor.process(
-                messages, payload.skillId, upload_by, task_id, progress, self._cancel)
+                messages, payload.skillId, upload_by, task_id, progress, self._cancel,
+                group_id=payload.groupId, scheduled=scheduled)
             self._restore_group_status(payload.groupId)
             if on_complete: on_complete(True, end_ms, result)
             self._set(running=False, status="done", message="经验提取并入库完成", **result)
