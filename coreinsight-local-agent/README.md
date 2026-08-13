@@ -72,8 +72,9 @@ GET http://127.0.0.1:17831/health
 
 日期字段接受带时区的 ISO 8601 字符串；不带时区时按本机时区解释。消息查询是阻塞型
 本地操作，FastAPI 会在线程池中执行，不阻塞健康检查。`/welink/message/page` 每页最多
-返回 100 条，并返回 `nextCursor`、`hasMore` 和 WeLink 报告的 `totalHint`；前端不应把
-全部聊天正文一次加载进浏览器。
+返回 100 条，并返回 `nextCursor` 和 `hasMore`；前端不应把全部聊天正文一次加载进浏览
+器。WeLink 返回的 `msgTotalCount` 实际是当前页条数，不是会话历史总数，因此协议中的
+`totalHint` 固定为 0，仅为兼容已接入的前端保留。
 
 ## 打包方向
 

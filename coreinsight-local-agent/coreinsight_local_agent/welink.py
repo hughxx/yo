@@ -45,12 +45,16 @@ class WelinkHistory:
             "--query-count", str(max(1, min(100, int(count)))),
         ]
         if message_id:
-            args.extend(["--message-id", message_id, "--query-direction", "1"])
+            # WeLink CLI: direction=0 returns messages older than message-id;
+            # direction=1 returns newer messages. The first page needs neither.
+            args.extend(["--message-id", message_id, "--query-direction", "0"])
         body = (self._run(args).get("respData") or {})
         return {
             "items": body.get("chatInfo") or [],
             "minMsgId": str(body.get("minMsgId") or ""),
-            "total": int(body.get("msgTotalCount") or 0),
+            # Despite its name, msgTotalCount is the number of rows in this
+            # response, not the total size of the conversation history.
+            "count": int(body.get("msgTotalCount") or len(body.get("chatInfo") or [])),
         }
 
     def fetch(self, group_id: str, start_ms: int = 0, end_ms: int = 0) -> list[dict]:
@@ -79,14 +83,12 @@ class WelinkHistory:
         limit = max(1, min(100, int(limit)))
         current_cursor = str(cursor or "")
         scanned_cursors: set[str] = set()
-        total_hint = 0
         for _ in range(50):
             page = self.query_page(group_id, current_cursor, count=limit)
-            total_hint = max(total_hint, int(page.get("total") or 0))
             raw_items = page.get("items") or []
             if not raw_items:
                 return {"items": [], "nextCursor": "", "hasMore": False,
-                        "totalHint": total_hint}
+                        "totalHint": 0}
 
             times = [int(raw.get("serverSendTime") or 0) for raw in raw_items
                      if int(raw.get("serverSendTime") or 0)]
@@ -113,7 +115,7 @@ class WelinkHistory:
                     reverse=True,
                 )
                 return {"items": items, "nextCursor": next_cursor if has_more else "",
-                        "hasMore": has_more, "totalHint": total_hint}
+                        "hasMore": has_more, "totalHint": 0}
 
             scanned_cursors.add(next_cursor)
             current_cursor = next_cursor

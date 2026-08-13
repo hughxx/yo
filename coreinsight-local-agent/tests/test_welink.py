@@ -15,6 +15,16 @@ def message(message_id: int, timestamp: int):
 
 
 class WelinkHistoryTests(unittest.TestCase):
+    def test_older_page_uses_direction_zero(self):
+        history = WelinkHistory()
+        with patch.object(history, "_run", return_value={
+            "respData": {"chatInfo": [], "msgTotalCount": 0}
+        }) as run:
+            history.query_page("g1", "89325998832806069", count=2)
+        args = run.call_args.args[0]
+        self.assertEqual("0", args[args.index("--query-direction") + 1])
+        self.assertEqual("89325998832806069", args[args.index("--message-id") + 1])
+
     def test_pages_backwards_and_filters_range(self):
         first = [message(value, value * 1000) for value in range(200, 100, -1)]
         second = [message(101, 101000), message(100, 100000), message(99, 99000)]

@@ -67,4 +67,6 @@ class MessagePage(BaseModel):
     items: list[PreviewMessage]
     nextCursor: str = ""
     hasMore: bool = False
+    # Kept for protocol compatibility. WeLink's msgTotalCount is only the
+    # current page size, so the agent cannot provide a history total here.
     totalHint: int = 0
