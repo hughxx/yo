@@ -295,27 +295,49 @@ class LocalExperienceProcessor:
             return [], []
         fenced = re.search(r"```(?:json|jsonl)?\s*([\s\S]*?)\s*```", raw)
         raw = fenced.group(1).strip() if fenced else raw
-        lines = [line.strip() for line in raw.splitlines() if line.strip()]
-        records = []
-        for line_number, line in enumerate(lines, 1):
-            try:
-                result = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise RuntimeError(
-                    f"Skill 输出第 {line_number} 行不是合法的单行 JSON") from exc
+        values = self._decode_json_values(raw)
+        records: list[dict] = []
+        for value in values:
+            if isinstance(value, list):
+                records.extend(value)
+            elif isinstance(value, dict) and isinstance(value.get("experiences"), list):
+                records.extend(value["experiences"])
+            else:
+                records.append(value)
+        normalized_lines = []
+        for record_number, result in enumerate(records, 1):
             if not isinstance(result, dict):
-                raise RuntimeError(f"Skill 输出第 {line_number} 行必须是 JSON 对象")
+                raise RuntimeError(f"Skill 输出第 {record_number} 条经验必须是 JSON 对象")
             doc_id = str(result.get("doc_id") or "").strip()
             required = ("title", "summary", "experience", "rag_search_text")
             if not doc_id and any(not isinstance(result.get(key), str) or
                                   not result.get(key).strip() for key in required):
                 raise RuntimeError(
-                    f"Skill 新建经验第 {line_number} 行必须包含四个非空字符串字段")
+                    f"Skill 新建经验第 {record_number} 条必须包含四个非空字符串字段")
             allowed = required + ("scene_id", "scene", "product", "metadata")
             if doc_id and not any(key in result for key in allowed):
-                raise RuntimeError(f"Skill 更新经验第 {line_number} 行没有可更新字段")
-            records.append(result)
-        return records, lines
+                raise RuntimeError(f"Skill 更新经验第 {record_number} 条没有可更新字段")
+            normalized_lines.append(json.dumps(
+                result, ensure_ascii=False, separators=(",", ":")))
+        return records, normalized_lines
+
+    @staticmethod
+    def _decode_json_values(raw: str) -> list:
+        decoder = json.JSONDecoder()
+        values = []
+        position = 0
+        while position < len(raw):
+            while position < len(raw) and raw[position].isspace():
+                position += 1
+            if position >= len(raw):
+                break
+            try:
+                value, position = decoder.raw_decode(raw, position)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    f"Skill 输出在第 {exc.lineno} 行第 {exc.colno} 列不是合法 JSON") from exc
+            values.append(value)
+        return values
 
     def _push_experience(self, result: dict, upload_by: str) -> str:
         doc_id = str(result.get("doc_id") or "").strip()

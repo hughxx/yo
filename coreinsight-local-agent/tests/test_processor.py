@@ -104,6 +104,27 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual("http://engine/memory/experience/doc/123", put.call_args.args[0])
         self.assertEqual({"user_id": "u1", "summary": "更新"}, put.call_args.kwargs["json"])
 
+    def test_result_parser_accepts_pretty_json_jsonl_and_array(self):
+        processor = self.processor()
+        pretty = json.dumps(RESULT, ensure_ascii=False, indent=2)
+        processor.workspaces.files["output/experiences.jsonl"] = pretty
+        records, lines = processor._read_results("w1", "")
+        self.assertEqual([RESULT], records)
+        self.assertEqual(1, len(lines))
+        self.assertEqual(RESULT, json.loads(lines[0]))
+
+        updated = {"doc_id": "123", "summary": "补充内容"}
+        processor.workspaces.files["output/experiences.jsonl"] = (
+            json.dumps(RESULT, ensure_ascii=False) + "\n" +
+            json.dumps(updated, ensure_ascii=False, indent=2))
+        records, _ = processor._read_results("w1", "")
+        self.assertEqual([RESULT, updated], records)
+
+        processor.workspaces.files["output/experiences.jsonl"] = json.dumps(
+            [RESULT, updated], ensure_ascii=False, indent=2)
+        records, _ = processor._read_results("w1", "")
+        self.assertEqual([RESULT, updated], records)
+
     def test_scheduled_workspace_is_stable_and_is_not_deleted(self):
         processor = self.processor()
         processor.workspaces.files["output/experiences.jsonl"] = ""
