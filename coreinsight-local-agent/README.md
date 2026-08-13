@@ -68,9 +68,12 @@ GET http://127.0.0.1:17831/health
 | PUT | `/welink/group/update` | 更新群组配置 |
 | DELETE | `/welink/group/delete` | 删除群组 |
 | POST | `/welink/message/list` | 获取时间范围内的聊天记录 |
+| POST | `/welink/message/page` | 游标分页预览聊天记录（推荐） |
 
 日期字段接受带时区的 ISO 8601 字符串；不带时区时按本机时区解释。消息查询是阻塞型
-本地操作，FastAPI 会在线程池中执行，不阻塞健康检查。
+本地操作，FastAPI 会在线程池中执行，不阻塞健康检查。`/welink/message/page` 每页最多
+返回 100 条，并返回 `nextCursor`、`hasMore` 和 WeLink 报告的 `totalHint`；前端不应把
+全部聊天正文一次加载进浏览器。
 
 ## 打包方向
 

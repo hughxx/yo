@@ -58,31 +58,67 @@ class WelinkHistory:
         seen_cursors: set[str] = set()
         by_id: dict[str, dict] = {}
         while True:
-            page = self.query_page(group_id, cursor)
-            raw_items = page["items"]
-            if not raw_items:
+            page = self.fetch_page(group_id, start_ms, end_ms, cursor, 100)
+            for item in page["items"]:
+                by_id[item["id"]] = item
+            next_cursor = page["nextCursor"]
+            if not page["hasMore"] or not next_cursor or next_cursor in seen_cursors:
                 break
-            times = []
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+        return sorted(by_id.values(), key=lambda item: (item["timestamp"], item["id"]))
+
+    def fetch_page(self, group_id: str, start_ms: int = 0, end_ms: int = 0,
+                   cursor: str = "", limit: int = 100) -> dict:
+        """Return at most one visible page and a cursor for older messages.
+
+        Pages newer than ``end_ms`` are skipped internally. A short CLI page is not
+        treated as the end: some WeLink versions return fewer rows than requested
+        while still exposing an older ``minMsgId`` cursor.
+        """
+        limit = max(1, min(100, int(limit)))
+        current_cursor = str(cursor or "")
+        scanned_cursors: set[str] = set()
+        total_hint = 0
+        for _ in range(50):
+            page = self.query_page(group_id, current_cursor, count=limit)
+            total_hint = max(total_hint, int(page.get("total") or 0))
+            raw_items = page.get("items") or []
+            if not raw_items:
+                return {"items": [], "nextCursor": "", "hasMore": False,
+                        "totalHint": total_hint}
+
+            times = [int(raw.get("serverSendTime") or 0) for raw in raw_items
+                     if int(raw.get("serverSendTime") or 0)]
+            visible = {}
             for raw in raw_items:
                 message_id = str(raw.get("msgId") or "")
                 timestamp = int(raw.get("serverSendTime") or 0)
-                if timestamp:
-                    times.append(timestamp)
-                if not message_id:
+                # WeLink commonly repeats the cursor row at the page boundary.
+                if not message_id or (current_cursor and message_id == current_cursor):
                     continue
                 if start_ms and timestamp < start_ms:
                     continue
                 if end_ms and timestamp > end_ms:
                     continue
-                by_id[message_id] = self.normalize(raw)
-            if start_ms and times and min(times) < start_ms:
-                break
-            next_cursor = page.get("minMsgId") or self._minimum_id(raw_items)
-            if not next_cursor or next_cursor in seen_cursors or len(raw_items) < 100:
-                break
-            seen_cursors.add(next_cursor)
-            cursor = next_cursor
-        return sorted(by_id.values(), key=lambda item: (item["timestamp"], item["id"]))
+                visible[message_id] = self.normalize(raw)
+
+            crossed_start = bool(start_ms and times and min(times) < start_ms)
+            next_cursor = str(page.get("minMsgId") or self._minimum_id(raw_items))
+            stalled = not next_cursor or next_cursor == current_cursor or next_cursor in scanned_cursors
+            has_more = not crossed_start and not stalled
+            if visible or not has_more:
+                items = sorted(
+                    visible.values(), key=lambda item: (item["timestamp"], item["id"]),
+                    reverse=True,
+                )
+                return {"items": items, "nextCursor": next_cursor if has_more else "",
+                        "hasMore": has_more, "totalHint": total_hint}
+
+            scanned_cursors.add(next_cursor)
+            current_cursor = next_cursor
+
+        raise RuntimeError("连续扫描 50 页仍未到达指定时间范围，请缩小查询范围")
 
     @staticmethod
     def _minimum_id(items: list[dict]) -> str:

@@ -10,7 +10,10 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import Settings, load_settings
-from .models import GroupConfig, GroupCreate, GroupDelete, MessageQuery, PreviewMessage
+from .models import (
+    GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
+    MessageQuery, PreviewMessage,
+)
 from .store import GroupStore
 from .welink import WelinkHistory
 
@@ -104,6 +107,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="startTime 不能晚于 endTime")
         try:
             return history.fetch(group_id, start_ms, end_ms)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.post("/welink/message/page", response_model=MessagePage)
+    def page_messages(payload: MessagePageQuery):
+        group_id = payload.groupId.strip()
+        if not store.get(group_id):
+            raise HTTPException(status_code=404, detail="请先绑定该群组")
+        start_ms = _to_timestamp(payload.startTime, "startTime")
+        end_ms = _to_timestamp(payload.endTime, "endTime")
+        if start_ms and end_ms and start_ms > end_ms:
+            raise HTTPException(status_code=422, detail="startTime 不能晚于 endTime")
+        try:
+            return history.fetch_page(
+                group_id, start_ms, end_ms, payload.cursor, payload.limit
+            )
         except RuntimeError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 

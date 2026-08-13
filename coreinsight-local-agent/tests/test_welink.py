@@ -27,6 +27,30 @@ class WelinkHistoryTests(unittest.TestCase):
         self.assertEqual(["100", "101", "102"], [item["id"] for item in items])
         self.assertEqual("101", query.call_args_list[1].args[1])
 
+    def test_short_page_does_not_mean_end_of_history(self):
+        history = WelinkHistory()
+        with patch.object(history, "query_page", side_effect=[
+            {"items": [message(10, 10000), message(9, 9000)],
+             "minMsgId": "9", "total": 20},
+            {"items": [message(9, 9000), message(8, 8000)],
+             "minMsgId": "8", "total": 20},
+            {"items": [], "minMsgId": "", "total": 20},
+        ]) as query:
+            items = history.fetch("g1")
+        self.assertEqual(["8", "9", "10"], [item["id"] for item in items])
+        self.assertEqual(3, query.call_count)
+
+    def test_page_omits_repeated_cursor_row(self):
+        history = WelinkHistory()
+        with patch.object(history, "query_page", return_value={
+            "items": [message(9, 9000), message(8, 8000)],
+            "minMsgId": "8", "total": 20,
+        }):
+            page = history.fetch_page("g1", cursor="9")
+        self.assertEqual(["8"], [item["id"] for item in page["items"]])
+        self.assertTrue(page["hasMore"])
+        self.assertEqual("8", page["nextCursor"])
+
     def test_normalizes_preview_shape(self):
         item = WelinkHistory.normalize(message(1, 1000))
         self.assertEqual("1", item["id"])

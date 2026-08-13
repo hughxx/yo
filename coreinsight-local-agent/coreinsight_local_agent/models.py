@@ -48,6 +48,11 @@ class MessageQuery(BaseModel):
     endTime: Optional[str] = None
 
 
+class MessagePageQuery(MessageQuery):
+    cursor: str = ""
+    limit: int = Field(default=100, ge=1, le=100)
+
+
 class PreviewMessage(BaseModel):
     id: str
     sender: str
@@ -56,3 +61,10 @@ class PreviewMessage(BaseModel):
     checked: bool = True
     contentType: str = "TEXT_MSG"
     timestamp: int = 0
+
+
+class MessagePage(BaseModel):
+    items: list[PreviewMessage]
+    nextCursor: str = ""
+    hasMore: bool = False
+    totalHint: int = 0
