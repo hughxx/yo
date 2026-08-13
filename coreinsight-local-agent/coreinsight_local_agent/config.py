@@ -33,10 +33,16 @@ class Settings:
     data_dir: Path = _data_dir()
     allowed_origins: tuple[str, ...] = _origins()
     welink_cli: str = os.getenv("COREINSIGHT_WELINK_CLI", "welink-cli").strip() or "welink-cli"
-    cloud_url: str = os.getenv(
-        "COREINSIGHT_CLOUD_URL", "https://coreinsight-beta.rnd.huawei.com/collection"
-    ).strip().rstrip("/")
     upload_by: str = os.getenv("COREINSIGHT_UPLOAD_BY", "").strip()
+    llm_base_url: str = os.getenv("COREINSIGHT_LLM_BASE_URL", "").strip().rstrip("/")
+    llm_api_key: str = os.getenv("COREINSIGHT_LLM_API_KEY", "").strip()
+    llm_model_id: str = os.getenv("COREINSIGHT_LLM_MODEL_ID", "").strip()
+    experience_engine_url: str = os.getenv("COREINSIGHT_EXPERIENCE_ENGINE_URL", "").strip()
+    ocr_url: str = os.getenv("COREINSIGHT_OCR_URL", "").strip()
+    file_server_url: str = os.getenv("COREINSIGHT_FILE_SERVER_URL", "").strip().rstrip("/")
+    rag_pic_public_base: str = os.getenv("COREINSIGHT_RAG_PIC_PUBLIC_BASE", "").strip().rstrip("/")
+    clouddrive_account: str = os.getenv("COREINSIGHT_CLOUDDRIVE_ACCOUNT", "").strip()
+    clouddrive_password: str = os.getenv("COREINSIGHT_CLOUDDRIVE_PASSWORD", "").strip()
 
 
 def load_settings() -> Settings:

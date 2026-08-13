@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .config import Settings, load_settings
 from .extraction import ExtractionRuntime
+from .processor import LocalExperienceProcessor
 from .models import (
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
     ExtractRequest, MessageQuery, PreviewMessage,
@@ -33,7 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     store = GroupStore(settings.data_dir)
     history = WelinkHistory(settings.welink_cli)
-    extraction = ExtractionRuntime(history, store, settings.cloud_url, settings.upload_by)
+    extraction = ExtractionRuntime(history, store, LocalExperienceProcessor(settings), settings.upload_by)
     browser_origins = {
         *settings.allowed_origins,
         f"http://127.0.0.1:{settings.port}",
@@ -145,7 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/welink/extract/status")
     def extract_status():
-        return extraction.refresh_cloud_status()
+        return extraction.status()
 
     @app.post("/welink/extract/cancel")
     def cancel_extract():

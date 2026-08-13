@@ -82,13 +82,10 @@ async def _enrich_with_ocr(markdown: str) -> str:
     return enriched
 
 
-async def _call_llm(markdown: str, prompt_content: str = "") -> dict:
+async def _call_llm(markdown: str) -> dict:
     logger.info("LLM: sending %d chars", len(markdown))
-    system_prompt = _SYSTEM_PROMPT
-    if prompt_content.strip():
-        system_prompt += f"\n\n## 用户补充提取要求\n{prompt_content.strip()}"
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user",   "content": markdown},
     ]
     raw = await chat(messages)
@@ -129,7 +126,6 @@ async def process_chatlog(
     group_id:      str = '',
     is_daily:      bool = False,
     markdown_body: str = '',
-    prompt_content: str = '',
 ) -> None:
     if is_daily:
         try:
@@ -160,7 +156,7 @@ async def process_chatlog(
             return
         markdown = await asyncio.to_thread(replace_um_images, markdown)
         markdown = await _enrich_with_ocr(markdown)
-        result   = await _call_llm(markdown, prompt_content)
+        result   = await _call_llm(markdown)
 
         push_experience(result, upload_by, doc_id)
         _update_status(chat_id, "done")

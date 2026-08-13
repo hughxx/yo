@@ -2,15 +2,16 @@
 
 CoreInsight Local Agent 是运行在用户电脑上的**本地伴生服务**（local companion
 service）。它不是插件，也不是面向用户操作的 CLI：正式域名上的 CoreInsight 前端通过
-HTTP 调用它，由它访问只能在本机使用的 WeLink CLI、Outlook 等能力。
+HTTP 调用它，由它访问只能在本机使用的 WeLink CLI、Outlook 等能力。最终只有一个常驻
+Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI。
 
 当前第一阶段只包含 WeLink 聊天记录：
 
 - 本地保存群组配置；
 - 按时间范围从 `welink-cli` 分页读取群消息；
 - 将消息标准化后返回给浏览器预览；
-- 按 `msgId` 应用全选排除或明确选择，后台分块上传云端并触发直接入库；
-- 展示本地扫描、上传和云端处理状态，支持取消尚未提交云端的任务；
+- 按 `msgId` 应用全选排除或明确选择，原始正文不经浏览器传递；
+- 在 EXE 内生成 Markdown、处理附件/OCR、调用模型并写入经验引擎；
 - 提供健康检查和能力声明。
 
 定时任务和草稿审核尚未接入。前端应先读取 `/capabilities`，不要在能力为 `false` 时
@@ -18,7 +19,7 @@ HTTP 调用它，由它访问只能在本机使用的 WeLink CLI、Outlook 等�
 
 ## 为什么叫 Local Agent
 
-它是云端网页与本机能力之间的长期驻留桥梁，后续还会承载 Outlook、自动更新、托盘和
+它是正式域名网页与本机能力之间的长期驻留桥梁，后续还会承载 Outlook、自动更新、托盘和
 调度。`coreinsight-local-agent` 比 `plugin`、`cli` 或 `desktop-ui` 更准确，也给后续扩展留
 出了空间。
 
@@ -46,8 +47,16 @@ GET http://127.0.0.1:17831/health
 | `COREINSIGHT_AGENT_DATA_DIR` | `%LOCALAPPDATA%/CoreInsight/LocalAgent` | 配置目录 |
 | `COREINSIGHT_ALLOWED_ORIGINS` | beta/正式 CoreInsight 域名 | 逗号分隔的网页来源白名单 |
 | `COREINSIGHT_WELINK_CLI` | `welink-cli` | WeLink CLI 可执行文件名或绝对路径 |
-| `COREINSIGHT_CLOUD_URL` | CoreInsight beta 地址 | 云端 `/api/welink/imports` 所在服务基址 |
-| `COREINSIGHT_UPLOAD_BY` | 空 | 默认上传人工号；正式前端也可随提取请求提供 |
+| `COREINSIGHT_UPLOAD_BY` | 空 | 写入经验引擎的默认用户工号 |
+| `COREINSIGHT_LLM_BASE_URL` | 空 | OpenAI 兼容模型网关基地址 |
+| `COREINSIGHT_LLM_API_KEY` | 空 | 模型网关密钥，仅保存在本机 |
+| `COREINSIGHT_LLM_MODEL_ID` | 空 | 模型 ID |
+| `COREINSIGHT_EXPERIENCE_ENGINE_URL` | 空 | 经验引擎写入接口完整地址 |
+| `COREINSIGHT_OCR_URL` | 空 | OCR 接口完整地址 |
+| `COREINSIGHT_FILE_SERVER_URL` | 空 | 图片上传服务基地址 |
+| `COREINSIGHT_RAG_PIC_PUBLIC_BASE` | 空 | 图片公开访问基地址 |
+| `COREINSIGHT_CLOUDDRIVE_ACCOUNT` | 空 | WeLink 附件下载账号 |
+| `COREINSIGHT_CLOUDDRIVE_PASSWORD` | 空 | WeLink 附件下载密码 |
 
 ## 浏览器接入
 
@@ -73,9 +82,9 @@ GET http://127.0.0.1:17831/health
 | DELETE | `/welink/group/delete` | 删除群组 |
 | POST | `/welink/message/list` | 获取时间范围内的聊天记录 |
 | POST | `/welink/message/page` | 游标分页预览聊天记录（推荐） |
-| POST | `/welink/extract` | 启动后台抓取、msgId 过滤与分块上传 |
-| GET | `/welink/extract/status` | 查询本地扫描、上传和云端处理状态 |
-| POST | `/welink/extract/cancel` | 取消仍在本地扫描或上传的任务 |
+| POST | `/welink/extract` | 本地读取、msgId 过滤、Markdown/OCR、模型提取及入库 |
+| GET | `/welink/extract/status` | 查询本地提取任务状态 |
+| POST | `/welink/extract/cancel` | 请求取消当前任务 |
 
 日期字段接受带时区的 ISO 8601 字符串；不带时区时按本机时区解释。消息查询是阻塞型
 本地操作，FastAPI 会在线程池中执行，不阻塞健康检查。`/welink/message/page` 每页最多

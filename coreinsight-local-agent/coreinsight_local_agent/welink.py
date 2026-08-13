@@ -148,7 +148,7 @@ class WelinkHistory:
             if timestamp else "",
             "content": display,
             # Preview response models remove this internal field. Extraction
-            # keeps it so cloud processing can resolve WeLink UM attachments.
+            # keeps it inside the local EXE so it can resolve WeLink attachments.
             "rawContent": content,
             "checked": True,
             "contentType": content_type,
