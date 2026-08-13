@@ -70,3 +70,17 @@ class MessagePage(BaseModel):
     # Kept for protocol compatibility. WeLink's msgTotalCount is only the
     # current page size, so the agent cannot provide a history total here.
     totalHint: int = 0
+
+
+class MessageSelection(BaseModel):
+    mode: Literal["all", "explicit"] = "all"
+    excludedMessageIds: list[str] = Field(default_factory=list)
+    selectedMessageIds: list[str] = Field(default_factory=list)
+
+
+class ExtractRequest(MessageQuery):
+    extractMethod: Literal["prompt"] = "prompt"
+    extractMode: Literal["direct", "draft"] = "direct"
+    promptContent: str = ""
+    uploadBy: str = ""
+    selection: MessageSelection = Field(default_factory=MessageSelection)

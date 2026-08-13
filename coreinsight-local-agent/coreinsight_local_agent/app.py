@@ -10,9 +10,10 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import Settings, load_settings
+from .extraction import ExtractionRuntime
 from .models import (
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
-    MessageQuery, PreviewMessage,
+    ExtractRequest, MessageQuery, PreviewMessage,
 )
 from .store import GroupStore
 from .welink import WelinkHistory
@@ -32,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     store = GroupStore(settings.data_dir)
     history = WelinkHistory(settings.welink_cli)
+    extraction = ExtractionRuntime(history, store, settings.cloud_url, settings.upload_by)
     browser_origins = {
         *settings.allowed_origins,
         f"http://127.0.0.1:{settings.port}",
@@ -69,7 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "welinkGroupManagement": True,
             "welinkMessagePreview": True,
-            "welinkExtraction": False,
+            "welinkExtraction": True,
             "welinkScheduling": False,
         }
 
@@ -127,6 +129,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except RuntimeError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.post("/welink/extract", status_code=202)
+    def start_extract(payload: ExtractRequest):
+        start_ms = _to_timestamp(payload.startTime, "startTime")
+        end_ms = _to_timestamp(payload.endTime, "endTime")
+        if start_ms and end_ms and start_ms > end_ms:
+            raise HTTPException(status_code=422, detail="startTime 不能晚于 endTime")
+        try:
+            return extraction.start(payload, start_ms, end_ms)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/welink/extract/status")
+    def extract_status():
+        return extraction.refresh_cloud_status()
+
+    @app.post("/welink/extract/cancel")
+    def cancel_extract():
+        return extraction.cancel()
 
     @app.get("/", include_in_schema=False)
     def demo_redirect():

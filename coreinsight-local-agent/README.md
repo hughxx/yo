@@ -9,10 +9,12 @@ HTTP 调用它，由它访问只能在本机使用的 WeLink CLI、Outlook 等�
 - 本地保存群组配置；
 - 按时间范围从 `welink-cli` 分页读取群消息；
 - 将消息标准化后返回给浏览器预览；
+- 按 `msgId` 应用全选排除或明确选择，后台分块上传云端并触发直接入库；
+- 展示本地扫描、上传和云端处理状态，支持取消尚未提交云端的任务；
 - 提供健康检查和能力声明。
 
-提取入库和定时任务尚未接入。前端应先读取 `/capabilities`，不要在能力为 `false` 时
-展示可执行状态。
+定时任务和草稿审核尚未接入。前端应先读取 `/capabilities`，不要在能力为 `false` 时
+展示可执行状态；当前提取仅支持 `extractMode=direct`。
 
 ## 为什么叫 Local Agent
 
@@ -44,6 +46,8 @@ GET http://127.0.0.1:17831/health
 | `COREINSIGHT_AGENT_DATA_DIR` | `%LOCALAPPDATA%/CoreInsight/LocalAgent` | 配置目录 |
 | `COREINSIGHT_ALLOWED_ORIGINS` | beta/正式 CoreInsight 域名 | 逗号分隔的网页来源白名单 |
 | `COREINSIGHT_WELINK_CLI` | `welink-cli` | WeLink CLI 可执行文件名或绝对路径 |
+| `COREINSIGHT_CLOUD_URL` | CoreInsight beta 地址 | 云端 `/api/welink/imports` 所在服务基址 |
+| `COREINSIGHT_UPLOAD_BY` | 空 | 默认上传人工号；正式前端也可随提取请求提供 |
 
 ## 浏览器接入
 
@@ -69,6 +73,9 @@ GET http://127.0.0.1:17831/health
 | DELETE | `/welink/group/delete` | 删除群组 |
 | POST | `/welink/message/list` | 获取时间范围内的聊天记录 |
 | POST | `/welink/message/page` | 游标分页预览聊天记录（推荐） |
+| POST | `/welink/extract` | 启动后台抓取、msgId 过滤与分块上传 |
+| GET | `/welink/extract/status` | 查询本地扫描、上传和云端处理状态 |
+| POST | `/welink/extract/cancel` | 取消仍在本地扫描或上传的任务 |
 
 日期字段接受带时区的 ISO 8601 字符串；不带时区时按本机时区解释。消息查询是阻塞型
 本地操作，FastAPI 会在线程池中执行，不阻塞健康检查。`/welink/message/page` 每页最多

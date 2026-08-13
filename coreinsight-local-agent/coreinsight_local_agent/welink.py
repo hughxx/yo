@@ -147,6 +147,9 @@ class WelinkHistory:
             "time": datetime.fromtimestamp(timestamp / 1000, timezone.utc).astimezone().isoformat(timespec="seconds")
             if timestamp else "",
             "content": display,
+            # Preview response models remove this internal field. Extraction
+            # keeps it so cloud processing can resolve WeLink UM attachments.
+            "rawContent": content,
             "checked": True,
             "contentType": content_type,
             "timestamp": timestamp,

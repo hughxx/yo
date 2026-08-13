@@ -66,6 +66,7 @@ class WelinkHistoryTests(unittest.TestCase):
         self.assertEqual("1", item["id"])
         self.assertTrue(item["checked"])
         self.assertEqual("message-1", item["content"])
+        self.assertEqual("message-1", item["rawContent"])
 
 
 if __name__ == "__main__":

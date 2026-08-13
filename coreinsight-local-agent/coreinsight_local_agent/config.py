@@ -33,6 +33,10 @@ class Settings:
     data_dir: Path = _data_dir()
     allowed_origins: tuple[str, ...] = _origins()
     welink_cli: str = os.getenv("COREINSIGHT_WELINK_CLI", "welink-cli").strip() or "welink-cli"
+    cloud_url: str = os.getenv(
+        "COREINSIGHT_CLOUD_URL", "https://coreinsight-beta.rnd.huawei.com/collection"
+    ).strip().rstrip("/")
+    upload_by: str = os.getenv("COREINSIGHT_UPLOAD_BY", "").strip()
 
 
 def load_settings() -> Settings:
