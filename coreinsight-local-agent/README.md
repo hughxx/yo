@@ -50,9 +50,9 @@ GET http://127.0.0.1:17831/health
 | `COREINSIGHT_ALLOWED_ORIGINS` | beta/正式 CoreInsight 域名 | 逗号分隔的网页来源白名单 |
 | `COREINSIGHT_WELINK_CLI` | `welink-cli` | WeLink CLI 可执行文件名或绝对路径 |
 | `COREINSIGHT_UPLOAD_BY` | 空 | 兼容旧调用的默认用户工号；正式调用由前端在请求中传 `uploadBy` |
-| `COREINSIGHT_HERMES_URL` | `http://7.183.107.92:30864` | Hermes Remote Agent 网关 |
+| `COREINSIGHT_HERMES_URL` | `http://7.183.107.92:31454` | Hermes Remote Agent 网关 |
 | `COREINSIGHT_HERMES_API_KEY` | 内部开发 Key | Hermes Bearer Token |
-| `COREINSIGHT_WORKSPACE_FILE_SERVER_URL` | `http://7.183.107.92:31454` | 共享 workspace 文件服务 |
+| `COREINSIGHT_WORKSPACE_FILE_SERVER_URL` | `http://7.183.107.92:30864` | 共享 workspace 文件服务 |
 | `COREINSIGHT_HERMES_TIMEOUT_SECONDS` | `1800` | 单次 Skill 最长等待时间 |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
 | `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |

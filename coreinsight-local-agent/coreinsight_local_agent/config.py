@@ -35,13 +35,13 @@ class Settings:
     welink_cli: str = os.getenv("COREINSIGHT_WELINK_CLI", "welink-cli").strip() or "welink-cli"
     upload_by: str = os.getenv("COREINSIGHT_UPLOAD_BY", "").strip()
     hermes_url: str = os.getenv(
-        "COREINSIGHT_HERMES_URL", "http://7.183.107.92:30864"
+        "COREINSIGHT_HERMES_URL", "http://7.183.107.92:31454"
     ).strip().rstrip("/")
     hermes_api_key: str = os.getenv(
         "COREINSIGHT_HERMES_API_KEY", "hermes-internal-dev-key"
     ).strip()
     workspace_file_server_url: str = os.getenv(
-        "COREINSIGHT_WORKSPACE_FILE_SERVER_URL", "http://7.183.107.92:31454"
+        "COREINSIGHT_WORKSPACE_FILE_SERVER_URL", "http://7.183.107.92:30864"
     ).strip().rstrip("/")
     experience_engine_url: str = os.getenv(
         "COREINSIGHT_EXPERIENCE_ENGINE_URL", "https://fuyao.rnd.huawei.com"
