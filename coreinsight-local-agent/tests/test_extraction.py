@@ -36,7 +36,7 @@ class ExtractionRuntimeTests(unittest.TestCase):
             processor = FakeProcessor()
             runtime = ExtractionRuntime(FakeHistory(), groups, processor, 'u1')
             payload = ExtractRequest(
-                groupId='g1', skillId='welink-experience-extractor',
+                groupId='g1', uploadBy='u1', skillId='welink-experience-extractor',
                 selection={'mode': 'all', 'excludedMessageIds': ['2']})
             runtime.start(payload, 0, 10)
             for _ in range(100):

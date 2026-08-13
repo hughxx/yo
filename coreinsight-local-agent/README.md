@@ -49,7 +49,7 @@ GET http://127.0.0.1:17831/health
 | `COREINSIGHT_AGENT_DATA_DIR` | `%LOCALAPPDATA%/CoreInsight/LocalAgent` | 配置目录 |
 | `COREINSIGHT_ALLOWED_ORIGINS` | beta/正式 CoreInsight 域名 | 逗号分隔的网页来源白名单 |
 | `COREINSIGHT_WELINK_CLI` | `welink-cli` | WeLink CLI 可执行文件名或绝对路径 |
-| `COREINSIGHT_UPLOAD_BY` | 空 | 写入经验引擎的默认用户工号 |
+| `COREINSIGHT_UPLOAD_BY` | 空 | 兼容旧调用的默认用户工号；正式调用由前端在请求中传 `uploadBy` |
 | `COREINSIGHT_HERMES_URL` | `http://7.183.107.92:30864` | Hermes Remote Agent 网关 |
 | `COREINSIGHT_HERMES_API_KEY` | 内部开发 Key | Hermes Bearer Token |
 | `COREINSIGHT_WORKSPACE_FILE_SERVER_URL` | `http://7.183.107.92:31454` | 共享 workspace 文件服务 |

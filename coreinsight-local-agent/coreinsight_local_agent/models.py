@@ -29,6 +29,7 @@ class GroupConfig(GroupBase):
     status: Literal["idle", "extracting", "scheduled"] = "idle"
     extractMode: Literal["direct", "draft"] = "direct"
     skillId: str = "welink-experience-extractor"
+    uploadBy: str = ""
     startTime: str = ""
     endTime: str = ""
     quickRange: Literal["all", "7d", "3d", "2d", "today", "custom"] = "7d"
@@ -85,12 +86,13 @@ class MessageSelection(BaseModel):
 class ExtractRequest(MessageQuery):
     skillId: str = "welink-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
-    uploadBy: str = ""
+    uploadBy: str = Field(min_length=1)
     selection: MessageSelection = Field(default_factory=MessageSelection)
 
 
 class ScheduleSetRequest(BaseModel):
     groupId: str = Field(min_length=1)
+    uploadBy: str = Field(min_length=1)
     skillId: str = "welink-experience-extractor"
     extractMode: Literal["direct"] = "direct"
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"

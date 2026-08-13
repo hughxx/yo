@@ -43,7 +43,8 @@ class SchedulerTests(unittest.TestCase):
     def test_daily_schedule_runs_incrementally_and_advances_after_success(self):
         now = datetime.fromisoformat("2026-08-13T08:00:00+08:00")
         saved = self.runtime.set(ScheduleSetRequest(
-            groupId="g1", scheduleFreq="daily", scheduleTime="09:00:00"), now)
+            groupId="g1", uploadBy="u1", scheduleFreq="daily",
+            scheduleTime="09:00:00"), now)
         self.assertEqual("2026-08-13T09:00:00+08:00", saved.scheduleNextRun)
 
         due = datetime.fromisoformat("2026-08-13T09:00:01+08:00")
