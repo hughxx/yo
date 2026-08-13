@@ -4,3 +4,7 @@ __pycache__/
 build/
 dist/
 *.spec
+!coreinsight-local-toolkit.spec
+.build-venv/
+.pyinstaller-cache/
+.pip-cache/

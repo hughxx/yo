@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import re
 import threading
 import uuid
@@ -18,6 +19,7 @@ from .skills import get_skill
 
 _UM_RE = re.compile(r"/:um_begin\{([^}]+)\}/:um_end")
 _CHUNK_SIZE = 40_000
+logger = logging.getLogger(__name__)
 
 
 class ExtractionCancelled(RuntimeError):
@@ -62,6 +64,9 @@ class LocalExperienceProcessor:
             "nextChunkSeq": 1, "outputLineOffset": 0}
         first_sequence = int(state.get("nextChunkSeq") or 1)
         run_id = ""
+        logger.info(
+            "workspace start task_id=%s workspace_id=%s scheduled=%s messages=%d skill=%s",
+            task_id, workspace_id, scheduled, len(messages), skill_id)
         self.workspaces.create(workspace_id)
         try:
             if progress:
@@ -73,6 +78,7 @@ class LocalExperienceProcessor:
                 path = self._chunk_path(sequence, chunk)
                 self.workspaces.write_text(workspace_id, path, chunk["content"])
                 input_paths.append(path)
+            logger.info("workspace prepared task_id=%s chunks=%d", task_id, len(chunks))
             self.workspaces.write_text(
                 workspace_id, f"skills/{skill_id}/SKILL.md", skill["content"])
             self._check_cancel(cancel_event)
@@ -80,6 +86,7 @@ class LocalExperienceProcessor:
                 progress("skill", f"正在运行 Skill：{skill['name']}")
             run_id = self.hermes.submit(
                 workspace_id, session_id, skill_id, input_paths, scheduled)
+            logger.info("hermes submitted task_id=%s run_id=%s", task_id, run_id)
             run_finished = threading.Event()
             if cancel_event is not None:
                 threading.Thread(
@@ -104,12 +111,16 @@ class LocalExperienceProcessor:
             for index in range(output_offset, len(records)):
                 self._check_cancel(cancel_event)
                 record = records[index]
+                operation = "update" if record.get("doc_id") else "create"
                 doc_id = self._push_experience(record, upload_by)
                 record["doc_id"] = doc_id
                 raw_lines[index] = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
                 self.workspaces.write_text(
                     workspace_id, "output/experiences.jsonl", "\n".join(raw_lines) + "\n")
                 pushed.append({"docId": doc_id, "title": str(record.get("title") or "")})
+                logger.info(
+                    "experience pushed task_id=%s run_id=%s doc_id=%s operation=%s",
+                    task_id, run_id, doc_id, operation)
                 if scheduled:
                     state["outputLineOffset"] = index + 1
                     self._save_workspace_state(workspace_id, state)
@@ -117,6 +128,27 @@ class LocalExperienceProcessor:
                 state["nextChunkSeq"] = first_sequence + len(chunks)
                 state["outputLineOffset"] = len(records)
                 self._save_workspace_state(workspace_id, state)
+                compacted = self._latest_experience_versions(records)
+                # Lowering the local offset before rewriting the remote file is
+                # retry-safe: a crash can only repeat PUT updates for known doc_ids.
+                state["outputLineOffset"] = len(compacted)
+                self._save_workspace_state(workspace_id, state)
+                compacted_text = "\n".join(json.dumps(
+                    record, ensure_ascii=False, separators=(",", ":"))
+                    for record in compacted)
+                self.workspaces.write_text(
+                    workspace_id, "output/experiences.jsonl",
+                    compacted_text + ("\n" if compacted_text else ""))
+                for path in input_paths:
+                    try:
+                        self.workspaces.delete_path(workspace_id, path)
+                    except Exception:
+                        logger.warning(
+                            "workspace input cleanup failed workspace_id=%s path=%s",
+                            workspace_id, path, exc_info=True)
+                logger.info(
+                    "scheduled workspace compacted workspace_id=%s experiences=%d removed_inputs=%d",
+                    workspace_id, len(compacted), len(input_paths))
             return {"docId": pushed[0]["docId"] if pushed else "",
                     "docIds": [item["docId"] for item in pushed],
                     "title": pushed[0]["title"] if pushed else "",
@@ -127,6 +159,7 @@ class LocalExperienceProcessor:
                 self.hermes.stop(run_id)
             if not scheduled:
                 self.workspaces.delete(workspace_id)
+                logger.info("manual workspace cleanup requested workspace_id=%s", workspace_id)
 
     @staticmethod
     def _workspace_id(task_id: str, group_id: str, skill_id: str,
@@ -163,6 +196,19 @@ class LocalExperienceProcessor:
             temporary.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
             temporary.replace(self._state_path)
+
+    @staticmethod
+    def _latest_experience_versions(records: list[dict]) -> list[dict]:
+        latest: dict[str, tuple[int, dict]] = {}
+        without_id: list[tuple[int, dict]] = []
+        for index, record in enumerate(records):
+            doc_id = str(record.get("doc_id") or "").strip()
+            if doc_id:
+                latest[doc_id] = (index, record)
+            else:
+                without_id.append((index, record))
+        return [record for _, record in sorted(
+            [*latest.values(), *without_id], key=lambda value: value[0])]
 
     def _watch_cancel(self, run_id: str, cancel_event, run_finished) -> None:
         while not run_finished.wait(0.2):

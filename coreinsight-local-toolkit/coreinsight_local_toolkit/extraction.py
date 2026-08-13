@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import uuid
 
@@ -7,6 +8,9 @@ from .models import ExtractRequest
 from .processor import ExtractionCancelled, LocalExperienceProcessor
 from .store import GroupStore
 from .welink import WelinkHistory
+
+
+logger = logging.getLogger(__name__)
 
 
 class ExtractionRuntime:
@@ -48,6 +52,9 @@ class ExtractionRuntime:
                           "error": "", "docId": "", "title": ""}
             self._cancel.clear()
         self.groups.set_status(payload.groupId, "extracting")
+        logger.info(
+            "extraction started task_id=%s group_id=%s scheduled=%s range=%d..%d skill=%s",
+            task_id, payload.groupId, scheduled, start_ms, end_ms, payload.skillId)
         threading.Thread(
             target=self._run,
             args=(payload, start_ms, end_ms, task_id, upload_by, scheduled, on_complete),
@@ -81,10 +88,14 @@ class ExtractionRuntime:
                 if payload.selection.mode == "explicit" and explicit and len(messages) >= len(explicit): break
                 if not page["hasMore"] or not next_cursor or next_cursor in seen_cursors: break
                 seen_cursors.add(next_cursor); cursor = next_cursor
+            logger.info(
+                "messages fetched task_id=%s scanned=%d selected=%d",
+                task_id, scanned, len(messages))
             if not messages and scheduled:
                 self._restore_group_status(payload.groupId)
                 if on_complete: on_complete(True, end_ms, {})
                 self._set(running=False, status="done", message="本次没有新增消息")
+                logger.info("scheduled extraction empty task_id=%s", task_id)
                 return
             if not messages: raise RuntimeError("所选范围内没有可提取的消息")
             if self._cancel.is_set():
@@ -96,9 +107,14 @@ class ExtractionRuntime:
             self._restore_group_status(payload.groupId)
             if on_complete: on_complete(True, end_ms, result)
             self._set(running=False, status="done", message="经验提取并入库完成", **result)
+            logger.info(
+                "extraction completed task_id=%s run_id=%s experiences=%s",
+                task_id, result.get("remoteRunId", ""), result.get("experienceCount", 0))
         except ExtractionCancelled:
+            logger.info("extraction cancelled task_id=%s", task_id)
             self._cancelled(payload.groupId)
         except Exception as exc:
+            logger.exception("extraction failed task_id=%s group_id=%s", task_id, payload.groupId)
             self._restore_group_status(payload.groupId)
             if on_complete: on_complete(False, end_ms, {"error": str(exc)})
             self._set(running=False, status="failed", error=str(exc), message="提取任务失败")

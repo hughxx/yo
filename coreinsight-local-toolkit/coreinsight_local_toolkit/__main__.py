@@ -1,4 +1,8 @@
 import logging
+import os
+import shutil
+import sys
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -29,10 +33,45 @@ def configure_logging(data_dir: Path) -> Path:
     return log_path
 
 
+def cleanup_stale_runtime(data_dir: Path, max_age_seconds: int = 86_400) -> int:
+    runtime_dir = data_dir / "runtime"
+    if not runtime_dir.is_dir():
+        return 0
+    active = Path(getattr(sys, "_MEIPASS", "")).resolve() \
+        if getattr(sys, "_MEIPASS", "") else None
+    cutoff = time.time() - max_age_seconds
+    removed = 0
+    for candidate in runtime_dir.glob("_MEI*"):
+        try:
+            if active and candidate.resolve() == active:
+                continue
+            if candidate.is_dir() and candidate.stat().st_mtime < cutoff:
+                shutil.rmtree(candidate)
+                removed += 1
+        except OSError:
+            logging.getLogger(__name__).warning(
+                "stale runtime cleanup failed path=%s", candidate, exc_info=True)
+    return removed
+
+
 def main() -> None:
     settings = load_settings()
     log_path = configure_logging(settings.data_dir)
     logging.getLogger(__name__).info("CoreInsight Local Toolkit starting; log=%s", log_path)
+    removed = cleanup_stale_runtime(settings.data_dir)
+    if removed:
+        logging.getLogger(__name__).info("removed stale runtime directories count=%d", removed)
+    if os.name == "nt" and settings.tray_enabled:
+        try:
+            from .desktop import run_desktop
+            run_desktop(settings)
+            return
+        except ImportError:
+            logging.getLogger(__name__).warning(
+                "desktop dependencies unavailable; running without desktop host", exc_info=True)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "desktop host startup failed; running without desktop host")
     uvicorn.run(
         create_app(settings), host=settings.host, port=settings.port,
         log_level="info", log_config=None)

@@ -59,6 +59,21 @@ class Settings:
     clouddrive_account: str = os.getenv("COREINSIGHT_CLOUDDRIVE_ACCOUNT", "").strip()
     clouddrive_password: str = os.getenv("COREINSIGHT_CLOUDDRIVE_PASSWORD", "").strip()
     hermes_timeout_seconds: int = 1800
+    portal_url: str = os.getenv(
+        "COREINSIGHT_PORTAL_URL", "https://coreinsight.rnd.huawei.com"
+    ).strip()
+    email_url: str = os.getenv("COREINSIGHT_EMAIL_URL", "").strip()
+    chat_url: str = os.getenv("COREINSIGHT_CHAT_URL", "").strip()
+    update_config_url: str = os.getenv(
+        "COREINSIGHT_UPDATE_CONFIG_URL",
+        "https://fuyao.rnd.huawei.com/dataengineering/rag-knowledge-config/selectConfigByKey",
+    ).strip()
+    update_config_key: str = os.getenv(
+        "COREINSIGHT_UPDATE_CONFIG_KEY", "coreinsight_local_toolkit_release"
+    ).strip()
+    tray_enabled: bool = os.getenv(
+        "COREINSIGHT_TRAY_ENABLED", "1"
+    ).strip().lower() not in {"0", "false", "no"}
 
 
 def load_settings() -> Settings:

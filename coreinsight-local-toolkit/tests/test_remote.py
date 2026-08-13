@@ -19,6 +19,18 @@ class RemoteClientsTests(unittest.TestCase):
                          request.call_args.kwargs["json"])
         response.raise_for_status.assert_called_once()
 
+    def test_workspace_deletes_single_path(self):
+        response = Mock(content=b'{}')
+        response.json.return_value = {"ok": True}
+        client = WorkspaceClient("http://files")
+        client.session.request = Mock(return_value=response)
+        client.delete_path("w1", "input/000001.md")
+        request = client.session.request
+        method, url = request.call_args.args
+        self.assertEqual("delete", method)
+        self.assertEqual("http://files/api/workspaces/w1/path", url)
+        self.assertEqual({"path": "input/000001.md"}, request.call_args.kwargs["params"])
+
     def test_hermes_submit_uses_workspace_skill(self):
         response = Mock(content=b'{}')
         response.json.return_value = {"run_id": "run-1"}

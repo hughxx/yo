@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -20,6 +21,7 @@ from .models import (
 from .scheduler import ScheduleRuntime
 from .skills import available_skills
 from .store import GroupStore
+from .updates import check_for_update
 from .welink import WelinkHistory
 
 
@@ -80,6 +82,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "welinkScheduling": True,
             "welinkSkillExtraction": True,
         }
+
+    @app.get("/version")
+    def version():
+        return {"version": __version__,
+                "updateConfigured": bool(settings.update_config_url and settings.update_config_key),
+                "updateConfigKey": settings.update_config_key}
+
+    @app.post("/update/check")
+    def update_check():
+        try:
+            return check_for_update(settings).to_dict()
+        except (ValueError, requests.RequestException) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @app.get("/welink/skill/list")
     def list_skills():
@@ -206,6 +221,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.mount("/demo", StaticFiles(directory=web_dir, html=True), name="demo")
 
     return app
-
-
-app = create_app()

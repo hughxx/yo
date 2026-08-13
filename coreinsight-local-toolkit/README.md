@@ -41,7 +41,8 @@ GET http://127.0.0.1:17831/health
 
 本地配置和运行数据默认写入 `D:\CoreInsight\LocalToolkit`，滚动日志位于
 `D:\CoreInsight\LocalToolkit\logs\toolkit.log`（单文件 5 MB，保留 5 个备份）。日志不记录
-完整聊天正文、密码或 API Key。
+完整聊天正文、密码或 API Key。提取日志包含 taskId、群组、消息计数、Hermes runId、经验
+docId、入库结果和异常堆栈。
 
 演示前端直接访问 `http://127.0.0.1:17831/demo/`，不需要另外启动 Node 服务。
 
@@ -59,6 +60,12 @@ GET http://127.0.0.1:17831/health
 | `COREINSIGHT_HERMES_API_KEY` | 内部开发 Key | Hermes Bearer Token |
 | `COREINSIGHT_WORKSPACE_FILE_SERVER_URL` | `http://7.183.107.92:30864` | 共享 workspace 文件服务 |
 | `COREINSIGHT_HERMES_TIMEOUT_SECONDS` | `1800` | 单次 Skill 最长等待时间 |
+| `COREINSIGHT_PORTAL_URL` | `https://coreinsight.rnd.huawei.com` | 悬浮图标“云见主页”的地址 |
+| `COREINSIGHT_EMAIL_URL` | 同云见主页 | “邮件提取”的正式前端地址 |
+| `COREINSIGHT_CHAT_URL` | `http://127.0.0.1:17831/demo/` | “聊天记录提取”的前端地址 |
+| `COREINSIGHT_TRAY_ENABLED` | `1` | Windows 托盘；设为 `0` 可用于无桌面调试 |
+| `COREINSIGHT_UPDATE_CONFIG_URL` | Fuyao `selectConfigByKey` | 配置中心查询接口 |
+| `COREINSIGHT_UPDATE_CONFIG_KEY` | `coreinsight_local_toolkit_release` | 版本配置 key；任一项为空时关闭检查 |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
 | `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |
 | `COREINSIGHT_FILE_SERVER_URL` | `http://7.224.100.105:32169` | 永久图片上传服务 |
@@ -84,6 +91,8 @@ GET http://127.0.0.1:17831/health
 |---|---|---|
 | GET | `/health` | 存活状态 |
 | GET | `/capabilities` | 当前可用能力 |
+| GET | `/version` | 当前版本与版本检查配置状态 |
+| POST | `/update/check` | 按 HTTPS 清单检查新版本，不自动下载安装 |
 | GET | `/welink/skill/list` | 用户可选择的提取 Skill |
 | GET | `/welink/group/list` | 群组列表 |
 | POST | `/welink/group/add` | 添加群组 |
@@ -113,7 +122,9 @@ workspace 里只有一个结果文件 `output/experiences.jsonl`，每行是一�
 不带 `doc_id`，Local Toolkit 通过 POST 新建并将接口返回的真实 `doc_id` 写回该行；后续聊天
 补充同一经验时，Skill 使用原 `doc_id` 追加合并后的新版本，Local Toolkit 通过 PUT 部分更新。
 每个定时 workspace 的下一个分片序号和已入库行号仅在本机持久化，失败不会越过未成功的
-输入或输出。
+输入或输出。定时批次成功后会删除本轮输入 Markdown，并把 `experiences.jsonl` 压缩为每个
+`doc_id` 的最新完整版本；失败时保留输入供重试。该清理依赖 file-server 的
+`DELETE /api/workspaces/{workspace_id}/path` 接口。
 
 图片在进入 workspace 前已经上传到永久图片服务，Markdown 中是
 `![OCR结果](公开URL)`，Skill 必须在最终经验中原样保留 OCR alt 文本和 URL。删除手动
@@ -121,8 +132,42 @@ workspace 不会删除已经进入经验正文的永久图片。
 
 取消任务时 EXE 会调用 Hermes stop 接口，并保证不会继续写入经验引擎。
 
-## 打包方向
+## 桌面悬浮图标、托盘与版本检查
 
-最终可用 PyInstaller 打成无控制台窗口的单文件 exe，并由登录启动项或 Windows 服务
-负责常驻。首阶段开发时保留控制台，便于定位 `welink-cli` 登录态和跨域问题；无需再做
-完整桌面 UI，最多保留托盘菜单（状态、打开网页、退出）。
+Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色悬浮图标。图标可拖动，
+左键打开云见主页；右键菜单包含云见主页、邮件提取、聊天记录提取、关于、隐藏和退出。
+隐藏只收起悬浮图标，本地服务继续运行，可从系统托盘的“显示悬浮图标”恢复。系统托盘还
+提供日志目录和版本检查入口。
+
+启动后会自动检查一次版本。Toolkit 调用配置中心
+`selectConfigByKey?key=coreinsight_local_toolkit_release`，并将返回的 `data.configVal` 解析为：
+
+```json
+{
+  "enabled": true,
+  "latestVersion": "0.3.0",
+  "minimumSupportedVersion": "0.2.0",
+  "forceUpdate": false,
+  "downloadUrl": "https://example.com/coreinsight-local-toolkit.exe",
+  "sha256": "64位十六进制SHA-256",
+  "releaseNotes": ["更新说明第一条", "更新说明第二条"]
+}
+```
+
+当前版本低于 `minimumSupportedVersion` 时强制更新；或者 `forceUpdate=true` 且当前版本低于
+`latestVersion` 时强制更新。其余版本差异仅提示普通更新。仅当发现新版本时才要求 HTTPS
+下载地址及合法 SHA-256。当前阶段只检查并提示，不下载或执行更新包；正式自动升级还需要
+发布端提供签名方案。
+
+## 打包
+
+在 PowerShell 中执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+脚本在项目 D 盘目录创建隔离的 `.build-venv` 和 `.pyinstaller-cache`，产物为
+`dist\coreinsight-local-toolkit.exe`。这是无控制台、带桌面悬浮图标和托盘的单文件 exe；
+运行时解压目录固定
+为 `D:\CoreInsight\LocalToolkit\runtime`，不会使用用户 C 盘 `%TEMP%`。

@@ -17,6 +17,7 @@ class FakeWorkspaces:
     def __init__(self):
         self.files = {}
         self.deleted = []
+        self.deleted_paths = []
 
     def create(self, workspace_id):
         self.workspace_id = workspace_id
@@ -33,6 +34,10 @@ class FakeWorkspaces:
 
     def delete(self, workspace_id):
         self.deleted.append(workspace_id)
+
+    def delete_path(self, workspace_id, path):
+        self.deleted_paths.append((workspace_id, path))
+        self.files.pop(path, None)
 
 
 class FakeHermes:
@@ -138,6 +143,18 @@ class ProcessorTests(unittest.TestCase):
             "another-task", "g1", "welink-experience-extractor", "u1", True)
         self.assertEqual(expected, result["workspaceId"])
         self.assertEqual([], processor.workspaces.deleted)
+        self.assertEqual(1, len(processor.workspaces.deleted_paths))
+
+    def test_compaction_keeps_latest_version_per_doc_id(self):
+        records = [
+            {"doc_id": "1", "summary": "old"},
+            {"doc_id": "2", "summary": "only"},
+            {"doc_id": "1", "summary": "new"},
+        ]
+        self.assertEqual(
+            [{"doc_id": "2", "summary": "only"},
+             {"doc_id": "1", "summary": "new"}],
+            LocalExperienceProcessor._latest_experience_versions(records))
 
     def test_cancel_is_checked_before_workspace_creation(self):
         event = threading.Event(); event.set()

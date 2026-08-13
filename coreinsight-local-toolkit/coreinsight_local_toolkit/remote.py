@@ -24,6 +24,10 @@ class WorkspaceClient:
                              params={"path": path})
         return str(data.get("content") or "")
 
+    def delete_path(self, workspace_id: str, path: str) -> None:
+        self._request("delete", f"/api/workspaces/{workspace_id}/path",
+                      params={"path": path}, timeout=30)
+
     def delete(self, workspace_id: str) -> None:
         try:
             self._request("delete", f"/api/workspaces/{workspace_id}", timeout=30)
@@ -55,7 +59,7 @@ class HermesClient:
         prompt = (
             f"使用 `{skill_id}` Skill 执行本次 WeLink {run_kind}经验提取。"
             f"本轮新增输入文件为：{path_text}。"
-            "按文件名顺序读取；需要合并时可参考 workspace 内更早的输入和已有输出。"
+            "按文件名顺序读取；需要合并时参考 workspace 内已有输出。"
             "严格原样保留 `![OCR结果](公开URL)`，并按 Skill 要求将本轮新增或更新的经验"
             "逐行追加到 output/experiences.jsonl。不要改写已有行。"
         )
