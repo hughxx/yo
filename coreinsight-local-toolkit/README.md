@@ -167,6 +167,8 @@ Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
+也可以直接双击项目根目录的 `build.bat`。
+
 脚本在项目 D 盘目录创建隔离的 `.build-venv` 和 `.pyinstaller-cache`，产物为
 `dist\coreinsight-local-toolkit.exe`。这是无控制台、带桌面悬浮图标和托盘的单文件 exe；
 运行时解压目录固定
