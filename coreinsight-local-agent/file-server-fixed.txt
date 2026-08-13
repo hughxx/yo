@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""CoreInsight workspace file server.
+
+容器内监听 3154；部署时映射到外部 30864。
+必须确保 /workspace 与 Hermes 容器挂载同一个持久卷。
+"""
+
+import shutil
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+
+app = FastAPI(title="CoreInsight Workspace File Server", version="1.0.0")
+ROOT = Path("/workspace").resolve()
+
+
+class WriteRequest(BaseModel):
+    path: str
+    content: str
+
+
+def workspace_root(workspace_id: str, create: bool = False) -> Path:
+    if not workspace_id or "/" in workspace_id or "\\" in workspace_id or ".." in workspace_id:
+        raise HTTPException(status_code=400, detail="invalid workspace_id")
+    root = (ROOT / workspace_id).resolve()
+    if root == ROOT or ROOT not in root.parents:
+        raise HTTPException(status_code=403, detail="invalid workspace")
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def safe_path(workspace_id: str, relative_path: str = "", create_workspace: bool = False):
+    root = workspace_root(workspace_id, create=create_workspace)
+    relative = Path(relative_path or "")
+    if relative.is_absolute():
+        raise HTTPException(status_code=403, detail="absolute path is not allowed")
+    target = (root / relative).resolve()
+    if target != root and root not in target.parents:
+        raise HTTPException(status_code=403, detail="path outside workspace is not allowed")
+    return root, target
+
+
+@app.get("/health")
+def health():
+    return {"healthy": True, "workspace_root": str(ROOT)}
+
+
+@app.post("/api/workspaces/{workspace_id}")
+def create_workspace(workspace_id: str):
+    root = workspace_root(workspace_id, create=True)
+    return {"ok": True, "workspace_id": workspace_id, "path": str(root)}
+
+
+@app.get("/api/workspaces/{workspace_id}")
+def get_workspace(workspace_id: str):
+    root = workspace_root(workspace_id)
+    if not root.is_dir():
+        raise HTTPException(status_code=404, detail="workspace not found")
+    return {"workspace_id": workspace_id, "exists": True}
+
+
+@app.get("/api/workspaces/{workspace_id}/files")
+def list_files(workspace_id: str, path: str = ""):
+    root, target = safe_path(workspace_id, path)
+    if not root.is_dir():
+        raise HTTPException(status_code=404, detail="workspace not found")
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail="directory not found")
+    items = []
+    for item in sorted(target.iterdir(), key=lambda value: (not value.is_dir(), value.name.lower())):
+        row = {
+            "name": item.name,
+            "path": item.relative_to(root).as_posix(),
+            "is_dir": item.is_dir(),
+        }
+        if item.is_file():
+            row["size"] = item.stat().st_size
+        items.append(row)
+    return {"workspace_id": workspace_id, "path": path, "items": items}
+
+
+@app.get("/api/workspaces/{workspace_id}/file")
+def read_file(workspace_id: str, path: str):
+    root, target = safe_path(workspace_id, path)
+    if not root.is_dir():
+        raise HTTPException(status_code=404, detail="workspace not found")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    try:
+        content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="file is not UTF-8 text") from exc
+    return {"workspace_id": workspace_id, "path": path, "content": content}
+
+
+@app.put("/api/workspaces/{workspace_id}/file")
+def write_file(workspace_id: str, request: WriteRequest):
+    root, target = safe_path(workspace_id, request.path)
+    if not root.is_dir():
+        raise HTTPException(status_code=404, detail="workspace not found")
+    if target == root:
+        raise HTTPException(status_code=400, detail="file path is required")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(request.content, encoding="utf-8")
+    return {"ok": True, "workspace_id": workspace_id, "path": request.path}
+
+
+@app.delete("/api/workspaces/{workspace_id}")
+def delete_workspace(workspace_id: str):
+    root = workspace_root(workspace_id)
+    if not root.exists():
+        raise HTTPException(status_code=404, detail="workspace not found")
+    if not root.is_dir():
+        raise HTTPException(status_code=400, detail="workspace is not a directory")
+    shutil.rmtree(root)
+    return {"ok": True, "workspace_id": workspace_id}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=3154)
