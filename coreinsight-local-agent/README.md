@@ -11,7 +11,8 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 - 按时间范围从 `welink-cli` 分页读取群消息；
 - 将消息标准化后返回给浏览器预览；
 - 按 `msgId` 应用全选排除或明确选择，原始正文不经浏览器传递；
-- 在 EXE 内生成 Markdown、处理附件/OCR、调用模型并写入经验引擎；
+- 在 EXE 内生成 Markdown 并处理附件/OCR，通过 file-server 写入共享 workspace；
+- Hermes Remote Agent 读取 workspace 中的 `SKILL.md`、聊天和附件，执行 Skill 后由 EXE 写入经验引擎；
 - 提供健康检查和能力声明。
 
 草稿审核尚未接入；当前提取仅支持 `extractMode=direct`。定时任务支持每天、每周、每月
@@ -48,16 +49,14 @@ GET http://127.0.0.1:17831/health
 | `COREINSIGHT_ALLOWED_ORIGINS` | beta/正式 CoreInsight 域名 | 逗号分隔的网页来源白名单 |
 | `COREINSIGHT_WELINK_CLI` | `welink-cli` | WeLink CLI 可执行文件名或绝对路径 |
 | `COREINSIGHT_UPLOAD_BY` | 空 | 写入经验引擎的默认用户工号 |
-| `COREINSIGHT_LLM_BASE_URL` | 空 | OpenAI 兼容模型网关基地址 |
-| `COREINSIGHT_LLM_API_KEY` | 空 | 模型网关密钥，仅保存在本机 |
-| `COREINSIGHT_LLM_MODEL_ID` | 空 | 模型 ID |
+| `COREINSIGHT_HERMES_URL` | `http://7.183.107.92:30864` | Hermes Remote Agent 网关 |
+| `COREINSIGHT_HERMES_API_KEY` | 内部开发 Key | Hermes Bearer Token |
+| `COREINSIGHT_WORKSPACE_FILE_SERVER_URL` | `http://7.183.107.92:31454` | 共享 workspace 文件服务 |
+| `COREINSIGHT_HERMES_TIMEOUT_SECONDS` | `1800` | 单次 Skill 最长等待时间 |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | 空 | 经验引擎写入接口完整地址 |
 | `COREINSIGHT_OCR_URL` | 空 | OCR 接口完整地址 |
-| `COREINSIGHT_FILE_SERVER_URL` | 空 | 图片上传服务基地址 |
-| `COREINSIGHT_RAG_PIC_PUBLIC_BASE` | 空 | 图片公开访问基地址 |
 | `COREINSIGHT_CLOUDDRIVE_ACCOUNT` | 空 | WeLink 附件下载账号 |
 | `COREINSIGHT_CLOUDDRIVE_PASSWORD` | 空 | WeLink 附件下载密码 |
-| `COREINSIGHT_LLM_CHUNK_CHARS` | `60000` | 超长聊天本地分段的字符上限 |
 
 ## 浏览器接入
 
@@ -77,13 +76,14 @@ GET http://127.0.0.1:17831/health
 |---|---|---|
 | GET | `/health` | 存活状态 |
 | GET | `/capabilities` | 当前可用能力 |
+| GET | `/welink/skill/list` | 用户可选择的提取 Skill |
 | GET | `/welink/group/list` | 群组列表 |
 | POST | `/welink/group/add` | 添加群组 |
 | PUT | `/welink/group/update` | 更新群组配置 |
 | DELETE | `/welink/group/delete` | 删除群组 |
 | POST | `/welink/message/list` | 获取时间范围内的聊天记录 |
 | POST | `/welink/message/page` | 游标分页预览聊天记录（推荐） |
-| POST | `/welink/extract` | 本地读取、msgId 过滤、Markdown/OCR、模型提取及入库 |
+| POST | `/welink/extract` | 本地读取和 msgId 过滤，提交 workspace Skill 并入库 |
 | GET | `/welink/extract/status` | 查询本地提取任务状态 |
 | POST | `/welink/extract/cancel` | 请求取消当前任务 |
 | POST | `/welink/schedule/set` | 新增或修改本地定时提取 |
@@ -95,9 +95,11 @@ GET http://127.0.0.1:17831/health
 器。WeLink 返回的 `msgTotalCount` 实际是当前页条数，不是会话历史总数，因此协议中的
 `totalHint` 固定为 0，仅为兼容已接入的前端保留。
 
-超长聊天会在 EXE 内按消息边界拆分，分别调用模型，再分层合并为一条经验；这不是向
-CoreInsight Server 上传分块。取消任务会在分页、附件、模型和入库阶段之间检查。已经发出的
-外部 HTTP 请求不会被强杀，但请求返回后不会继续进入尚未开始的下一阶段。
+提取请求只携带 `skillId`，不再向用户暴露 Prompt 或 CodeAgent。EXE 为每个任务创建独立
+workspace，写入 `input/chat.md`、`attachments/` 和 `skills/<skillId>/SKILL.md`；Hermes 按
+Skill 生成 `output/experience.json`。任务结束后临时 workspace 会被删除。
+
+取消任务时 EXE 会调用 Hermes stop 接口，并保证不会继续写入经验引擎。
 
 ## 打包方向
 

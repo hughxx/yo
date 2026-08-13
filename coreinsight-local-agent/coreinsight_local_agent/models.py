@@ -28,11 +28,10 @@ class GroupCreate(GroupBase):
 class GroupConfig(GroupBase):
     status: Literal["idle", "extracting", "scheduled"] = "idle"
     extractMode: Literal["direct", "draft"] = "direct"
-    extractMethod: Literal["prompt", "codeagent"] = "prompt"
+    skillId: str = "welink-experience-extractor"
     startTime: str = ""
     endTime: str = ""
     quickRange: Literal["all", "7d", "3d", "2d", "today", "custom"] = "7d"
-    promptContent: str = "从消息中提取关键经验、问题及解决方案，结构化输出为：背景 / 问题 / 方案 / 总结"
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
     scheduleTime: str = "09:00:00"
     scheduleCron: str = ""
@@ -84,18 +83,16 @@ class MessageSelection(BaseModel):
 
 
 class ExtractRequest(MessageQuery):
-    extractMethod: Literal["prompt"] = "prompt"
+    skillId: str = "welink-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
-    promptContent: str = ""
     uploadBy: str = ""
     selection: MessageSelection = Field(default_factory=MessageSelection)
 
 
 class ScheduleSetRequest(BaseModel):
     groupId: str = Field(min_length=1)
-    extractMethod: Literal["prompt"] = "prompt"
+    skillId: str = "welink-experience-extractor"
     extractMode: Literal["direct"] = "direct"
-    promptContent: str = ""
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
     scheduleTime: str = "09:00:00"
     scheduleCron: str = ""

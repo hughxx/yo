@@ -2,21 +2,18 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 
 from .config import Settings
+from .remote import HermesClient, WorkspaceClient
+from .skills import get_skill
 
 
-SYSTEM_PROMPT = """你是专业的技术知识整理专家。请将 WeLink 聊天记录整理为一条结构化经验文档。
-严格输出 JSON，字段为 title、summary、experience、rag_search_text，不要输出额外说明。
-experience 使用 Markdown，可包含：问题背景、问题现象、分析过程、根因、解决方案、讨论摘要。
-保留代码、接口、错误日志等技术细节，剔除无关闲聊。讨论摘要使用真实发送人和时间。"""
-MERGE_PROMPT = """你是专业的技术知识整理专家。下面是同一批聊天记录分段提取出的 JSON 经验草稿。
-请去重并合并为一条完整经验，严格输出 JSON，字段为 title、summary、experience、rag_search_text。
-不得遗漏关键代码、错误日志、根因、解决方案和图片 Markdown 链接。"""
 _UM_RE = re.compile(r"/:um_begin\{([^}]+)\}/:um_end")
 
 
@@ -27,155 +24,170 @@ class ExtractionCancelled(RuntimeError):
 class LocalExperienceProcessor:
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.workspaces = WorkspaceClient(settings.workspace_file_server_url)
+        self.hermes = HermesClient(
+            settings.hermes_url, settings.hermes_api_key, settings.hermes_timeout_seconds)
 
-    def validate(self, upload_by: str) -> None:
+    def validate(self, upload_by: str, skill_id: str = "welink-experience-extractor") -> None:
+        get_skill(skill_id)
         missing = []
         for name, value in (
-            ("COREINSIGHT_LLM_BASE_URL", self.settings.llm_base_url),
-            ("COREINSIGHT_LLM_API_KEY", self.settings.llm_api_key),
-            ("COREINSIGHT_LLM_MODEL_ID", self.settings.llm_model_id),
+            ("COREINSIGHT_HERMES_URL", self.settings.hermes_url),
+            ("COREINSIGHT_HERMES_API_KEY", self.settings.hermes_api_key),
+            ("COREINSIGHT_WORKSPACE_FILE_SERVER_URL", self.settings.workspace_file_server_url),
             ("COREINSIGHT_EXPERIENCE_ENGINE_URL", self.settings.experience_engine_url),
         ):
-            if not value: missing.append(name)
-        if not upload_by.strip(): missing.append("COREINSIGHT_UPLOAD_BY")
+            if not value:
+                missing.append(name)
+        if not upload_by.strip():
+            missing.append("COREINSIGHT_UPLOAD_BY")
         if missing:
-            raise ValueError("缺少本地提取配置：" + ", ".join(missing))
+            raise ValueError("缺少 Skill 提取配置：" + ", ".join(missing))
 
-    def process(self, messages: list[dict], prompt_content: str, upload_by: str,
+    def process(self, messages: list[dict], skill_id: str, upload_by: str,
                 task_id: str, progress=None, cancel_event=None) -> dict:
         self._check_cancel(cancel_event)
-        self.validate(upload_by)
-        if progress: progress("markdown", "正在生成 Markdown 并处理附件")
-        markdown = self._to_markdown(messages, cancel_event)
-        chunks = self._split_markdown(markdown)
-        results = []
-        for index, chunk in enumerate(chunks, 1):
+        self.validate(upload_by, skill_id)
+        skill = get_skill(skill_id)
+        workspace_id = f"welink-{task_id}"
+        run_id = ""
+        self.workspaces.create(workspace_id)
+        try:
+            if progress:
+                progress("workspace", "正在准备 Skill workspace 和聊天附件")
+            markdown = self._to_markdown(messages, workspace_id, cancel_event)
+            self.workspaces.write_text(workspace_id, "input/chat.md", markdown)
+            self.workspaces.write_text(
+                workspace_id, f"skills/{skill_id}/SKILL.md", skill["content"])
             self._check_cancel(cancel_event)
             if progress:
-                progress("llm", f"正在调用大模型提取经验（{index}/{len(chunks)}）")
-            results.append(self._call_llm(chunk, prompt_content))
-        self._check_cancel(cancel_event)
-        result = results[0] if len(results) == 1 else self._merge_results(
-            results, prompt_content, cancel_event, progress)
-        self._check_cancel(cancel_event)
-        if progress: progress("pushing", "正在推送经验引擎")
-        doc_id = uuid.uuid5(uuid.NAMESPACE_DNS, task_id).hex
-        self._push_experience(result, upload_by, doc_id)
-        return {"docId": doc_id, "title": result.get("title", "")}
+                progress("skill", f"正在运行 Skill：{skill['name']}")
+            run_id = self.hermes.submit(workspace_id, task_id, skill_id)
+            run_finished = threading.Event()
+            if cancel_event is not None:
+                threading.Thread(
+                    target=self._watch_cancel,
+                    args=(run_id, cancel_event, run_finished), daemon=True).start()
+            try:
+                final_answer = self.hermes.wait(run_id, cancel_event, progress)
+            except RuntimeError as exc:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise ExtractionCancelled("任务已取消") from exc
+                raise
+            finally:
+                run_finished.set()
+            self._check_cancel(cancel_event)
+            result = self._read_result(workspace_id, final_answer)
+            if progress:
+                progress("pushing", "Skill 已完成，正在写入经验引擎")
+            doc_id = uuid.uuid5(uuid.NAMESPACE_DNS, task_id).hex
+            self._push_experience(result, upload_by, doc_id)
+            return {"docId": doc_id, "title": result["title"],
+                    "skillId": skill_id, "remoteRunId": run_id}
+        finally:
+            if cancel_event is not None and cancel_event.is_set() and run_id:
+                self.hermes.stop(run_id)
+            self.workspaces.delete(workspace_id)
+
+    def _watch_cancel(self, run_id: str, cancel_event, run_finished) -> None:
+        while not run_finished.wait(0.2):
+            if cancel_event.is_set():
+                self.hermes.stop(run_id)
+                return
 
     @staticmethod
     def _check_cancel(cancel_event) -> None:
         if cancel_event is not None and cancel_event.is_set():
             raise ExtractionCancelled("任务已取消")
 
-    def _to_markdown(self, messages: list[dict], cancel_event=None) -> str:
+    def _to_markdown(self, messages: list[dict], workspace_id: str,
+                     cancel_event=None) -> str:
         rows = []
-        for item in sorted(messages, key=lambda x: (int(x.get("timestamp") or 0), str(x.get("id") or ""))):
+        for item in sorted(messages, key=lambda value: (
+                int(value.get("timestamp") or 0), str(value.get("id") or ""))):
             self._check_cancel(cancel_event)
             timestamp = int(item.get("timestamp") or 0)
-            when = datetime.fromtimestamp(timestamp / 1000, timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S") if timestamp else ""
+            when = datetime.fromtimestamp(
+                timestamp / 1000, timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S") \
+                if timestamp else ""
             content = str(item.get("rawContent") or item.get("content") or "")
-            content = _UM_RE.sub(self._replace_attachment, content)
-            rows.append(f"### {item.get('sender') or ''}（{when}）\n\n{content}\n")
+            content = _UM_RE.sub(
+                lambda match: self._workspace_attachment(
+                    match, workspace_id, cancel_event), content)
+            rows.append(
+                f"### {item.get('sender') or ''}（{when}）\n\n"
+                f"消息 ID：{item.get('id') or ''}\n\n{content}\n")
         return "\n".join(rows)
 
-    def _split_markdown(self, markdown: str) -> list[str]:
-        limit = self.settings.llm_chunk_chars
-        if len(markdown) <= limit:
-            return [markdown]
-        chunks, current, size = [], [], 0
-        for block in re.split(r"(?=^### )", markdown, flags=re.MULTILINE):
-            if not block:
-                continue
-            if current and size + len(block) > limit:
-                chunks.append("".join(current)); current, size = [], 0
-            if len(block) > limit:
-                if current:
-                    chunks.append("".join(current)); current, size = [], 0
-                chunks.extend(block[pos:pos + limit] for pos in range(0, len(block), limit))
-            else:
-                current.append(block); size += len(block)
-        if current:
-            chunks.append("".join(current))
-        return chunks
-
-    def _merge_results(self, results: list[dict], prompt_content: str,
-                       cancel_event=None, progress=None) -> dict:
-        system = MERGE_PROMPT + (f"\n\n用户补充要求：\n{prompt_content.strip()}" if prompt_content.strip() else "")
-        level = list(results)
-        round_number = 0
-        while len(level) > 1:
-            round_number += 1
-            merged = []
-            total = (len(level) + 1) // 2
-            for index in range(0, len(level), 2):
-                self._check_cancel(cancel_event)
-                pair = level[index:index + 2]
-                if len(pair) == 1:
-                    merged.append(pair[0]); continue
-                if progress:
-                    progress("llm", f"正在合并分段结果（第 {round_number} 轮 {index // 2 + 1}/{total}）")
-                merged.append(self._request_llm(system, json.dumps(pair, ensure_ascii=False)))
-            level = merged
-        return level[0]
-
-    def _replace_attachment(self, match: re.Match) -> str:
+    def _workspace_attachment(self, match: re.Match, workspace_id: str,
+                              cancel_event=None) -> str:
+        self._check_cancel(cancel_event)
         parts = match.group(1).split("|")
         if len(parts) < 6:
             return "[无法解析的附件]"
-        if not all((self.settings.clouddrive_account, self.settings.clouddrive_password,
-                    self.settings.file_server_url, self.settings.rag_pic_public_base)):
-            return f"[附件] {parts[3]}"
+        filename = Path(parts[3] or "attachment.bin").name
+        if not self.settings.clouddrive_account or not self.settings.clouddrive_password:
+            return f"[附件未下载：缺少 CloudDrive 配置] {filename}"
         try:
-            content = self._download(parts[0], parts[5].split(";")[2] if len(parts[5].split(";")) > 2 else "")
-            filename = parts[3] or "attachment.bin"
-            file_id = uuid.uuid4().hex
-            response = requests.post(f"{self.settings.file_server_url}/rag_pic/{file_id}",
-                                     files={"file": (filename, content)}, timeout=60, verify=False)
-            response.raise_for_status()
-            url = f"{self.settings.rag_pic_public_base}/rag_pic/{file_id}/{filename}"
+            codes = parts[5].split(";")
+            content = self._download(parts[0], codes[2] if len(codes) > 2 else "")
+            safe_name = f"{uuid.uuid4().hex[:10]}-{filename}"
+            relative = self.workspaces.upload(
+                workspace_id, "attachments", safe_name, content)
             ocr_text = ""
             if self.settings.ocr_url:
-                ocr_response = requests.post(self.settings.ocr_url, files={"file": (filename, content)},
-                                             timeout=300, verify=False)
-                ocr_response.raise_for_status(); data = ocr_response.json()
-                ocr_text = str(data.get("result") or data.get("text") or "") if isinstance(data, dict) else str(data)
-            suffix = f"\n> **[图片文字]** {ocr_text}" if ocr_text.strip() else ""
-            return f"![]({url}){suffix}"
-        except Exception:
-            return f"[附件处理失败] {parts[3]}"
+                response = requests.post(
+                    self.settings.ocr_url, files={"file": (filename, content)},
+                    timeout=300, verify=False)
+                response.raise_for_status()
+                data = response.json()
+                ocr_text = str(data.get("result") or data.get("text") or "") \
+                    if isinstance(data, dict) else str(data)
+            annotation = f"\n\n> 图片 OCR：{ocr_text.strip()}" if ocr_text.strip() else ""
+            return f"[附件：{filename}](/workspace/{workspace_id}/{relative}){annotation}"
+        except Exception as exc:
+            return f"[附件处理失败：{filename}，{type(exc).__name__}]"
 
     def _download(self, download_url: str, extraction_code: str) -> bytes:
-        token_response = requests.post("https://clouddrive.huawei.com/api/v2/token", json={
-            "appId": "espace", "domain": "huawei", "loginName": self.settings.clouddrive_account,
-            "password": self.settings.clouddrive_password,
-        }, headers={"Content-Type": "application/json", "x-device-sn": "coreinsight-local-agent",
-                    "x-device-type": "web", "x-device-os": "win10", "x-device-name": "coreinsight",
-                    "x-client-version": "10"}, timeout=60, verify=False)
-        token_response.raise_for_status(); token = token_response.json().get("token", "")
-        authorization = f"/:um_begin{{{download_url}|File|123|attachment|0|;;{extraction_code}|isOriginalImg:0}}/:um_end"
-        response = requests.post("https://clouddrive.huawei.com/imchat/api/v3/links/imdownload",
-                                 headers={"Authorization": token, "Content-Type": "application/json"},
-                                 json={"imAuthorization": authorization}, timeout=300, verify=False)
-        response.raise_for_status(); return response.content
+        token_response = requests.post(
+            "https://clouddrive.huawei.com/api/v2/token",
+            json={"appId": "espace", "domain": "huawei",
+                  "loginName": self.settings.clouddrive_account,
+                  "password": self.settings.clouddrive_password},
+            headers={"Content-Type": "application/json",
+                     "x-device-sn": "coreinsight-local-agent", "x-device-type": "web",
+                     "x-device-os": "win10", "x-device-name": "coreinsight",
+                     "x-client-version": "10"}, timeout=60, verify=False)
+        token_response.raise_for_status()
+        token = token_response.json().get("token", "")
+        authorization = (
+            f"/:um_begin{{{download_url}|File|123|attachment|0|;;{extraction_code}"
+            "|isOriginalImg:0}}/:um_end")
+        response = requests.post(
+            "https://clouddrive.huawei.com/imchat/api/v3/links/imdownload",
+            headers={"Authorization": token, "Content-Type": "application/json"},
+            json={"imAuthorization": authorization}, timeout=300, verify=False)
+        response.raise_for_status()
+        return response.content
 
-    def _call_llm(self, markdown: str, prompt_content: str) -> dict:
-        system = SYSTEM_PROMPT + (f"\n\n用户补充要求：\n{prompt_content.strip()}" if prompt_content.strip() else "")
-        return self._request_llm(system, markdown)
-
-    def _request_llm(self, system: str, content: str) -> dict:
-        response = requests.post(f"{self.settings.llm_base_url}/chat/completions",
-                                 headers={"Authorization": f"Bearer {self.settings.llm_api_key}", "Content-Type": "application/json"},
-                                 json={"model": self.settings.llm_model_id, "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}], "temperature": 0.3, "stream": False},
-                                 timeout=999, verify=False)
-        response.raise_for_status(); raw = response.json()["choices"][0]["message"]["content"].strip()
+    def _read_result(self, workspace_id: str, final_answer: str) -> dict:
+        try:
+            raw = self.workspaces.read_text(workspace_id, "output/experience.json")
+        except Exception:
+            raw = final_answer
+        raw = raw.strip()
         fenced = re.search(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", raw)
-        return json.loads(fenced.group(1) if fenced else raw)
+        result = json.loads(fenced.group(1) if fenced else raw)
+        required = ("title", "summary", "experience", "rag_search_text")
+        if not isinstance(result, dict) or any(not isinstance(result.get(key), str) for key in required):
+            raise RuntimeError("Skill 输出格式无效，必须包含四个字符串字段")
+        return result
 
     def _push_experience(self, result: dict, upload_by: str, doc_id: str) -> None:
         response = requests.post(self.settings.experience_engine_url, json={
             "doc_id": doc_id, "scene_id": "251", "scene": "WeLink问题定位经验",
-            "user_id": upload_by, "title": result.get("title", ""), "summary": result.get("summary", ""),
-            "experience": result.get("experience", ""), "rag_search_text": result.get("rag_search_text", ""),
+            "user_id": upload_by, "title": result["title"], "summary": result["summary"],
+            "experience": result["experience"],
+            "rag_search_text": result["rag_search_text"],
         }, timeout=60, verify=False)
         response.raise_for_status()

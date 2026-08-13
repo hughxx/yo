@@ -18,6 +18,7 @@ from .models import (
     ScheduleSetRequest,
 )
 from .scheduler import ScheduleRuntime
+from .skills import available_skills
 from .store import GroupStore
 from .welink import WelinkHistory
 
@@ -77,7 +78,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "welinkMessagePreview": True,
             "welinkExtraction": True,
             "welinkScheduling": True,
+            "welinkSkillExtraction": True,
         }
+
+    @app.get("/welink/skill/list")
+    def list_skills():
+        return available_skills()
 
     @app.get("/welink/group/list", response_model=list[GroupConfig])
     def list_groups():
@@ -96,8 +102,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             current = store.get(payload.groupId)
             if not current:
                 raise KeyError(payload.groupId)
-            for field in ("name", "extractMode", "extractMethod", "startTime", "endTime",
-                          "quickRange", "promptContent", "scheduleFreq", "scheduleTime",
+            for field in ("name", "extractMode", "skillId", "startTime", "endTime",
+                          "quickRange", "scheduleFreq", "scheduleTime",
                           "scheduleCron"):
                 setattr(current, field, getattr(payload, field))
             return store.update(current)

@@ -9,7 +9,7 @@ from coreinsight_local_agent.store import GroupStore
 
 
 class FakeProcessor:
-    def validate(self, upload_by):
+    def validate(self, upload_by, skill_id=None):
         if not upload_by:
             raise ValueError("missing uploader")
 

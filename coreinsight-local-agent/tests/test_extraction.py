@@ -20,7 +20,7 @@ class FakeProcessor:
     def __init__(self):
         self.calls = []
 
-    def validate(self, upload_by):
+    def validate(self, upload_by, skill_id=None):
         pass
 
     def process(self, *args, **kwargs):
@@ -36,7 +36,7 @@ class ExtractionRuntimeTests(unittest.TestCase):
             processor = FakeProcessor()
             runtime = ExtractionRuntime(FakeHistory(), groups, processor, 'u1')
             payload = ExtractRequest(
-                groupId='g1', promptContent='details',
+                groupId='g1', skillId='welink-experience-extractor',
                 selection={'mode': 'all', 'excludedMessageIds': ['2']})
             runtime.start(payload, 0, 10)
             for _ in range(100):
@@ -44,7 +44,7 @@ class ExtractionRuntimeTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertEqual(['3', '1'], [item['id'] for item in processor.calls[0][0]])
-            self.assertEqual(('details', 'u1'), processor.calls[0][1:3])
+            self.assertEqual(('welink-experience-extractor', 'u1'), processor.calls[0][1:3])
             self.assertEqual('done', runtime.status()['status'])
             self.assertEqual('idle', groups.get('g1').status)
 

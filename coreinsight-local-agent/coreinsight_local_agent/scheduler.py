@@ -115,11 +115,10 @@ class ScheduleRuntime:
         group = self.groups.get(payload.groupId)
         if not group:
             raise ValueError("请先绑定该群组")
-        self.extraction.processor.validate(self.extraction.default_upload_by)
+        self.extraction.processor.validate(self.extraction.default_upload_by, payload.skillId)
         _parse_time(payload.scheduleTime)
-        group.extractMethod = payload.extractMethod
+        group.skillId = payload.skillId
         group.extractMode = payload.extractMode
-        group.promptContent = payload.promptContent
         group.scheduleFreq = payload.scheduleFreq
         group.scheduleTime = payload.scheduleTime
         group.scheduleCron = payload.scheduleCron.strip()
@@ -173,8 +172,8 @@ class ScheduleRuntime:
                 continue
             start = datetime.fromisoformat(group.scheduleLastRun) if group.scheduleLastRun else due
             payload = ExtractRequest(
-                groupId=group.groupId, extractMethod="prompt", extractMode="direct",
-                promptContent=group.promptContent, selection={"mode": "all"})
+                groupId=group.groupId, skillId=group.skillId, extractMode="direct",
+                selection={"mode": "all"})
             try:
                 self.extraction.start(
                     payload, int(start.timestamp() * 1000), int(now.timestamp() * 1000),

@@ -34,16 +34,20 @@ class Settings:
     allowed_origins: tuple[str, ...] = _origins()
     welink_cli: str = os.getenv("COREINSIGHT_WELINK_CLI", "welink-cli").strip() or "welink-cli"
     upload_by: str = os.getenv("COREINSIGHT_UPLOAD_BY", "").strip()
-    llm_base_url: str = os.getenv("COREINSIGHT_LLM_BASE_URL", "").strip().rstrip("/")
-    llm_api_key: str = os.getenv("COREINSIGHT_LLM_API_KEY", "").strip()
-    llm_model_id: str = os.getenv("COREINSIGHT_LLM_MODEL_ID", "").strip()
+    hermes_url: str = os.getenv(
+        "COREINSIGHT_HERMES_URL", "http://7.183.107.92:30864"
+    ).strip().rstrip("/")
+    hermes_api_key: str = os.getenv(
+        "COREINSIGHT_HERMES_API_KEY", "hermes-internal-dev-key"
+    ).strip()
+    workspace_file_server_url: str = os.getenv(
+        "COREINSIGHT_WORKSPACE_FILE_SERVER_URL", "http://7.183.107.92:31454"
+    ).strip().rstrip("/")
     experience_engine_url: str = os.getenv("COREINSIGHT_EXPERIENCE_ENGINE_URL", "").strip()
     ocr_url: str = os.getenv("COREINSIGHT_OCR_URL", "").strip()
-    file_server_url: str = os.getenv("COREINSIGHT_FILE_SERVER_URL", "").strip().rstrip("/")
-    rag_pic_public_base: str = os.getenv("COREINSIGHT_RAG_PIC_PUBLIC_BASE", "").strip().rstrip("/")
     clouddrive_account: str = os.getenv("COREINSIGHT_CLOUDDRIVE_ACCOUNT", "").strip()
     clouddrive_password: str = os.getenv("COREINSIGHT_CLOUDDRIVE_PASSWORD", "").strip()
-    llm_chunk_chars: int = 60000
+    hermes_timeout_seconds: int = 1800
 
 
 def load_settings() -> Settings:
@@ -54,11 +58,11 @@ def load_settings() -> Settings:
         raise RuntimeError("COREINSIGHT_AGENT_PORT 必须是整数") from exc
     if not 1 <= port <= 65535:
         raise RuntimeError("COREINSIGHT_AGENT_PORT 必须在 1-65535 之间")
-    raw_chunk_chars = os.getenv("COREINSIGHT_LLM_CHUNK_CHARS", "60000")
+    raw_timeout = os.getenv("COREINSIGHT_HERMES_TIMEOUT_SECONDS", "1800")
     try:
-        chunk_chars = int(raw_chunk_chars)
+        hermes_timeout = int(raw_timeout)
     except ValueError as exc:
-        raise RuntimeError("COREINSIGHT_LLM_CHUNK_CHARS 必须是整数") from exc
-    if chunk_chars < 5000:
-        raise RuntimeError("COREINSIGHT_LLM_CHUNK_CHARS 不能小于 5000")
-    return Settings(port=port, llm_chunk_chars=chunk_chars)
+        raise RuntimeError("COREINSIGHT_HERMES_TIMEOUT_SECONDS 必须是整数") from exc
+    if hermes_timeout < 30:
+        raise RuntimeError("COREINSIGHT_HERMES_TIMEOUT_SECONDS 不能小于 30")
+    return Settings(port=port, hermes_timeout_seconds=hermes_timeout)
