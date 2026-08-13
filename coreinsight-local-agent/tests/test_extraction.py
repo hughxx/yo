@@ -46,6 +46,7 @@ class ExtractionRuntimeTests(unittest.TestCase):
             self.assertEqual(['3', '1'], [item['id'] for item in processor.calls[0][0]])
             self.assertEqual(('details', 'u1'), processor.calls[0][1:3])
             self.assertEqual('done', runtime.status()['status'])
+            self.assertEqual('idle', groups.get('g1').status)
 
 
 if __name__ == '__main__':

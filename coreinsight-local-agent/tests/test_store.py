@@ -34,6 +34,14 @@ class GroupStoreTests(unittest.TestCase):
         self.store.update(group)
         self.assertEqual("idle", GroupStore(Path(self.temporary.name)).get("group-1").status)
 
+    def test_scheduled_group_returns_to_scheduled_after_restart(self):
+        self.store.add(GroupCreate(groupId="group-1", name=""))
+        group = self.store.get("group-1")
+        group.scheduleEnabled = True
+        group.status = "extracting"
+        self.store.update(group)
+        self.assertEqual("scheduled", GroupStore(Path(self.temporary.name)).get("group-1").status)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,18 @@ class GroupStore:
     def __init__(self, data_dir: Path):
         self._path = data_dir / "welink_groups.json"
         self._lock = threading.RLock()
+        self._recover_interrupted()
+
+    def _recover_interrupted(self) -> None:
+        with self._lock:
+            rows = self._read()
+            changed = False
+            for row in rows:
+                if row.get("status") == "extracting":
+                    row["status"] = "scheduled" if row.get("scheduleEnabled") else "idle"
+                    changed = True
+            if changed:
+                self._write(rows)
 
     def _read(self) -> list[dict]:
         if not self._path.exists():
@@ -37,11 +49,7 @@ class GroupStore:
 
     @staticmethod
     def _normalized(raw: dict) -> GroupConfig:
-        group = GroupConfig(**raw)
-        # An interrupted process must not leave a group permanently "extracting".
-        if group.status == "extracting":
-            group.status = "idle"
-        return group
+        return GroupConfig(**raw)
 
     def list(self) -> list[GroupConfig]:
         with self._lock:
@@ -88,3 +96,10 @@ class GroupStore:
             if len(kept) == len(groups):
                 raise KeyError(key)
             self._write([_dump(item) for item in kept])
+
+    def set_status(self, group_id: str, status: str) -> GroupConfig:
+        group = self.get(group_id)
+        if not group:
+            raise KeyError(group_id)
+        group.status = status
+        return self.update(group)

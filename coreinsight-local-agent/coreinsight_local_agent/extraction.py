@@ -4,7 +4,7 @@ import threading
 import uuid
 
 from .models import ExtractRequest
-from .processor import LocalExperienceProcessor
+from .processor import ExtractionCancelled, LocalExperienceProcessor
 from .store import GroupStore
 from .welink import WelinkHistory
 
@@ -31,7 +31,8 @@ class ExtractionRuntime:
     def _set(self, **changes) -> None:
         with self._lock: self._task.update(changes)
 
-    def start(self, payload: ExtractRequest, start_ms: int, end_ms: int) -> dict:
+    def start(self, payload: ExtractRequest, start_ms: int, end_ms: int,
+              scheduled: bool = False, on_complete=None) -> dict:
         if payload.extractMode == "draft":
             raise ValueError("草稿审核尚未实现，请先选择直接入库")
         group = self.groups.get(payload.groupId)
@@ -42,24 +43,33 @@ class ExtractionRuntime:
             if self._task.get("running"): raise RuntimeError("已有聊天记录提取任务正在执行")
             task_id = uuid.uuid4().hex
             self._task = {"running": True, "taskId": task_id, "status": "fetching",
+                          "groupId": payload.groupId, "scheduled": scheduled,
                           "scanned": 0, "selected": 0, "message": "正在本地读取并筛选 WeLink 消息",
                           "error": "", "docId": "", "title": ""}
             self._cancel.clear()
-        threading.Thread(target=self._run, args=(payload, start_ms, end_ms, task_id, upload_by), daemon=True).start()
+        self.groups.set_status(payload.groupId, "extracting")
+        threading.Thread(
+            target=self._run,
+            args=(payload, start_ms, end_ms, task_id, upload_by, scheduled, on_complete),
+            daemon=True,
+        ).start()
         return self.status()
 
     def cancel(self) -> dict:
-        self._cancel.set(); self._set(message="正在取消"); return self.status()
+        with self._lock:
+            if not self._task.get("running"):
+                return dict(self._task)
+        self._cancel.set(); self._set(message="正在取消（当前网络请求返回后停止）"); return self.status()
 
     def _run(self, payload: ExtractRequest, start_ms: int, end_ms: int,
-             task_id: str, upload_by: str) -> None:
+             task_id: str, upload_by: str, scheduled: bool, on_complete) -> None:
         excluded = {str(value) for value in payload.selection.excludedMessageIds}
         explicit = {str(value) for value in payload.selection.selectedMessageIds}
         cursor = ""; seen_cursors = set(); messages = []; scanned = 0
         try:
             while True:
                 if self._cancel.is_set():
-                    self._set(running=False, status="cancelled", message="任务已取消"); return
+                    self._cancelled(payload.groupId); return
                 page = self.history.fetch_page(payload.groupId, start_ms, end_ms, cursor, 100)
                 scanned += len(page["items"])
                 for item in page["items"]:
@@ -71,11 +81,32 @@ class ExtractionRuntime:
                 if payload.selection.mode == "explicit" and explicit and len(messages) >= len(explicit): break
                 if not page["hasMore"] or not next_cursor or next_cursor in seen_cursors: break
                 seen_cursors.add(next_cursor); cursor = next_cursor
+            if not messages and scheduled:
+                self._restore_group_status(payload.groupId)
+                if on_complete: on_complete(True, end_ms, {})
+                self._set(running=False, status="done", message="本次没有新增消息")
+                return
             if not messages: raise RuntimeError("所选范围内没有可提取的消息")
             if self._cancel.is_set():
-                self._set(running=False, status="cancelled", message="任务已取消"); return
+                self._cancelled(payload.groupId); return
             def progress(status, message): self._set(status=status, message=message)
-            result = self.processor.process(messages, payload.promptContent, upload_by, task_id, progress)
+            result = self.processor.process(
+                messages, payload.promptContent, upload_by, task_id, progress, self._cancel)
+            self._restore_group_status(payload.groupId)
+            if on_complete: on_complete(True, end_ms, result)
             self._set(running=False, status="done", message="经验提取并入库完成", **result)
+        except ExtractionCancelled:
+            self._cancelled(payload.groupId)
         except Exception as exc:
+            self._restore_group_status(payload.groupId)
+            if on_complete: on_complete(False, end_ms, {"error": str(exc)})
             self._set(running=False, status="failed", error=str(exc), message="提取任务失败")
+
+    def _restore_group_status(self, group_id: str) -> None:
+        group = self.groups.get(group_id)
+        if group:
+            self.groups.set_status(group_id, "scheduled" if group.scheduleEnabled else "idle")
+
+    def _cancelled(self, group_id: str) -> None:
+        self._restore_group_status(group_id)
+        self._set(running=False, status="cancelled", message="任务已取消")

@@ -36,6 +36,11 @@ class GroupConfig(GroupBase):
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
     scheduleTime: str = "09:00:00"
     scheduleCron: str = ""
+    scheduleEnabled: bool = False
+    scheduleLastRun: str = ""
+    scheduleNextRun: str = ""
+    scheduleWeekday: int = Field(default=0, ge=0, le=6)
+    scheduleDay: int = Field(default=1, ge=1, le=31)
 
 
 class GroupDelete(BaseModel):
@@ -84,3 +89,17 @@ class ExtractRequest(MessageQuery):
     promptContent: str = ""
     uploadBy: str = ""
     selection: MessageSelection = Field(default_factory=MessageSelection)
+
+
+class ScheduleSetRequest(BaseModel):
+    groupId: str = Field(min_length=1)
+    extractMethod: Literal["prompt"] = "prompt"
+    extractMode: Literal["direct"] = "direct"
+    promptContent: str = ""
+    scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
+    scheduleTime: str = "09:00:00"
+    scheduleCron: str = ""
+
+
+class ScheduleCancelRequest(BaseModel):
+    groupId: str = Field(min_length=1)

@@ -14,7 +14,14 @@ SYSTEM_PROMPT = """你是专业的技术知识整理专家。请将 WeLink 聊�
 严格输出 JSON，字段为 title、summary、experience、rag_search_text，不要输出额外说明。
 experience 使用 Markdown，可包含：问题背景、问题现象、分析过程、根因、解决方案、讨论摘要。
 保留代码、接口、错误日志等技术细节，剔除无关闲聊。讨论摘要使用真实发送人和时间。"""
+MERGE_PROMPT = """你是专业的技术知识整理专家。下面是同一批聊天记录分段提取出的 JSON 经验草稿。
+请去重并合并为一条完整经验，严格输出 JSON，字段为 title、summary、experience、rag_search_text。
+不得遗漏关键代码、错误日志、根因、解决方案和图片 Markdown 链接。"""
 _UM_RE = re.compile(r"/:um_begin\{([^}]+)\}/:um_end")
+
+
+class ExtractionCancelled(RuntimeError):
+    pass
 
 
 class LocalExperienceProcessor:
@@ -35,26 +42,82 @@ class LocalExperienceProcessor:
             raise ValueError("缺少本地提取配置：" + ", ".join(missing))
 
     def process(self, messages: list[dict], prompt_content: str, upload_by: str,
-                task_id: str, progress=None) -> dict:
+                task_id: str, progress=None, cancel_event=None) -> dict:
+        self._check_cancel(cancel_event)
         self.validate(upload_by)
         if progress: progress("markdown", "正在生成 Markdown 并处理附件")
-        markdown = self._to_markdown(messages)
-        if progress: progress("llm", "正在调用大模型提取经验")
-        result = self._call_llm(markdown, prompt_content)
+        markdown = self._to_markdown(messages, cancel_event)
+        chunks = self._split_markdown(markdown)
+        results = []
+        for index, chunk in enumerate(chunks, 1):
+            self._check_cancel(cancel_event)
+            if progress:
+                progress("llm", f"正在调用大模型提取经验（{index}/{len(chunks)}）")
+            results.append(self._call_llm(chunk, prompt_content))
+        self._check_cancel(cancel_event)
+        result = results[0] if len(results) == 1 else self._merge_results(
+            results, prompt_content, cancel_event, progress)
+        self._check_cancel(cancel_event)
         if progress: progress("pushing", "正在推送经验引擎")
         doc_id = uuid.uuid5(uuid.NAMESPACE_DNS, task_id).hex
         self._push_experience(result, upload_by, doc_id)
         return {"docId": doc_id, "title": result.get("title", "")}
 
-    def _to_markdown(self, messages: list[dict]) -> str:
+    @staticmethod
+    def _check_cancel(cancel_event) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise ExtractionCancelled("任务已取消")
+
+    def _to_markdown(self, messages: list[dict], cancel_event=None) -> str:
         rows = []
         for item in sorted(messages, key=lambda x: (int(x.get("timestamp") or 0), str(x.get("id") or ""))):
+            self._check_cancel(cancel_event)
             timestamp = int(item.get("timestamp") or 0)
             when = datetime.fromtimestamp(timestamp / 1000, timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S") if timestamp else ""
             content = str(item.get("rawContent") or item.get("content") or "")
             content = _UM_RE.sub(self._replace_attachment, content)
             rows.append(f"### {item.get('sender') or ''}（{when}）\n\n{content}\n")
         return "\n".join(rows)
+
+    def _split_markdown(self, markdown: str) -> list[str]:
+        limit = self.settings.llm_chunk_chars
+        if len(markdown) <= limit:
+            return [markdown]
+        chunks, current, size = [], [], 0
+        for block in re.split(r"(?=^### )", markdown, flags=re.MULTILINE):
+            if not block:
+                continue
+            if current and size + len(block) > limit:
+                chunks.append("".join(current)); current, size = [], 0
+            if len(block) > limit:
+                if current:
+                    chunks.append("".join(current)); current, size = [], 0
+                chunks.extend(block[pos:pos + limit] for pos in range(0, len(block), limit))
+            else:
+                current.append(block); size += len(block)
+        if current:
+            chunks.append("".join(current))
+        return chunks
+
+    def _merge_results(self, results: list[dict], prompt_content: str,
+                       cancel_event=None, progress=None) -> dict:
+        system = MERGE_PROMPT + (f"\n\n用户补充要求：\n{prompt_content.strip()}" if prompt_content.strip() else "")
+        level = list(results)
+        round_number = 0
+        while len(level) > 1:
+            round_number += 1
+            merged = []
+            total = (len(level) + 1) // 2
+            for index in range(0, len(level), 2):
+                self._check_cancel(cancel_event)
+                pair = level[index:index + 2]
+                if len(pair) == 1:
+                    merged.append(pair[0]); continue
+                if progress:
+                    progress("llm", f"正在合并分段结果（第 {round_number} 轮 {index // 2 + 1}/{total}）")
+                merged.append(self._request_llm(system, json.dumps(pair, ensure_ascii=False)))
+            level = merged
+        return level[0]
 
     def _replace_attachment(self, match: re.Match) -> str:
         parts = match.group(1).split("|")
@@ -98,9 +161,12 @@ class LocalExperienceProcessor:
 
     def _call_llm(self, markdown: str, prompt_content: str) -> dict:
         system = SYSTEM_PROMPT + (f"\n\n用户补充要求：\n{prompt_content.strip()}" if prompt_content.strip() else "")
+        return self._request_llm(system, markdown)
+
+    def _request_llm(self, system: str, content: str) -> dict:
         response = requests.post(f"{self.settings.llm_base_url}/chat/completions",
                                  headers={"Authorization": f"Bearer {self.settings.llm_api_key}", "Content-Type": "application/json"},
-                                 json={"model": self.settings.llm_model_id, "messages": [{"role": "system", "content": system}, {"role": "user", "content": markdown}], "temperature": 0.3, "stream": False},
+                                 json={"model": self.settings.llm_model_id, "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}], "temperature": 0.3, "stream": False},
                                  timeout=999, verify=False)
         response.raise_for_status(); raw = response.json()["choices"][0]["message"]["content"].strip()
         fenced = re.search(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", raw)

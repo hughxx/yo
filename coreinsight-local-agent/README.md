@@ -14,8 +14,8 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 - 在 EXE 内生成 Markdown、处理附件/OCR、调用模型并写入经验引擎；
 - 提供健康检查和能力声明。
 
-定时任务和草稿审核尚未接入。前端应先读取 `/capabilities`，不要在能力为 `false` 时
-展示可执行状态；当前提取仅支持 `extractMode=direct`。
+草稿审核尚未接入；当前提取仅支持 `extractMode=direct`。定时任务支持每天、每周、每月
+和五字段 Cron，并在本机持久化。只有提取和入库成功后才推进增量起点，失败会在下次重试。
 
 ## 为什么叫 Local Agent
 
@@ -57,6 +57,7 @@ GET http://127.0.0.1:17831/health
 | `COREINSIGHT_RAG_PIC_PUBLIC_BASE` | 空 | 图片公开访问基地址 |
 | `COREINSIGHT_CLOUDDRIVE_ACCOUNT` | 空 | WeLink 附件下载账号 |
 | `COREINSIGHT_CLOUDDRIVE_PASSWORD` | 空 | WeLink 附件下载密码 |
+| `COREINSIGHT_LLM_CHUNK_CHARS` | `60000` | 超长聊天本地分段的字符上限 |
 
 ## 浏览器接入
 
@@ -85,12 +86,18 @@ GET http://127.0.0.1:17831/health
 | POST | `/welink/extract` | 本地读取、msgId 过滤、Markdown/OCR、模型提取及入库 |
 | GET | `/welink/extract/status` | 查询本地提取任务状态 |
 | POST | `/welink/extract/cancel` | 请求取消当前任务 |
+| POST | `/welink/schedule/set` | 新增或修改本地定时提取 |
+| POST | `/welink/schedule/cancel` | 取消本地定时提取 |
 
 日期字段接受带时区的 ISO 8601 字符串；不带时区时按本机时区解释。消息查询是阻塞型
 本地操作，FastAPI 会在线程池中执行，不阻塞健康检查。`/welink/message/page` 每页最多
 返回 100 条，并返回 `nextCursor` 和 `hasMore`；前端不应把全部聊天正文一次加载进浏览
 器。WeLink 返回的 `msgTotalCount` 实际是当前页条数，不是会话历史总数，因此协议中的
 `totalHint` 固定为 0，仅为兼容已接入的前端保留。
+
+超长聊天会在 EXE 内按消息边界拆分，分别调用模型，再分层合并为一条经验；这不是向
+CoreInsight Server 上传分块。取消任务会在分页、附件、模型和入库阶段之间检查。已经发出的
+外部 HTTP 请求不会被强杀，但请求返回后不会继续进入尚未开始的下一阶段。
 
 ## 打包方向
 

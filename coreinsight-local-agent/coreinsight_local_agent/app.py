@@ -14,8 +14,10 @@ from .extraction import ExtractionRuntime
 from .processor import LocalExperienceProcessor
 from .models import (
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
-    ExtractRequest, MessageQuery, PreviewMessage,
+    ExtractRequest, MessageQuery, PreviewMessage, ScheduleCancelRequest,
+    ScheduleSetRequest,
 )
+from .scheduler import ScheduleRuntime
 from .store import GroupStore
 from .welink import WelinkHistory
 
@@ -35,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     store = GroupStore(settings.data_dir)
     history = WelinkHistory(settings.welink_cli)
     extraction = ExtractionRuntime(history, store, LocalExperienceProcessor(settings), settings.upload_by)
+    scheduler = ScheduleRuntime(store, extraction)
     browser_origins = {
         *settings.allowed_origins,
         f"http://127.0.0.1:{settings.port}",
@@ -73,7 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "welinkGroupManagement": True,
             "welinkMessagePreview": True,
             "welinkExtraction": True,
-            "welinkScheduling": False,
+            "welinkScheduling": True,
         }
 
     @app.get("/welink/group/list", response_model=list[GroupConfig])
@@ -90,13 +93,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.put("/welink/group/update", response_model=GroupConfig)
     def update_group(payload: GroupConfig):
         try:
-            return store.update(payload)
+            current = store.get(payload.groupId)
+            if not current:
+                raise KeyError(payload.groupId)
+            for field in ("name", "extractMode", "extractMethod", "startTime", "endTime",
+                          "quickRange", "promptContent", "scheduleFreq", "scheduleTime",
+                          "scheduleCron"):
+                setattr(current, field, getattr(payload, field))
+            return store.update(current)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="群组不存在") from exc
 
     @app.delete("/welink/group/delete", status_code=204)
     def delete_group(payload: GroupDelete):
+        task = extraction.status()
+        if task.get("running") and task.get("groupId") == payload.groupId:
+            raise HTTPException(status_code=409, detail="该群组正在提取，请先取消当前任务")
         try:
+            group = store.get(payload.groupId)
+            if group and group.scheduleEnabled:
+                scheduler.cancel(payload.groupId)
             store.delete(payload.groupId)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="群组不存在") from exc
@@ -138,6 +154,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if start_ms and end_ms and start_ms > end_ms:
             raise HTTPException(status_code=422, detail="startTime 不能晚于 endTime")
         try:
+            group = store.get(payload.groupId)
+            if group and group.scheduleEnabled:
+                raise RuntimeError("该群组已设定定时提取，请先取消定时任务")
             return extraction.start(payload, start_ms, end_ms)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -151,6 +170,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/welink/extract/cancel")
     def cancel_extract():
         return extraction.cancel()
+
+    @app.post("/welink/schedule/set")
+    def set_schedule(payload: ScheduleSetRequest):
+        task = extraction.status()
+        if task.get("running") and task.get("groupId") == payload.groupId:
+            raise HTTPException(status_code=409, detail="该群组正在提取，请先取消当前任务")
+        try:
+            return scheduler.set(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/welink/schedule/cancel")
+    def cancel_schedule(payload: ScheduleCancelRequest):
+        try:
+            return scheduler.cancel(payload.groupId)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.on_event("shutdown")
+    def shutdown_scheduler():
+        scheduler.close()
 
     @app.get("/", include_in_schema=False)
     def demo_redirect():

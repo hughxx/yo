@@ -43,6 +43,7 @@ class Settings:
     rag_pic_public_base: str = os.getenv("COREINSIGHT_RAG_PIC_PUBLIC_BASE", "").strip().rstrip("/")
     clouddrive_account: str = os.getenv("COREINSIGHT_CLOUDDRIVE_ACCOUNT", "").strip()
     clouddrive_password: str = os.getenv("COREINSIGHT_CLOUDDRIVE_PASSWORD", "").strip()
+    llm_chunk_chars: int = 60000
 
 
 def load_settings() -> Settings:
@@ -53,4 +54,11 @@ def load_settings() -> Settings:
         raise RuntimeError("COREINSIGHT_AGENT_PORT 必须是整数") from exc
     if not 1 <= port <= 65535:
         raise RuntimeError("COREINSIGHT_AGENT_PORT 必须在 1-65535 之间")
-    return Settings(port=port)
+    raw_chunk_chars = os.getenv("COREINSIGHT_LLM_CHUNK_CHARS", "60000")
+    try:
+        chunk_chars = int(raw_chunk_chars)
+    except ValueError as exc:
+        raise RuntimeError("COREINSIGHT_LLM_CHUNK_CHARS 必须是整数") from exc
+    if chunk_chars < 5000:
+        raise RuntimeError("COREINSIGHT_LLM_CHUNK_CHARS 不能小于 5000")
+    return Settings(port=port, llm_chunk_chars=chunk_chars)
