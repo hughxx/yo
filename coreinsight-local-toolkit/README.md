@@ -57,7 +57,7 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 | `COREINSIGHT_AGENT_PORT` | `17831` | 本地端口 |
 | `COREINSIGHT_TOOLKIT_DATA_DIR` | `D:\CoreInsight\LocalToolkit` | 配置、定时状态和日志目录；不默认写入 C 盘 |
 | `COREINSIGHT_AGENT_DATA_DIR` | 空 | 旧版数据目录环境变量，仅作为兼容回退 |
-| `COREINSIGHT_ALLOWED_ORIGINS` | beta/正式 CoreInsight 域名 | 逗号分隔的网页来源白名单 |
+| `COREINSIGHT_ALLOWED_ORIGINS` | 空 | 追加到默认白名单的网页 Origin，多个值用逗号分隔 |
 | `COREINSIGHT_WELINK_CLI` | `welink-cli` | WeLink CLI 可执行文件名或绝对路径 |
 | `COREINSIGHT_UPLOAD_BY` | 空 | 兼容旧调用的默认用户工号；正式调用由前端在请求中传 `uploadBy` |
 | `COREINSIGHT_HERMES_URL` | `http://7.183.107.92:31454` | Hermes Remote Agent 网关 |

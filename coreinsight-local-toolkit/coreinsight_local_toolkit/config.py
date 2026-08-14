@@ -14,6 +14,8 @@ except ImportError:
 DEFAULT_ORIGINS = (
     "https://coreinsight-beta.rnd.huawei.com",
     "https://coreinsight.rnd.huawei.com",
+    "http://localhost.huawei.com:8080",
+    "https://localhost.huawei.com:8080",
 )
 
 
@@ -29,8 +31,9 @@ def _data_dir() -> Path:
 
 def _origins() -> tuple[str, ...]:
     raw = os.getenv("COREINSIGHT_ALLOWED_ORIGINS", "").strip()
-    values = raw.split(",") if raw else DEFAULT_ORIGINS
-    return tuple(value.strip().rstrip("/") for value in values if value.strip())
+    values = [*DEFAULT_ORIGINS, *(raw.split(",") if raw else [])]
+    return tuple(dict.fromkeys(
+        value.strip().rstrip("/") for value in values if value.strip()))
 
 
 @dataclass(frozen=True)

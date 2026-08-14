@@ -10,6 +10,11 @@ from coreinsight_local_toolkit.config import Settings
 
 
 class ConfigTests(unittest.TestCase):
+    def test_default_origins_include_local_huawei_development_domain(self):
+        settings = Settings()
+        self.assertIn("http://localhost.huawei.com:8080", settings.allowed_origins)
+        self.assertIn("https://localhost.huawei.com:8080", settings.allowed_origins)
+
     def test_default_data_dir_is_on_d_drive(self):
         self.assertEqual(Path("D:/CoreInsight/LocalToolkit"), Settings().data_dir)
 
