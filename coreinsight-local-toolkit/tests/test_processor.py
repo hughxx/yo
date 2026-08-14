@@ -109,6 +109,14 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual("http://engine/memory/experience/doc/123", put.call_args.args[0])
         self.assertEqual({"user_id": "u1", "summary": "更新"}, put.call_args.kwargs["json"])
 
+    def test_draft_mode_routes_to_draft_store(self):
+        processor = self.processor()
+        processor.drafts = Mock()
+        processor.drafts.upsert.return_value = "draft-1"
+        self.assertEqual("draft-1", processor._push_experience(
+            RESULT, "u1", "draft"))
+        processor.drafts.upsert.assert_called_once_with(RESULT, "u1")
+
     def test_result_parser_accepts_pretty_json_jsonl_and_array(self):
         processor = self.processor()
         pretty = json.dumps(RESULT, ensure_ascii=False, indent=2)
@@ -140,10 +148,18 @@ class ProcessorTests(unittest.TestCase):
                 "welink-experience-extractor", "u1", "task-1",
                 group_id="g1", scheduled=True)
         expected = processor._workspace_id(
-            "another-task", "g1", "welink-experience-extractor", "u1", True)
+            "another-task", "g1", "welink-experience-extractor", "u1", True,
+            "direct")
         self.assertEqual(expected, result["workspaceId"])
         self.assertEqual([], processor.workspaces.deleted)
         self.assertEqual(1, len(processor.workspaces.deleted_paths))
+
+    def test_scheduled_workspaces_are_isolated_by_extract_mode(self):
+        direct = LocalExperienceProcessor._workspace_id(
+            "task", "g1", "welink-experience-extractor", "u1", True, "direct")
+        draft = LocalExperienceProcessor._workspace_id(
+            "task", "g1", "welink-experience-extractor", "u1", True, "draft")
+        self.assertNotEqual(direct, draft)
 
     def test_compaction_keeps_latest_version_per_doc_id(self):
         records = [

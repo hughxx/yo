@@ -37,12 +37,10 @@ class ExtractionRuntime:
 
     def start(self, payload: ExtractRequest, start_ms: int, end_ms: int,
               scheduled: bool = False, on_complete=None) -> dict:
-        if payload.extractMode == "draft":
-            raise ValueError("草稿审核尚未实现，请先选择直接入库")
         group = self.groups.get(payload.groupId)
         if not group: raise ValueError("请先绑定该群组")
         upload_by = payload.uploadBy.strip() or self.default_upload_by
-        self.processor.validate(upload_by, payload.skillId)
+        self.processor.validate(upload_by, payload.skillId, payload.extractMode)
         with self._lock:
             if self._task.get("running"): raise RuntimeError("已有聊天记录提取任务正在执行")
             task_id = uuid.uuid4().hex
@@ -103,10 +101,14 @@ class ExtractionRuntime:
             def progress(status, message): self._set(status=status, message=message)
             result = self.processor.process(
                 messages, payload.skillId, upload_by, task_id, progress, self._cancel,
-                group_id=payload.groupId, scheduled=scheduled)
+                group_id=payload.groupId, scheduled=scheduled,
+                extract_mode=payload.extractMode)
             self._restore_group_status(payload.groupId)
             if on_complete: on_complete(True, end_ms, result)
-            self._set(running=False, status="done", message="经验提取并入库完成", **result)
+            completed_message = ("草稿提取完成，已进入平台待审核列表"
+                                 if payload.extractMode == "draft"
+                                 else "经验提取并入库完成")
+            self._set(running=False, status="done", message=completed_message, **result)
             logger.info(
                 "extraction completed task_id=%s run_id=%s experiences=%s",
                 task_id, result.get("remoteRunId", ""), result.get("experienceCount", 0))

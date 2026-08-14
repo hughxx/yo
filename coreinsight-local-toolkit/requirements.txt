@@ -3,3 +3,4 @@ uvicorn>=0.23.0,<1
 requests>=2.31.0,<3
 pystray>=0.19.5,<1
 Pillow>=10.0.0,<13
+psycopg2-binary>=2.9.0,<3

@@ -8,3 +8,4 @@ dist/
 .build-venv/
 .pyinstaller-cache/
 .pip-cache/
+coreinsight_local_toolkit/private_config.py

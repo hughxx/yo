@@ -9,7 +9,7 @@ from coreinsight_local_toolkit.store import GroupStore
 
 
 class FakeProcessor:
-    def validate(self, upload_by, skill_id=None):
+    def validate(self, upload_by, skill_id=None, extract_mode="direct"):
         if not upload_by:
             raise ValueError("missing uploader")
 
@@ -60,6 +60,15 @@ class SchedulerTests(unittest.TestCase):
     def test_custom_cron(self):
         value = next_cron("*/15 9 * * 1-5", datetime.fromisoformat("2026-08-13T09:07:00+08:00"))
         self.assertEqual("2026-08-13T09:15:00+08:00", value.isoformat())
+
+    def test_draft_schedule_keeps_draft_mode(self):
+        now = datetime.fromisoformat("2026-08-13T08:00:00+08:00")
+        self.runtime.set(ScheduleSetRequest(
+            groupId="g1", uploadBy="u1", extractMode="draft",
+            scheduleFreq="daily", scheduleTime="09:00:00"), now)
+        self.assertTrue(self.runtime.tick(
+            datetime.fromisoformat("2026-08-13T09:00:01+08:00")))
+        self.assertEqual("draft", self.extraction.calls[0][0].extractMode)
 
     def test_cron_uses_standard_or_rule_for_day_and_weekday(self):
         value = next_cron("0 9 15 * 1", datetime.fromisoformat("2026-08-13T10:00:00+08:00"))

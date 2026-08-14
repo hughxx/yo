@@ -16,7 +16,8 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 - Hermes Remote Agent 通过 Skill 处理超长 Markdown，并保留图片超链接；
 - 提供健康检查和能力声明。
 
-草稿审核尚未接入；当前提取仅支持 `extractMode=direct`。定时任务支持每天、每周、每月
+提取支持直接写入经验引擎和生成平台待审核草稿。Skill 不感知入库模式，统一负责经验的提取、合并和更新；
+Local Toolkit 根据 `extractMode` 与 Skill 返回的 `doc_id` 路由到经验接口或 GaussDB 草稿表。定时任务支持每天、每周、每月
 和五字段 Cron，并在本机持久化。只有提取和入库成功后才推进增量起点，失败会在下次重试。
 
 ## 为什么叫 Local Toolkit
@@ -68,6 +69,12 @@ docId、入库结果和异常堆栈。
 | `COREINSIGHT_UPDATE_CONFIG_KEY` | `coreinsight_local_toolkit_release` | 版本配置 key；任一项为空时关闭检查 |
 | `COREINSIGHT_UPDATE_ENABLED` | `1` | 设为 `0` 时关闭自动更新，用于故障排查 |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
+| `COREINSIGHT_DRAFT_DB_HOST` | `gauss.mlops.rnd.huawei.com` | 平台草稿 GaussDB 地址 |
+| `COREINSIGHT_DRAFT_DB_PORT` | `8000` | 平台草稿 GaussDB 端口 |
+| `COREINSIGHT_DRAFT_DB_NAME` | `mlops` | 平台草稿数据库名 |
+| `COREINSIGHT_DRAFT_DB_SCHEMA` | `coreinsight` | 草稿表 schema |
+| `COREINSIGHT_DRAFT_DB_USER` | 私有配置中的值 | 可选运行时覆盖草稿库账号 |
+| `COREINSIGHT_DRAFT_DB_PASSWORD` | 私有配置中的值 | 可选运行时覆盖草稿库密码 |
 | `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |
 | `COREINSIGHT_FILE_SERVER_URL` | `http://7.224.100.105:32169` | 永久图片上传服务 |
 | `COREINSIGHT_RAG_PIC_PUBLIC_BASE` | `https://fuyao-data-server.rnd.huawei.com` | Markdown 图片公开地址 |
@@ -118,7 +125,7 @@ docId、入库结果和异常堆栈。
 `input/000001_<起止时间>.md` 形式保证顺序。单条消息超过目标大小时单独占一个文件。
 
 手动提取每次创建新的临时 workspace，成功或失败后删除；同一个定时任务使用由
-`用户 + 群组 + Skill` 确定的固定 workspace 和 Hermes session，只追加本轮增量输入。
+`用户 + 群组 + Skill + 入库模式` 确定的固定 workspace 和 Hermes session，只追加本轮增量输入。
 workspace 里只有一个结果文件 `output/experiences.jsonl`，每行是一条完整经验版本。新经验
 不带 `doc_id`，Local Toolkit 通过 POST 新建并将接口返回的真实 `doc_id` 写回该行；后续聊天
 补充同一经验时，Skill 使用原 `doc_id` 追加合并后的新版本，Local Toolkit 通过 PUT 部分更新。
@@ -132,6 +139,16 @@ workspace 里只有一个结果文件 `output/experiences.jsonl`，每行是一�
 workspace 不会删除已经进入经验正文的永久图片。
 
 取消任务时 EXE 会调用 Hermes stop 接口，并保证不会继续写入经验引擎。
+
+草稿模式下，新经验使用本地生成的 32 位 UUID 作为 `t_experience_draft.id`，并回写为 Skill 后续可见的
+`doc_id`。同一定时 workspace 后续产生同一 `doc_id` 时，Skill 给出合并后的字段，Toolkit 只更新明确返回的
+`title/summary/experience/scene/scene_id`，同时把状态重置为 `pending`；若草稿已被审核流程移走，则用相同 ID
+重新建立待审核草稿。`title` 与 `llm_title` 始终同步，`summary` 写入 `llm_description`，`experience` 写入
+`llm_content`，`rag_search_text` 在草稿模式下直接丢弃。
+
+打包前将 `coreinsight_local_toolkit/private_config.example.py` 复制为
+`coreinsight_local_toolkit/private_config.py`，并填写 `DRAFT_DB_USER`、`DRAFT_DB_PASSWORD`。仓库已忽略
+`private_config.py`，不会随普通 `git add` 提交；打包器会将其值嵌入 EXE。环境变量仍可在运行时覆盖这两个值。
 
 ## 桌面悬浮图标、托盘与版本检查
 

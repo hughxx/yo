@@ -94,7 +94,7 @@ class ScheduleSetRequest(BaseModel):
     groupId: str = Field(min_length=1)
     uploadBy: str = Field(min_length=1)
     skillId: str = "welink-experience-extractor"
-    extractMode: Literal["direct"] = "direct"
+    extractMode: Literal["direct", "draft"] = "direct"
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
     scheduleTime: str = "09:00:00"
     scheduleCron: str = ""

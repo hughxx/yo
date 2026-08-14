@@ -6,6 +6,7 @@ from PyInstaller.utils.hooks import collect_submodules
 hiddenimports = (
     collect_submodules("uvicorn")
     + collect_submodules("pystray")
+    + collect_submodules("psycopg2")
 )
 
 a = Analysis(

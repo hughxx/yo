@@ -1,14 +1,14 @@
 {
   "enabled": true,
-  "latestVersion": "0.3.0",
+  "latestVersion": "0.4.0",
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://replace-with-direct-download/coreinsight-local-toolkit.exe",
-  "sha256": "9a9b6b2ce9d838ee737b422adabcbb6525a28c47128687b030468fe1d7328536",
+  "sha256": "e6fe0e5d4aaa6f73fe19cc40510cad85bc0e7006775960f2b88c582c21caf55b",
   "releaseNotes": [
-    "新增自动下载、SHA-256 校验、替换和重启闭环",
-    "强制更新期间暂停聊天记录相关业务接口",
-    "新增升级进度与安装接口"
+    "新增用户确认后入库：提取结果写入平台待审核草稿",
+    "定时草稿支持使用 doc_id 持续合并和更新，并重置为 pending",
+    "直接入库与草稿模式使用相互隔离的增量 workspace"
   ],
-  "publishedAt": "2026-08-14T14:21:00+08:00"
+  "publishedAt": "2026-08-14T18:00:00+08:00"
 }

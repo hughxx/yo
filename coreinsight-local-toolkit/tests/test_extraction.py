@@ -20,7 +20,7 @@ class FakeProcessor:
     def __init__(self):
         self.calls = []
 
-    def validate(self, upload_by, skill_id=None):
+    def validate(self, upload_by, skill_id=None, extract_mode="direct"):
         pass
 
     def process(self, *args, **kwargs):

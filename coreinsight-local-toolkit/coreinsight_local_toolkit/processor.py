@@ -13,6 +13,7 @@ from urllib.parse import quote
 import requests
 
 from .config import Settings
+from .drafts import DraftStore
 from .remote import HermesClient, WorkspaceClient
 from .skills import get_skill
 
@@ -32,33 +33,39 @@ class LocalExperienceProcessor:
         self.workspaces = WorkspaceClient(settings.workspace_file_server_url)
         self.hermes = HermesClient(
             settings.hermes_url, settings.hermes_api_key, settings.hermes_timeout_seconds)
+        self.drafts = DraftStore(settings)
         self._state_path = settings.data_dir / "welink_workspace_state.json"
         self._state_lock = threading.RLock()
 
-    def validate(self, upload_by: str, skill_id: str = "welink-experience-extractor") -> None:
+    def validate(self, upload_by: str, skill_id: str = "welink-experience-extractor",
+                 extract_mode: str = "direct") -> None:
         get_skill(skill_id)
         missing = []
         for name, value in (
             ("COREINSIGHT_HERMES_URL", self.settings.hermes_url),
             ("COREINSIGHT_HERMES_API_KEY", self.settings.hermes_api_key),
             ("COREINSIGHT_WORKSPACE_FILE_SERVER_URL", self.settings.workspace_file_server_url),
-            ("COREINSIGHT_EXPERIENCE_ENGINE_URL", self.settings.experience_engine_url),
         ):
             if not value:
                 missing.append(name)
         if not upload_by.strip():
             missing.append("COREINSIGHT_UPLOAD_BY")
+        if extract_mode == "direct" and not self.settings.experience_engine_url:
+            missing.append("COREINSIGHT_EXPERIENCE_ENGINE_URL")
         if missing:
             raise ValueError("缺少 Skill 提取配置：" + ", ".join(missing))
+        if extract_mode == "draft":
+            self.drafts.validate()
 
     def process(self, messages: list[dict], skill_id: str, upload_by: str,
                 task_id: str, progress=None, cancel_event=None,
-                group_id: str = "", scheduled: bool = False) -> dict:
+                group_id: str = "", scheduled: bool = False,
+                extract_mode: str = "direct") -> dict:
         self._check_cancel(cancel_event)
-        self.validate(upload_by, skill_id)
+        self.validate(upload_by, skill_id, extract_mode)
         skill = get_skill(skill_id)
         workspace_id = self._workspace_id(
-            task_id, group_id, skill_id, upload_by, scheduled)
+            task_id, group_id, skill_id, upload_by, scheduled, extract_mode)
         session_id = workspace_id
         state = self._load_workspace_state(workspace_id) if scheduled else {
             "nextChunkSeq": 1, "outputLineOffset": 0}
@@ -106,13 +113,13 @@ class LocalExperienceProcessor:
             if output_offset > len(records):
                 raise RuntimeError("Skill 改写了 experiences.jsonl 历史行，已拒绝继续入库")
             if progress:
-                progress("pushing", "Skill 已完成，正在写入经验引擎")
+                progress("pushing", "Skill 已完成，正在写入提取结果")
             pushed = []
             for index in range(output_offset, len(records)):
                 self._check_cancel(cancel_event)
                 record = records[index]
                 operation = "update" if record.get("doc_id") else "create"
-                doc_id = self._push_experience(record, upload_by)
+                doc_id = self._push_experience(record, upload_by, extract_mode)
                 record["doc_id"] = doc_id
                 raw_lines[index] = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
                 self.workspaces.write_text(
@@ -163,10 +170,12 @@ class LocalExperienceProcessor:
 
     @staticmethod
     def _workspace_id(task_id: str, group_id: str, skill_id: str,
-                      upload_by: str, scheduled: bool) -> str:
+                      upload_by: str, scheduled: bool,
+                      extract_mode: str = "direct") -> str:
         if not scheduled:
             return f"welink-manual-{task_id}"
-        identity = "\0".join((upload_by, group_id, skill_id)).encode("utf-8")
+        identity = "\0".join(
+            (upload_by, group_id, skill_id, extract_mode)).encode("utf-8")
         return "welink-schedule-" + hashlib.sha256(identity).hexdigest()[:24]
 
     def _load_workspace_state(self, workspace_id: str) -> dict:
@@ -385,7 +394,10 @@ class LocalExperienceProcessor:
             values.append(value)
         return values
 
-    def _push_experience(self, result: dict, upload_by: str) -> str:
+    def _push_experience(self, result: dict, upload_by: str,
+                         extract_mode: str = "direct") -> str:
+        if extract_mode == "draft":
+            return self.drafts.upsert(result, upload_by)
         doc_id = str(result.get("doc_id") or "").strip()
         create_url = self.settings.experience_engine_url.rstrip("/")
         if not create_url.endswith("/memory/experience/doc"):
