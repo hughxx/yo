@@ -5,6 +5,7 @@ import logging
 import json
 import queue
 import socket
+import sys
 import threading
 import time
 import urllib.error
@@ -17,7 +18,10 @@ import uvicorn
 from . import __version__
 from .app import create_app
 from .config import Settings
-from .updates import check_for_update
+from .updates import (
+    UpdateManager, UpdateStatus, create_updater_script, download_update,
+    launch_updater,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +37,14 @@ def _native_notice(message: str, title: str = "CoreInsight Local Toolkit") -> No
         ctypes.windll.user32.MessageBoxW(None, message, title, 0x40)
     except Exception:
         logger.warning("desktop notice: %s", message)
+
+
+def _native_confirm(message: str, title: str = "CoreInsight Local Toolkit") -> bool:
+    try:
+        return ctypes.windll.user32.MessageBoxW(None, message, title, 0x24) == 6
+    except Exception:
+        logger.warning("desktop confirmation unavailable: %s", message)
+        return False
 
 
 def _shell_open_directory(path: Path) -> None:
@@ -88,7 +100,8 @@ def run_desktop(settings: Settings) -> None:
         return
 
     ui_actions: queue.SimpleQueue[str] = queue.SimpleQueue()
-    application = create_app(settings)
+    update_manager = UpdateManager(settings)
+    application = create_app(settings, update_manager)
 
     @application.post("/desktop/show", include_in_schema=False)
     def activate_desktop() -> dict[str, bool]:
@@ -134,17 +147,60 @@ def run_desktop(settings: Settings) -> None:
             _native_notice(f"无法打开日志目录：\n{log_dir}\n\n{exc}")
 
     exiting = threading.Event()
+    install_lock = threading.Lock()
 
-    def check_update(*_args) -> None:
+    def begin_install(status: UpdateStatus) -> None:
+        if not install_lock.acquire(blocking=False):
+            tray.notify("升级任务已经在运行", "CoreInsight Local Toolkit")
+            return
+        update_manager.set_runtime("downloading", 0)
+
         def worker() -> None:
             try:
-                status = check_for_update(settings)
+                if not getattr(sys, "frozen", False):
+                    raise RuntimeError("源码运行模式不能自更新，请先打包 EXE 后验证")
+                tray.notify(
+                    f"正在下载 {status.latestVersion}，完成后将自动重启",
+                    "CoreInsight Local Toolkit")
+                package = download_update(
+                    settings, status,
+                    lambda value: update_manager.set_runtime("downloading", value))
+                update_manager.set_runtime("ready", 100, package_path=str(package))
+                script = create_updater_script(settings, package)
+                launch_updater(script)
+                update_manager.set_runtime("installing", 100, package_path=str(package))
+                _native_notice(
+                    f"版本 {status.latestVersion} 已下载并校验完成。\n\n"
+                    "Toolkit 即将退出、替换并自动重启。",
+                    "CoreInsight 正在升级")
+                floating.post(WM_APP_EXIT)
+            except Exception as exc:
+                logger.exception("update installation failed version=%s", status.latestVersion)
+                update_manager.set_runtime("failed", error=str(exc))
+                _native_notice(f"升级失败：\n{exc}\n\n可在日志目录查看详情。")
+            finally:
+                install_lock.release()
+
+        threading.Thread(target=worker, name="update-install", daemon=True).start()
+
+    def check_update(manual: bool = False) -> None:
+        def worker() -> None:
+            try:
+                status = update_manager.check()
                 if not status.configured:
                     message = "尚未配置更新信息"
                 elif status.forceUpdate:
-                    message = f"当前版本已停用，请更新到 {status.latestVersion}"
+                    message = f"当前版本已停用，必须更新到 {status.latestVersion}"
+                    tray.notify(message, "CoreInsight Local Toolkit")
+                    begin_install(status)
+                    return
                 elif status.updateAvailable:
                     message = f"发现新版本 {status.latestVersion}"
+                    if manual and _native_confirm(
+                            f"发现新版本 {status.latestVersion}，是否立即下载并安装？\n\n"
+                            + "\n".join(status.releaseNotes)):
+                        begin_install(status)
+                        return
                 else:
                     message = f"当前已是最新版本 {status.currentVersion}"
                 tray.notify(message, "CoreInsight Local Toolkit")
@@ -159,13 +215,14 @@ def run_desktop(settings: Settings) -> None:
             "email": lambda: open_url(email_url),
             "chat": lambda: open_url(chat_url),
             "logs": open_logs,
-            "update": check_update,
+            "update": lambda: check_update(True),
             "about": show_about,
         })
     except Exception:
         server.should_exit = True
         server_thread.join(timeout=10)
         raise
+    update_manager.set_installer(begin_install)
 
     def process_ui_actions() -> None:
         while not exiting.is_set():
@@ -189,7 +246,7 @@ def run_desktop(settings: Settings) -> None:
             pystray.MenuItem("聊天记录提取", lambda *_: open_url(chat_url)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("打开日志目录", open_logs),
-            pystray.MenuItem("检查更新", check_update),
+            pystray.MenuItem("检查更新", lambda *_: check_update(True)),
             pystray.MenuItem("关于", lambda *_: floating.post(WM_APP_ABOUT)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("显示悬浮图标", lambda *_: floating.post(WM_APP_SHOW), default=True),
@@ -198,7 +255,7 @@ def run_desktop(settings: Settings) -> None:
     )
     tray_thread = threading.Thread(target=tray.run, name="coreinsight-tray", daemon=True)
     tray_thread.start()
-    threading.Timer(2.0, check_update).start()
+    threading.Timer(2.0, lambda: check_update(False)).start()
     logger.info("desktop floating icon and tray started")
     try:
         floating.run()

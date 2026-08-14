@@ -71,6 +71,9 @@ class Settings:
     update_config_key: str = os.getenv(
         "COREINSIGHT_UPDATE_CONFIG_KEY", "coreinsight_local_toolkit_release"
     ).strip()
+    update_enabled: bool = os.getenv(
+        "COREINSIGHT_UPDATE_ENABLED", "1"
+    ).strip().lower() not in {"0", "false", "no"}
     tray_enabled: bool = os.getenv(
         "COREINSIGHT_TRAY_ENABLED", "1"
     ).strip().lower() not in {"0", "false", "no"}

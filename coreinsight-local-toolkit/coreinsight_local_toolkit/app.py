@@ -21,7 +21,7 @@ from .models import (
 from .scheduler import ScheduleRuntime
 from .skills import available_skills
 from .store import GroupStore
-from .updates import check_for_update
+from .updates import UpdateManager
 from .welink import WelinkHistory
 
 
@@ -35,8 +35,10 @@ def _to_timestamp(value: str | None, field_name: str) -> int:
     return int(parsed.timestamp() * 1000)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None,
+               update_manager: UpdateManager | None = None) -> FastAPI:
     settings = settings or load_settings()
+    update_manager = update_manager or UpdateManager(settings)
     store = GroupStore(settings.data_dir)
     history = WelinkHistory(settings.welink_cli)
     extraction = ExtractionRuntime(history, store, LocalExperienceProcessor(settings), settings.upload_by)
@@ -61,6 +63,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         origin = request.headers.get("origin", "").rstrip("/")
         if origin and origin not in browser_origins:
             return JSONResponse(status_code=403, content={"detail": "Origin 不在本地服务白名单中"})
+        if (request.method != "OPTIONS" and update_manager.forced
+                and (request.url.path == "/capabilities"
+                     or request.url.path.startswith("/welink/"))):
+            return JSONResponse(status_code=426, content={
+                "detail": "当前版本已停止服务，必须升级后继续使用",
+                "update": update_manager.snapshot(),
+            })
         response = await call_next(request)
         if request.headers.get("access-control-request-private-network") == "true":
             response.headers["Access-Control-Allow-Private-Network"] = "true"
@@ -86,15 +95,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/version")
     def version():
         return {"version": __version__,
-                "updateConfigured": bool(settings.update_config_url and settings.update_config_key),
+                "updateConfigured": bool(settings.update_enabled and settings.update_config_url
+                                         and settings.update_config_key),
                 "updateConfigKey": settings.update_config_key}
 
     @app.post("/update/check")
     def update_check():
         try:
-            return check_for_update(settings).to_dict()
+            return update_manager.check().to_dict()
         except (ValueError, requests.RequestException) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.get("/update/status")
+    def update_status():
+        return update_manager.snapshot()
+
+    @app.post("/update/install", status_code=202)
+    def update_install():
+        try:
+            return update_manager.request_install()
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except requests.RequestException as exc:
+            raise HTTPException(status_code=502, detail=f"版本检查失败：{exc}") from exc
 
     @app.get("/welink/skill/list")
     def list_skills():

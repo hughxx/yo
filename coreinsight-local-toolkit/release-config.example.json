@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "latestVersion": "0.3.0",
+  "minimumSupportedVersion": "0.2.0",
+  "forceUpdate": false,
+  "downloadUrl": "https://replace-with-direct-download/coreinsight-local-toolkit.exe",
+  "sha256": "9a9b6b2ce9d838ee737b422adabcbb6525a28c47128687b030468fe1d7328536",
+  "releaseNotes": [
+    "新增自动下载、SHA-256 校验、替换和重启闭环",
+    "强制更新期间暂停聊天记录相关业务接口",
+    "新增升级进度与安装接口"
+  ],
+  "publishedAt": "2026-08-14T14:21:00+08:00"
+}

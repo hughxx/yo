@@ -66,6 +66,7 @@ docId、入库结果和异常堆栈。
 | `COREINSIGHT_TRAY_ENABLED` | `1` | Windows 托盘；设为 `0` 可用于无桌面调试 |
 | `COREINSIGHT_UPDATE_CONFIG_URL` | Fuyao `selectConfigByKey` | 配置中心查询接口 |
 | `COREINSIGHT_UPDATE_CONFIG_KEY` | `coreinsight_local_toolkit_release` | 版本配置 key；任一项为空时关闭检查 |
+| `COREINSIGHT_UPDATE_ENABLED` | `1` | 设为 `0` 时关闭自动更新，用于故障排查 |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
 | `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |
 | `COREINSIGHT_FILE_SERVER_URL` | `http://7.224.100.105:32169` | 永久图片上传服务 |
@@ -156,8 +157,16 @@ Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色
 
 当前版本低于 `minimumSupportedVersion` 时强制更新；或者 `forceUpdate=true` 且当前版本低于
 `latestVersion` 时强制更新。其余版本差异仅提示普通更新。仅当发现新版本时才要求 HTTPS
-下载地址及合法 SHA-256。当前阶段只检查并提示，不下载或执行更新包；正式自动升级还需要
-发布端提供签名方案。
+下载地址及合法 SHA-256。普通更新由用户在“检查更新”中确认；强制更新会暂停 WeLink 业务
+接口并自动下载。安装包下载到 `D:\CoreInsight\LocalToolkit\updates`，SHA-256 校验通过后由
+外部更新脚本等待旧进程退出、覆盖原 EXE 并自动重启。升级日志写入
+`D:\CoreInsight\LocalToolkit\logs\updater.log`。
+
+版本接口包括 `POST /update/check`、`GET /update/status` 和 `POST /update/install`。SHA-256
+可以防止下载损坏或被替换；正式发布仍建议再对 EXE 添加企业代码签名。
+可直接复制 `release-config.example.json` 到配置中心，发布时只需替换其中的 HTTPS 直链。
+直链必须允许 Toolkit 不依赖浏览器 Cookie 直接下载。`0.3.0` 是首个具备自动替换能力的版本，
+从更旧版本迁入时仍需手动安装一次；之后的版本即可自动升级。
 
 ## 打包
 
