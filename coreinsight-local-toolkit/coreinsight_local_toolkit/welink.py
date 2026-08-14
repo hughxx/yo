@@ -39,6 +39,55 @@ class WelinkHistory:
             raise RuntimeError(data.get("resultContext") or f"resultCode={data.get('resultCode')}")
         return data
 
+    def probe(self) -> dict:
+        """Check that welink-cli exists and can query the current login."""
+        try:
+            result = subprocess.run(
+                [self.executable, "im", "query-recent-conversation", "--count", "1"],
+                capture_output=True, text=True, encoding="utf-8", errors="ignore",
+                timeout=30, startupinfo=_STARTUPINFO,
+            )
+        except FileNotFoundError:
+            return {
+                "installed": False, "ready": False,
+                "message": "未找到 welink-cli，请先安装 WeLink CLI",
+                "conversationCount": 0,
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "installed": True, "ready": False,
+                "message": "WeLink CLI 探测超时",
+                "conversationCount": 0,
+            }
+
+        output = result.stdout.strip()
+        if not output:
+            message = result.stderr.strip()[:300] if result.stderr else "WeLink CLI 无输出"
+            return {
+                "installed": True, "ready": False, "message": message,
+                "conversationCount": 0,
+            }
+        try:
+            data = json.loads(output)
+        except json.JSONDecodeError:
+            return {
+                "installed": True, "ready": False,
+                "message": "WeLink CLI 返回内容不是有效 JSON",
+                "conversationCount": 0,
+            }
+
+        error = data.get("error") or {}
+        code = str(error.get("error_code") or "")
+        ready = code == "IM.0000"
+        conversations = data.get("conversation_info") or []
+        return {
+            "installed": True,
+            "ready": ready,
+            "message": "WeLink CLI 已安装并可用" if ready else (
+                str(error.get("error_msg") or code or "WeLink CLI 查询失败")),
+            "conversationCount": len(conversations) if isinstance(conversations, list) else 0,
+        }
+
     def query_page(self, group_id: str, message_id: str = "", count: int = 100) -> dict:
         args = [
             "im", "query-history-message", "--group-id", group_id,

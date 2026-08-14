@@ -16,7 +16,7 @@ from .processor import LocalExperienceProcessor
 from .models import (
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
     ExtractRequest, MessageQuery, PreviewMessage, ScheduleCancelRequest,
-    ScheduleSetRequest,
+    ScheduleSetRequest, WelinkCliStatus,
 )
 from .scheduler import ScheduleRuntime
 from .skills import available_skills
@@ -90,7 +90,12 @@ def create_app(settings: Settings | None = None,
             "welinkExtraction": True,
             "welinkScheduling": True,
             "welinkSkillExtraction": True,
+            "welinkCliProbe": True,
         }
+
+    @app.get("/welink/cli/status", response_model=WelinkCliStatus)
+    def welink_cli_status():
+        return history.probe()
 
     @app.get("/version")
     def version():

@@ -47,6 +47,13 @@ class GroupDelete(BaseModel):
     groupId: str = Field(min_length=1)
 
 
+class WelinkCliStatus(BaseModel):
+    installed: bool
+    ready: bool
+    message: str
+    conversationCount: int = 0
+
+
 class MessageQuery(BaseModel):
     groupId: str = Field(min_length=1)
     startTime: Optional[str] = None

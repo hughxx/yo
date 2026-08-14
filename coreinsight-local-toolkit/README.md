@@ -101,6 +101,7 @@ docId、入库结果和异常堆栈。
 | GET | `/capabilities` | 当前可用能力 |
 | GET | `/version` | 当前版本与版本检查配置状态 |
 | POST | `/update/check` | 按 HTTPS 清单检查新版本，不自动下载安装 |
+| GET | `/welink/cli/status` | 探测 `welink-cli` 是否安装且当前登录可正常查询 |
 | GET | `/welink/skill/list` | 用户可选择的提取 Skill |
 | GET | `/welink/group/list` | 群组列表 |
 | POST | `/welink/group/add` | 添加群组 |

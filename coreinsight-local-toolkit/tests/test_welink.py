@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from coreinsight_local_toolkit.welink import WelinkHistory
 
@@ -15,6 +15,44 @@ def message(message_id: int, timestamp: int):
 
 
 class WelinkHistoryTests(unittest.TestCase):
+    def test_probe_reports_installed_and_ready(self):
+        completed = Mock(stdout='''{
+          "conversation_info": [{"group_id": "986359484802794599"}],
+          "error": {"error_code": "IM.0000", "error_msg": "success"}
+        }''', stderr="")
+        history = WelinkHistory()
+        with patch("coreinsight_local_toolkit.welink.subprocess.run",
+                   return_value=completed) as run:
+            status = history.probe()
+        self.assertEqual({
+            "installed": True,
+            "ready": True,
+            "message": "WeLink CLI 已安装并可用",
+            "conversationCount": 1,
+        }, status)
+        self.assertEqual(
+            ["welink-cli", "im", "query-recent-conversation", "--count", "1"],
+            run.call_args.args[0])
+
+    def test_probe_reports_not_installed(self):
+        with patch("coreinsight_local_toolkit.welink.subprocess.run",
+                   side_effect=FileNotFoundError):
+            status = WelinkHistory().probe()
+        self.assertFalse(status["installed"])
+        self.assertFalse(status["ready"])
+
+    def test_probe_reports_cli_error_without_exposing_conversations(self):
+        completed = Mock(stdout='''{
+          "conversation_info": [],
+          "error": {"error_code": "IM.1001", "error_msg": "not logged in"}
+        }''', stderr="")
+        with patch("coreinsight_local_toolkit.welink.subprocess.run",
+                   return_value=completed):
+            status = WelinkHistory().probe()
+        self.assertTrue(status["installed"])
+        self.assertFalse(status["ready"])
+        self.assertEqual("not logged in", status["message"])
+
     def test_older_page_uses_direction_zero(self):
         history = WelinkHistory()
         with patch.object(history, "_run", return_value={
