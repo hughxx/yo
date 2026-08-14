@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 try:
-    from .private_config import DRAFT_DB_PASSWORD, DRAFT_DB_USER
+    from ._build_secrets import DRAFT_DB_PASSWORD, DRAFT_DB_USER
 except ImportError:
     DRAFT_DB_USER = ""
     DRAFT_DB_PASSWORD = ""
@@ -61,12 +61,8 @@ class Settings:
     draft_db_schema: str = os.getenv(
         "COREINSIGHT_DRAFT_DB_SCHEMA", "coreinsight"
     ).strip()
-    draft_db_user: str = os.getenv(
-        "COREINSIGHT_DRAFT_DB_USER", DRAFT_DB_USER
-    ).strip()
-    draft_db_password: str = os.getenv(
-        "COREINSIGHT_DRAFT_DB_PASSWORD", DRAFT_DB_PASSWORD
-    ).strip()
+    draft_db_user: str = DRAFT_DB_USER.strip()
+    draft_db_password: str = DRAFT_DB_PASSWORD.strip()
     ocr_url: str = os.getenv(
         "COREINSIGHT_OCR_URL", "http://10.90.113.228:5678/ocr"
     ).strip()

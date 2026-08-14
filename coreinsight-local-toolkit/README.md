@@ -73,8 +73,8 @@ docId、入库结果和异常堆栈。
 | `COREINSIGHT_DRAFT_DB_PORT` | `8000` | 平台草稿 GaussDB 端口 |
 | `COREINSIGHT_DRAFT_DB_NAME` | `mlops` | 平台草稿数据库名 |
 | `COREINSIGHT_DRAFT_DB_SCHEMA` | `coreinsight` | 草稿表 schema |
-| `COREINSIGHT_DRAFT_DB_USER` | 私有配置中的值 | 可选运行时覆盖草稿库账号 |
-| `COREINSIGHT_DRAFT_DB_PASSWORD` | 私有配置中的值 | 可选运行时覆盖草稿库密码 |
+| `COREINSIGHT_DRAFT_DB_USER` | 无 | 仅在编译机器上使用，打包时嵌入草稿库账号 |
+| `COREINSIGHT_DRAFT_DB_PASSWORD` | 无 | 仅在编译机器上使用，打包时嵌入草稿库密码 |
 | `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |
 | `COREINSIGHT_FILE_SERVER_URL` | `http://7.224.100.105:32169` | 永久图片上传服务 |
 | `COREINSIGHT_RAG_PIC_PUBLIC_BASE` | `https://fuyao-data-server.rnd.huawei.com` | Markdown 图片公开地址 |
@@ -146,9 +146,9 @@ workspace 不会删除已经进入经验正文的永久图片。
 重新建立待审核草稿。`title` 与 `llm_title` 始终同步，`summary` 写入 `llm_description`，`experience` 写入
 `llm_content`，`rag_search_text` 在草稿模式下直接丢弃。
 
-打包前将 `coreinsight_local_toolkit/private_config.example.py` 复制为
-`coreinsight_local_toolkit/private_config.py`，并填写 `DRAFT_DB_USER`、`DRAFT_DB_PASSWORD`。仓库已忽略
-`private_config.py`，不会随普通 `git add` 提交；打包器会将其值嵌入 EXE。环境变量仍可在运行时覆盖这两个值。
+打包前在编译机器的系统环境变量中设置 `COREINSIGHT_DRAFT_DB_USER` 和
+`COREINSIGHT_DRAFT_DB_PASSWORD`。`build.ps1` 缺少任一变量都会停止构建；构建时会生成被 Git 忽略的临时
+`_build_secrets.py` 并将值嵌入 EXE，构建结束后立即删除临时文件。最终用户电脑不需要配置这两个环境变量。
 
 ## 桌面悬浮图标、托盘与版本检查
 
