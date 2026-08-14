@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
+import queue
+import socket
 import threading
 import time
+import urllib.error
+import urllib.request
 import webbrowser
 from pathlib import Path
 
@@ -22,14 +27,68 @@ def asset_path(name: str) -> Path:
     return Path(__file__).with_name("assets") / name
 
 
+def _native_notice(message: str, title: str = "CoreInsight Local Toolkit") -> None:
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, message, title, 0x40)
+    except Exception:
+        logger.warning("desktop notice: %s", message)
+
+
+def _port_is_open(port: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def _activate_existing(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/health", timeout=1) as response:
+            health = json.loads(response.read().decode("utf-8"))
+        if health.get("service") != "coreinsight-local-toolkit":
+            return False
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/desktop/show", data=b"{}", method="POST",
+        headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=1) as response:
+            return response.status == 200
+    except (OSError, urllib.error.URLError):
+        return False
+
+
 def run_desktop(settings: Settings) -> None:
     import pystray
     import tkinter as tk
     from PIL import Image, ImageTk
     from tkinter import messagebox
 
+    if _port_is_open(settings.port):
+        if _activate_existing(settings.port):
+            logger.info("existing toolkit instance activated port=%d", settings.port)
+        else:
+            _native_notice(
+                f"本地端口 {settings.port} 已被其他程序占用，CoreInsight Local Toolkit 无法启动。\n\n"
+                "请关闭占用该端口的程序，或通过 COREINSIGHT_AGENT_PORT 指定其他端口。")
+            logger.error("local port is already occupied port=%d", settings.port)
+        return
+
+    ui_actions: queue.SimpleQueue[str] = queue.SimpleQueue()
+    application = create_app(settings)
+
+    @application.post("/desktop/show", include_in_schema=False)
+    def activate_desktop() -> dict[str, bool]:
+        ui_actions.put("show")
+        return {"ok": True}
+
     server = uvicorn.Server(uvicorn.Config(
-        create_app(settings), host=settings.host, port=settings.port,
+        application, host=settings.host, port=settings.port,
         log_level="info", log_config=None))
     server_thread = threading.Thread(
         target=server.run, name="coreinsight-http", daemon=True)
@@ -40,7 +99,8 @@ def run_desktop(settings: Settings) -> None:
     if not server.started:
         server.should_exit = True
         server_thread.join(timeout=3)
-        raise RuntimeError("本地 HTTP 服务启动失败")
+        _native_notice(f"本地服务启动失败，请查看日志：{settings.data_dir / 'logs'}")
+        return
 
     local_url = f"http://127.0.0.1:{settings.port}/demo/"
     email_url = settings.email_url or settings.portal_url
@@ -78,7 +138,12 @@ def run_desktop(settings: Settings) -> None:
         root.attributes("-topmost", True)
 
     def hide_floating(*_args) -> None:
-        root.withdraw()
+        try:
+            menu.unpost()
+            menu.grab_release()
+        except tk.TclError:
+            pass
+        root.after_idle(root.withdraw)
 
     def show_about(*_args) -> None:
         messagebox.showinfo(
@@ -128,9 +193,11 @@ def run_desktop(settings: Settings) -> None:
     menu.add_command(label="邮件提取", command=lambda: open_url(email_url))
     menu.add_command(label="聊天记录提取", command=lambda: open_url(chat_url))
     menu.add_separator()
+    menu.add_command(label="打开日志目录", command=open_logs)
+    menu.add_command(label="检查更新", command=check_update)
     menu.add_command(label="关于", command=show_about)
-    menu.add_command(label="隐藏悬浮图标", command=hide_floating)
     menu.add_separator()
+    menu.add_command(label="隐藏悬浮图标", command=hide_floating)
     menu.add_command(label="退出", command=request_exit)
 
     def popup_menu(event) -> None:
@@ -156,11 +223,21 @@ def run_desktop(settings: Settings) -> None:
     label.bind("<Button-3>", popup_menu)
     root.bind("<Button-3>", popup_menu)
 
+    def process_ui_actions() -> None:
+        try:
+            while ui_actions.get_nowait() == "show":
+                show_floating()
+        except queue.Empty:
+            pass
+        if not exiting.is_set():
+            root.after(100, process_ui_actions)
+
+    root.after(100, process_ui_actions)
+
     tray = pystray.Icon(
         "coreinsight-local-toolkit", source_image,
         "CoreInsight Local Toolkit",
         menu=pystray.Menu(
-            pystray.MenuItem("显示悬浮图标", lambda *_: root.after(0, show_floating), default=True),
             pystray.MenuItem("云见主页", lambda *_: open_url(settings.portal_url)),
             pystray.MenuItem("邮件提取", lambda *_: open_url(email_url)),
             pystray.MenuItem("聊天记录提取", lambda *_: open_url(chat_url)),
@@ -169,6 +246,7 @@ def run_desktop(settings: Settings) -> None:
             pystray.MenuItem("检查更新", check_update),
             pystray.MenuItem("关于", lambda *_: root.after(0, show_about)),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("显示悬浮图标", lambda *_: root.after(0, show_floating), default=True),
             pystray.MenuItem("退出", request_exit),
         ),
     )
