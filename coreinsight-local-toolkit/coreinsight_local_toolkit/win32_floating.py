@@ -11,10 +11,9 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 WM_DESTROY = 0x0002
-WM_MOUSEMOVE = 0x0200
 WM_LBUTTONDOWN = 0x0201
-WM_LBUTTONUP = 0x0202
 WM_RBUTTONUP = 0x0205
+WM_NCLBUTTONDOWN = 0x00A1
 WM_APP_SHOW = 0x8001
 WM_APP_ABOUT = 0x8002
 WM_APP_EXIT = 0x8003
@@ -34,6 +33,7 @@ DIB_RGB_COLORS = 0
 IDC_ARROW = 32512
 MF_STRING = 0x0000
 MF_SEPARATOR = 0x0800
+HTCAPTION = 2
 
 
 class POINT(ctypes.Structure):
@@ -99,9 +99,6 @@ class FloatingWindow:
         self.actions = actions
         self.size = 60
         self.hwnd: int | None = None
-        self._drag_start: tuple[int, int] | None = None
-        self._window_start: tuple[int, int] | None = None
-        self._dragged = False
         self._bitmap = None
         self._memory_dc = None
         self._old_bitmap = None
@@ -131,6 +128,19 @@ class FloatingWindow:
             wintypes.HDC, ctypes.POINTER(POINT), wintypes.COLORREF,
             ctypes.POINTER(BLENDFUNCTION), wintypes.DWORD]
         self.user32.UpdateLayeredWindow.restype = wintypes.BOOL
+        self.user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        self.user32.GetWindowRect.restype = wintypes.BOOL
+        self.user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, WPARAM, LPARAM]
+        self.user32.SendMessageW.restype = LRESULT
+        self.user32.ReleaseCapture.restype = wintypes.BOOL
+        self.user32.SetWindowPos.argtypes = [
+            wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        self.user32.SetWindowPos.restype = wintypes.BOOL
+        self.user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        self.user32.ShowWindow.restype = wintypes.BOOL
+        self.user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, WPARAM, LPARAM]
+        self.user32.PostMessageW.restype = wintypes.BOOL
         self.user32.CreatePopupMenu.restype = wintypes.HMENU
         self.user32.AppendMenuW.argtypes = [wintypes.HMENU, wintypes.UINT, WPARAM, wintypes.LPCWSTR]
         self.user32.TrackPopupMenu.restype = wintypes.UINT
@@ -216,31 +226,13 @@ class FloatingWindow:
 
     def _window_proc(self, hwnd, message, wparam, lparam):
         if message == WM_LBUTTONDOWN:
-            cursor = POINT()
-            rect = wintypes.RECT()
-            self.user32.GetCursorPos(ctypes.byref(cursor))
-            self.user32.GetWindowRect(hwnd, ctypes.byref(rect))
-            self._drag_start = (cursor.x, cursor.y)
-            self._window_start = (rect.left, rect.top)
-            self._dragged = False
-            self.user32.SetCapture(hwnd)
-            return 0
-        if message == WM_MOUSEMOVE and self._drag_start and self._window_start:
-            cursor = POINT()
-            self.user32.GetCursorPos(ctypes.byref(cursor))
-            dx = cursor.x - self._drag_start[0]
-            dy = cursor.y - self._drag_start[1]
-            if abs(dx) + abs(dy) > 4:
-                self._dragged = True
-            self.user32.SetWindowPos(
-                hwnd, -1, self._window_start[0] + dx, self._window_start[1] + dy,
-                0, 0, 0x0001 | 0x0010)
-            return 0
-        if message == WM_LBUTTONUP:
+            before = wintypes.RECT()
+            after = wintypes.RECT()
+            self.user32.GetWindowRect(hwnd, ctypes.byref(before))
             self.user32.ReleaseCapture()
-            self._drag_start = None
-            self._window_start = None
-            if not self._dragged:
+            self.user32.SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)
+            self.user32.GetWindowRect(hwnd, ctypes.byref(after))
+            if abs(after.left - before.left) + abs(after.top - before.top) <= 3:
                 self.actions["portal"]()
             return 0
         if message == WM_RBUTTONUP:
@@ -295,7 +287,8 @@ class FloatingWindow:
 
     def show(self) -> None:
         self.user32.ShowWindow(self.hwnd, SW_SHOWNOACTIVATE)
-        self.user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
+        self.user32.SetWindowPos(
+            self.hwnd, wintypes.HWND(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
         logger.info("floating icon shown")
 
     def hide(self) -> None:
