@@ -105,6 +105,7 @@ class WelinkHistoryTests(unittest.TestCase):
         self.assertTrue(item["checked"])
         self.assertEqual("message-1", item["content"])
         self.assertEqual("message-1", item["rawContent"])
+        self.assertRegex(item["time"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 
 
 if __name__ == "__main__":

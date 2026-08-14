@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -23,16 +22,16 @@ from .skills import available_skills
 from .store import GroupStore
 from .updates import UpdateManager
 from .welink import WelinkHistory
+from .time_format import epoch_milliseconds
 
 
 def _to_timestamp(value: str | None, field_name: str) -> int:
     if not value:
         return 0
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
+        return epoch_milliseconds(value)
+    except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"{field_name} 不是有效的 ISO 8601 时间") from exc
-    return int(parsed.timestamp() * 1000)
 
 
 def create_app(settings: Settings | None = None,

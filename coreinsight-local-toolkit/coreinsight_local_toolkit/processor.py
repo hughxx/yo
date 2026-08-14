@@ -83,6 +83,8 @@ class LocalExperienceProcessor:
             for offset, chunk in enumerate(chunks):
                 sequence = first_sequence + offset
                 path = self._chunk_path(sequence, chunk)
+                self._archive_markdown(
+                    group_id, workspace_id, path, chunk["content"])
                 self.workspaces.write_text(workspace_id, path, chunk["content"])
                 input_paths.append(path)
             logger.info("workspace prepared task_id=%s chunks=%d", task_id, len(chunks))
@@ -205,6 +207,21 @@ class LocalExperienceProcessor:
             temporary.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
             temporary.replace(self._state_path)
+
+    def _archive_markdown(self, group_id: str, workspace_id: str,
+                          remote_path: str, content: str) -> Path:
+        safe_group_id = re.sub(
+            r"[^0-9A-Za-z._-]+", "_", str(group_id or "")).strip("._")
+        safe_group_id = safe_group_id[:120] or "unknown-group"
+        archive_dir = self.settings.data_dir / "markdown" / safe_group_id / workspace_id
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        destination = archive_dir / Path(remote_path).name
+        temporary = destination.with_suffix(destination.suffix + ".tmp")
+        temporary.write_text(content, encoding="utf-8")
+        temporary.replace(destination)
+        logger.info(
+            "markdown archived workspace_id=%s path=%s", workspace_id, destination)
+        return destination
 
     @staticmethod
     def _latest_experience_versions(records: list[dict]) -> list[dict]:

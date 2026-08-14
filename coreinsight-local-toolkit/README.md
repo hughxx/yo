@@ -44,6 +44,9 @@ GET http://127.0.0.1:17831/health
 `D:\CoreInsight\LocalToolkit\logs\toolkit.log`（单文件 5 MB，保留 5 个备份）。日志不记录
 完整聊天正文、密码或 API Key。提取日志包含 taskId、群组、消息计数、Hermes runId、经验
 docId、入库结果和异常堆栈。
+转换完成的聊天 Markdown 会长期保存在
+`D:\CoreInsight\LocalToolkit\markdown\<groupId>\<workspaceId>`。文件内容与上传到远端
+workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副本不会随远端 workspace 清理自动删除。
 
 演示前端直接访问 `http://127.0.0.1:17831/demo/`，不需要另外启动 Node 服务。
 
@@ -115,7 +118,7 @@ docId、入库结果和异常堆栈。
 | POST | `/welink/schedule/set` | 新增或修改本地定时提取 |
 | POST | `/welink/schedule/cancel` | 取消本地定时提取 |
 
-日期字段接受带时区的 ISO 8601 字符串；不带时区时按本机时区解释。消息查询是阻塞型
+日期时间字段统一返回 `YYYY-MM-DD HH:mm:ss`。请求兼容空格或 `T` 分隔的 ISO 8601 字符串及可选时区；不带时区时按本机时区解释。消息查询是阻塞型
 本地操作，FastAPI 会在线程池中执行，不阻塞健康检查。`/welink/message/page` 每页最多
 返回 100 条，并返回 `nextCursor` 和 `hasMore`；前端不应把全部聊天正文一次加载进浏览
 器。WeLink 返回的 `msgTotalCount` 实际是当前页条数，不是会话历史总数，因此协议中的

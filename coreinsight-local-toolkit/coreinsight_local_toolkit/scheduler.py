@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from .extraction import ExtractionRuntime
 from .models import ExtractRequest, ScheduleSetRequest
 from .store import GroupStore
+from .time_format import format_datetime, parse_datetime
 
 
 def _parse_time(value: str) -> tuple[int, int, int]:
@@ -128,8 +129,8 @@ class ScheduleRuntime:
         group.scheduleDay = now.day
         group.scheduleEnabled = True
         if not group.scheduleLastRun:
-            group.scheduleLastRun = now.isoformat(timespec="seconds")
-        group.scheduleNextRun = next_run(group, now).isoformat(timespec="seconds")
+            group.scheduleLastRun = format_datetime(now)
+        group.scheduleNextRun = format_datetime(next_run(group, now))
         group.status = "scheduled"
         return self.groups.update(group)
 
@@ -152,7 +153,7 @@ class ScheduleRuntime:
                 continue
             try:
                 if not group.scheduleNextRun:
-                    group.scheduleNextRun = next_run(group, now).isoformat(timespec="seconds")
+                    group.scheduleNextRun = format_datetime(next_run(group, now))
                 if group.status != "extracting":
                     group.status = "scheduled"
                 self.groups.update(group)
@@ -169,10 +170,10 @@ class ScheduleRuntime:
         for group in self.groups.list():
             if not group.scheduleEnabled or not group.scheduleNextRun:
                 continue
-            due = datetime.fromisoformat(group.scheduleNextRun)
+            due = parse_datetime(group.scheduleNextRun)
             if due > now:
                 continue
-            start = datetime.fromisoformat(group.scheduleLastRun) if group.scheduleLastRun else due
+            start = parse_datetime(group.scheduleLastRun) if group.scheduleLastRun else due
             payload = ExtractRequest(
                 groupId=group.groupId, uploadBy=group.uploadBy,
                 skillId=group.skillId, extractMode=group.extractMode,
@@ -194,8 +195,8 @@ class ScheduleRuntime:
             return
         completed = datetime.fromtimestamp(end_ms / 1000).astimezone()
         if success:
-            group.scheduleLastRun = completed.isoformat(timespec="seconds")
-        group.scheduleNextRun = next_run(group, completed).isoformat(timespec="seconds")
+            group.scheduleLastRun = format_datetime(completed)
+        group.scheduleNextRun = format_datetime(next_run(group, completed))
         group.status = "scheduled"
         self.groups.update(group)
 

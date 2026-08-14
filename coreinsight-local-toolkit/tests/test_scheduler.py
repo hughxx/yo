@@ -45,7 +45,7 @@ class SchedulerTests(unittest.TestCase):
         saved = self.runtime.set(ScheduleSetRequest(
             groupId="g1", uploadBy="u1", scheduleFreq="daily",
             scheduleTime="09:00:00"), now)
-        self.assertEqual("2026-08-13T09:00:00+08:00", saved.scheduleNextRun)
+        self.assertEqual("2026-08-13 09:00:00", saved.scheduleNextRun)
 
         due = datetime.fromisoformat("2026-08-13T09:00:01+08:00")
         self.assertTrue(self.runtime.tick(due))
@@ -54,7 +54,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(int(due.timestamp() * 1000), call[2])
         self.assertTrue(call[3])
         group = self.store.get("g1")
-        self.assertEqual(due.isoformat(timespec="seconds"), group.scheduleLastRun)
+        self.assertEqual("2026-08-13 09:00:01", group.scheduleLastRun)
         self.assertEqual("scheduled", group.status)
 
     def test_custom_cron(self):

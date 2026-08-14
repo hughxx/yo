@@ -54,8 +54,10 @@ class FakeHermes:
 
 class ProcessorTests(unittest.TestCase):
     def processor(self):
+        data_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(data_directory.cleanup)
         processor = LocalExperienceProcessor(Settings(
-            data_dir=Path(tempfile.gettempdir()), experience_engine_url="http://engine",
+            data_dir=Path(data_directory.name), experience_engine_url="http://engine",
             clouddrive_account="account", clouddrive_password="password"))
         processor.workspaces = FakeWorkspaces()
         processor.hermes = FakeHermes()
@@ -73,6 +75,9 @@ class ProcessorTests(unittest.TestCase):
         self.assertTrue(any(path.startswith("input/000001_")
                             for path in processor.workspaces.files))
         self.assertIn("skills/welink-experience-extractor/SKILL.md", processor.workspaces.files)
+        archived = list((processor.settings.data_dir / "markdown").rglob("*.md"))
+        self.assertEqual(1, len(archived))
+        self.assertIn("hello", archived[0].read_text(encoding="utf-8"))
         self.assertEqual("welink-experience-extractor", result["skillId"])
         self.assertEqual("server-doc-1", result["docId"])
         push.assert_called_once()
@@ -89,6 +94,15 @@ class ProcessorTests(unittest.TestCase):
         self.assertIn("消息 ID：1", chunks[0]["content"])
         self.assertNotIn("消息 ID：2", chunks[0]["content"])
         self.assertIn("消息 ID：2", chunks[1]["content"])
+
+    def test_markdown_archive_uses_safe_group_directory(self):
+        processor = self.processor()
+        destination = processor._archive_markdown(
+            "../group:1", "welink-manual-task", "input/000001_test.md", "正文")
+        self.assertEqual("正文", destination.read_text(encoding="utf-8"))
+        self.assertEqual("group_1", destination.parent.parent.name)
+        self.assertTrue(destination.is_relative_to(
+            processor.settings.data_dir / "markdown"))
 
     def test_create_and_update_use_engine_contract(self):
         processor = self.processor()

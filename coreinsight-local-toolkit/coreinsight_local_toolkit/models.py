@@ -4,6 +4,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, validator
 
+from .time_format import normalize_datetime
+
 
 class GroupBase(BaseModel):
     groupId: str = Field(min_length=1)
@@ -41,6 +43,13 @@ class GroupConfig(GroupBase):
     scheduleNextRun: str = ""
     scheduleWeekday: int = Field(default=0, ge=0, le=6)
     scheduleDay: int = Field(default=1, ge=1, le=31)
+
+    @validator("startTime", "endTime", "scheduleLastRun", "scheduleNextRun")
+    def normalize_datetime_fields(cls, value: str) -> str:
+        try:
+            return str(normalize_datetime(value) or "")
+        except ValueError as exc:
+            raise ValueError("时间必须是有效的日期时间") from exc
 
 
 class GroupDelete(BaseModel):

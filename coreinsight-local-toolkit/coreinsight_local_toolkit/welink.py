@@ -193,7 +193,8 @@ class WelinkHistory:
         return {
             "id": str(raw.get("msgId") or ""),
             "sender": str(raw.get("sender") or ""),
-            "time": datetime.fromtimestamp(timestamp / 1000, timezone.utc).astimezone().isoformat(timespec="seconds")
+            "time": datetime.fromtimestamp(
+                timestamp / 1000, timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
             if timestamp else "",
             "content": display,
             # Preview response models remove this internal field. Extraction
