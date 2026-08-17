@@ -14,7 +14,8 @@ from .extraction import ExtractionRuntime
 from .processor import LocalExperienceProcessor
 from .models import (
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
-    ExtractRequest, MessageQuery, PreviewMessage, ScheduleCancelRequest,
+    ExtractCancelRequest, ExtractRequest, MessageQuery, PreviewMessage,
+    ScheduleCancelRequest,
     ScheduleSetRequest, WelinkCliStatus,
 )
 from .scheduler import ScheduleRuntime
@@ -156,8 +157,8 @@ def create_app(settings: Settings | None = None,
 
     @app.delete("/welink/group/delete", status_code=204)
     def delete_group(payload: GroupDelete):
-        task = extraction.status()
-        if task.get("running") and task.get("groupId") == payload.groupId:
+        task = extraction.status(group_id=payload.groupId)
+        if task and task.get('running'):
             raise HTTPException(status_code=409, detail="该群组正在提取，请先取消当前任务")
         try:
             group = store.get(payload.groupId)
@@ -213,18 +214,30 @@ def create_app(settings: Settings | None = None,
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @app.get("/welink/extract/status")
-    def extract_status():
-        return extraction.status()
+    @app.get('/welink/extract/status')
+    def extract_status(taskId: str = '', groupId: str = ''):
+        task = extraction.status(task_id=taskId.strip(), group_id=groupId.strip())
+        if task is None:
+            raise HTTPException(status_code=404, detail='提取任务不存在')
+        return task
 
-    @app.post("/welink/extract/cancel")
-    def cancel_extract():
-        return extraction.cancel()
+    @app.get('/welink/extract/tasks')
+    def extract_tasks():
+        return extraction.tasks()
+
+    @app.post('/welink/extract/cancel')
+    def cancel_extract(payload: ExtractCancelRequest | None = None):
+        payload = payload or ExtractCancelRequest()
+        task = extraction.cancel(task_id=payload.taskId.strip(),
+                                 group_id=payload.groupId.strip())
+        if task is None:
+            raise HTTPException(status_code=404, detail='没有找到可取消的提取任务')
+        return task
 
     @app.post("/welink/schedule/set")
     def set_schedule(payload: ScheduleSetRequest):
-        task = extraction.status()
-        if task.get("running") and task.get("groupId") == payload.groupId:
+        task = extraction.status(group_id=payload.groupId)
+        if task and task.get('running'):
             raise HTTPException(status_code=409, detail="该群组正在提取，请先取消当前任务")
         try:
             return scheduler.set(payload)
@@ -241,6 +254,7 @@ def create_app(settings: Settings | None = None,
     @app.on_event("shutdown")
     def shutdown_scheduler():
         scheduler.close()
+        extraction.close()
 
     @app.get("/", include_in_schema=False)
     def demo_redirect():

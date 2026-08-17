@@ -113,8 +113,9 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 | POST | `/welink/message/list` | 获取时间范围内的聊天记录 |
 | POST | `/welink/message/page` | 游标分页预览聊天记录（推荐） |
 | POST | `/welink/extract` | 本地读取和 msgId 过滤，提交 workspace Skill 并入库 |
-| GET | `/welink/extract/status` | 查询本地提取任务状态 |
-| POST | `/welink/extract/cancel` | 请求取消当前任务 |
+| GET | `/welink/extract/status` | 按 `taskId` 或 `groupId` 查询任务状态 |
+| GET | `/welink/extract/tasks` | 查询本进程的提取任务列表 |
+| POST | `/welink/extract/cancel` | 按 `taskId` 或 `groupId` 取消任务 |
 | POST | `/welink/schedule/set` | 新增或修改本地定时提取 |
 | POST | `/welink/schedule/cancel` | 取消本地定时提取 |
 
@@ -123,6 +124,9 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 返回 100 条，并返回 `nextCursor` 和 `hasMore`；前端不应把全部聊天正文一次加载进浏览
 器。WeLink 返回的 `msgTotalCount` 实际是当前页条数，不是会话历史总数，因此协议中的
 `totalHint` 固定为 0，仅为兼容已接入的前端保留。
+
+提取任务按群组防重复：同群组已有未结束任务时返回 409，不同群组的任务均可提交。
+LocalToolkit 使用单 worker 按提交顺序执行，尚未执行的任务状态为 `queued`。
 
 提取请求只携带 `skillId`，不再向用户暴露 Prompt 或 CodeAgent。聊天 Markdown 以约
 40,000 字符为目标自动分片，但只在完整消息边界切分；文件名使用

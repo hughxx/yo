@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -28,7 +29,47 @@ class FakeProcessor:
         return {'docId': 'doc-1', 'title': 'Test title'}
 
 
+class BlockingProcessor(FakeProcessor):
+    def __init__(self):
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def process(self, *args, **kwargs):
+        self.calls.append(args)
+        self.entered.set()
+        self.release.wait(2)
+        return {'docId': 'doc-1', 'title': 'Test title'}
+
+
 class ExtractionRuntimeTests(unittest.TestCase):
+    def test_different_groups_queue_and_same_group_conflicts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            groups = GroupStore(Path(directory))
+            groups.add(GroupCreate(groupId='g1'))
+            groups.add(GroupCreate(groupId='g2'))
+            processor = BlockingProcessor()
+            runtime = ExtractionRuntime(FakeHistory(), groups, processor, 'u1')
+            payload1 = ExtractRequest(groupId='g1', uploadBy='u1')
+            payload2 = ExtractRequest(groupId='g2', uploadBy='u1')
+            first = runtime.start(payload1, 0, 10)
+            self.assertTrue(processor.entered.wait(1))
+            second = runtime.start(payload2, 0, 10)
+            self.assertEqual('queued', runtime.status(task_id=second['taskId'])['status'])
+            with self.assertRaisesRegex(RuntimeError, '该群组已有'):
+                runtime.start(payload1, 0, 10)
+            cancelled = runtime.cancel(task_id=second['taskId'])
+            self.assertEqual('cancelled', cancelled['status'])
+            self.assertEqual('idle', groups.get('g2').status)
+            processor.release.set()
+            for _ in range(100):
+                if not runtime.status(task_id=first['taskId'])['running']:
+                    break
+                time.sleep(0.01)
+            self.assertEqual('done', runtime.status(task_id=first['taskId'])['status'])
+            self.assertEqual(2, len(runtime.tasks()))
+            runtime.close()
+
     def test_all_mode_filters_by_msg_id_locally(self):
         with tempfile.TemporaryDirectory() as directory:
             groups = GroupStore(Path(directory))
@@ -47,6 +88,7 @@ class ExtractionRuntimeTests(unittest.TestCase):
             self.assertEqual(('welink-experience-extractor', 'u1'), processor.calls[0][1:3])
             self.assertEqual('done', runtime.status()['status'])
             self.assertEqual('idle', groups.get('g1').status)
+            runtime.close()
 
 
 if __name__ == '__main__':

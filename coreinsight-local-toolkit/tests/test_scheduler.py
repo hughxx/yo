@@ -29,6 +29,18 @@ class FakeExtraction:
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_all_due_groups_are_submitted(self):
+        self.store.add(GroupCreate(groupId='g2'))
+        now = datetime.fromisoformat('2026-08-13T08:00:00+08:00')
+        for group_id in ('g1', 'g2'):
+            self.runtime.set(ScheduleSetRequest(
+                groupId=group_id, uploadBy='u1', scheduleFreq='daily',
+                scheduleTime='09:00:00'), now)
+        due = datetime.fromisoformat('2026-08-13T09:00:01+08:00')
+        self.assertTrue(self.runtime.tick(due))
+        actual = [call[0].groupId for call in self.extraction.calls]
+        self.assertEqual(['g1', 'g2'], actual)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.store = GroupStore(Path(self.temporary.name))

@@ -138,12 +138,12 @@ class ScheduleRuntime:
         group = self.groups.get(group_id)
         if not group:
             raise ValueError("群组不存在")
-        task = self.extraction.status()
-        if task.get("running") and task.get("groupId") == group_id and task.get("scheduled"):
-            self.extraction.cancel()
+        task = self.extraction.status(group_id=group_id)
+        if task and task.get('running') and task.get('scheduled'):
+            self.extraction.cancel(task_id=task['taskId'])
         group.scheduleEnabled = False
         group.scheduleNextRun = ""
-        group.status = "extracting" if task.get("running") and task.get("groupId") == group_id else "idle"
+        group.status = 'extracting' if task and task.get('running') else 'idle'
         return self.groups.update(group)
 
     def refresh_next_runs(self, now: datetime | None = None) -> None:
@@ -165,8 +165,7 @@ class ScheduleRuntime:
 
     def tick(self, now: datetime | None = None) -> bool:
         now = now or datetime.now().astimezone()
-        if self.extraction.status().get("running"):
-            return False
+        started = False
         for group in self.groups.list():
             if not group.scheduleEnabled or not group.scheduleNextRun:
                 continue
@@ -184,10 +183,10 @@ class ScheduleRuntime:
                     scheduled=True,
                     on_complete=lambda ok, end_ms, result, gid=group.groupId: self._completed(gid, ok, end_ms),
                 )
-                return True
+                started = True
             except (RuntimeError, ValueError):
-                return False
-        return False
+                continue
+        return started
 
     def _completed(self, group_id: str, success: bool, end_ms: int) -> None:
         group = self.groups.get(group_id)

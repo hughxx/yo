@@ -106,6 +106,11 @@ class ExtractRequest(MessageQuery):
     selection: MessageSelection = Field(default_factory=MessageSelection)
 
 
+class ExtractCancelRequest(BaseModel):
+    taskId: str = ''
+    groupId: str = ''
+
+
 class ScheduleSetRequest(BaseModel):
     groupId: str = Field(min_length=1)
     uploadBy: str = Field(min_length=1)
