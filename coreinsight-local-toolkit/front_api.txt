@@ -183,3 +183,102 @@ POST /welink/extract 返回成功只表示任务已受理，不代表提取已�
 422：请求字段或时间格式错误。
 426：LocalToolkit 必须升级，停止继续调用 WeLink 业务接口。
 502：welink-cli、Hermes、文件服务或下游调用失败。
+
+
+七、邮件提取
+
+16. GET /email/status
+时机：邮件页面初始化时调用，检测本机 Outlook。
+使用：ready=true 才允许读取文件夹、邮件和启动提取。
+
+17. GET /email/skill/list
+时机：邮件页面初始化时调用，填充邮件 Skill 列表。
+
+18. GET /email/folder/list
+时机：首次进入邮件页面或用户刷新文件夹时调用。
+响应项：path、name、depth。前端保存和提交 path。
+
+19. GET /email/config
+时机：邮件页面初始化、定时任务结束后调用。
+响应：folders、rules、blacklist、skillId、extractMode、uploadBy，以及 scheduleEnabled、scheduleSince、scheduleCursor、scheduleNextRun。
+
+20. PUT /email/config
+时机：文件夹、规则、黑名单、Skill、入库方式或用户工号变化后调用。
+请求：提交 GET /email/config 的完整对象。
+规则字段：id、name、subjectKeywords、bodyKeywords、senders、logic(OR/AND)、enabled。
+使用：不要通过本接口修改 schedule 字段。
+
+21. POST /email/message/list
+时机：刷新邮件、搜索、切换规则筛选或翻页时调用。
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "startTime": "2026-08-10 00:00:00",
+  "endTime": "2026-08-17 23:59:59",
+  "query": "GaussDB",
+  "matchedOnly": false,
+  "offset": 0,
+  "limit": 100
+}
+响应：items、total、offset、limit、hasMore。
+items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名单排除。
+
+22. POST /email/message/get
+时机：用户点击邮件预览时调用。
+请求：{"itemId":"Outlook EntryID"}
+使用：只读取正文预览，不上传附件、不执行 OCR。
+
+23. POST /email/extract
+时机：用户确认提取选中邮件时调用。
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "startTime": "2026-08-10 00:00:00",
+  "endTime": "2026-08-17 23:59:59",
+  "query": "",
+  "matchedOnly": false,
+  "skillId": "email-experience-extractor",
+  "extractMode": "direct",
+  "uploadBy": "当前登录用户账号",
+  "selection": {
+    "mode": "explicit",
+    "selectedItemIds": ["Outlook EntryID"],
+    "excludedItemIds": []
+  }
+}
+使用：前端只传 EntryID，不传邮件正文和附件。LocalToolkit 重新从 Outlook 读取，生成 Markdown、图片 OCR 和公开链接，再运行 Skill。
+全部条件结果可用 mode=all，并将取消勾选项放入 excludedItemIds。
+
+24. GET /email/extract/status
+时机：POST /email/extract 成功后每 2 秒轮询。
+停止条件：running=false。status 含 fetching、workspace、skill、pushing、done、failed、cancelled。
+
+25. GET /email/extract/tasks
+时机：页面初始化时恢复最近邮件任务状态。
+
+26. POST /email/extract/cancel
+时机：用户取消正在运行的邮件任务时调用。请求体可为空对象。
+
+27. POST /email/schedule/set
+时机：新增或修改邮件定时增量提取时调用。
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "uploadBy": "当前登录用户账号",
+  "skillId": "email-experience-extractor",
+  "extractMode": "direct",
+  "scheduleFreq": "daily",
+  "scheduleTime": "09:00:00",
+  "scheduleCron": "",
+  "since": "2026-08-17 10:00:00"
+}
+使用：首次设置或重置游标时传 since；只修改频率时省略 since。
+运行窗口为 (scheduleCursor, 本次触发时间]。成功才推进 scheduleCursor，失败或取消不推进。
+有启用的提取规则时，定时任务只处理规则命中且未被黑名单排除的邮件；没有规则时处理全部增量邮件。
+
+28. POST /email/schedule/cancel
+时机：用户取消邮件定时提取时调用。请求体可为空对象。
+使用：取消后保留 scheduleSince 和 scheduleCursor。
+
+邮件时间格式同样统一为 YYYY-MM-DD HH:mm:ss。
+503：Outlook 未安装、未登录或访问组件不可用。

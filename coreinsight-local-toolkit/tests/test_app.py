@@ -22,6 +22,30 @@ class AppCorsTests(unittest.TestCase):
         self.assertEqual(200, icon.status_code)
         self.assertIn('image/svg+xml', icon.headers['content-type'])
 
+    def test_email_demo_and_configuration_endpoints_are_available(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = create_app(Settings(
+                data_dir=Path(directory), update_enabled=False))
+            with TestClient(app) as client:
+                page = client.get('/demo/')
+                skills = client.get('/email/skill/list').json()
+                saved = client.put('/email/config', json={
+                    'folders': ['Mailbox\\Inbox'],
+                    'rules': [{
+                        'name': 'technical',
+                        'subjectKeywords': ['failure'],
+                    }],
+                    'blacklist': [],
+                    'skillId': 'email-experience-extractor',
+                    'extractMode': 'direct',
+                    'uploadBy': 'u1',
+                }).json()
+        self.assertEqual(200, page.status_code)
+        self.assertIn('id="email-demo"', page.text)
+        self.assertEqual('email-experience-extractor', skills['data'][0]['id'])
+        self.assertEqual(['Mailbox\\Inbox'], saved['data']['folders'])
+        self.assertTrue(saved['data']['rules'][0]['id'])
+
     def test_local_huawei_origin_can_preflight_private_network_request(self):
         with tempfile.TemporaryDirectory() as directory:
             app = create_app(Settings(

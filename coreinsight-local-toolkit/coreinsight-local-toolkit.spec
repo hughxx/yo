@@ -6,6 +6,8 @@ from PyInstaller.utils.hooks import collect_submodules
 hiddenimports = (
     collect_submodules("uvicorn")
     + collect_submodules("pystray")
+    + collect_submodules("win32com")
+    + ["pythoncom", "pywintypes", "win32timezone"]
 )
 
 a = Analysis(

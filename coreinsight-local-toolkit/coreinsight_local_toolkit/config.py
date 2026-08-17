@@ -91,9 +91,6 @@ class Settings:
     welcome_enabled: bool = os.getenv(
         "COREINSIGHT_WELCOME_ENABLED", "1"
     ).strip().lower() not in {"0", "false", "no"}
-    welcome_enabled: bool = os.getenv(
-        "COREINSIGHT_WELCOME_ENABLED", "1"
-    ).strip().lower() not in {"0", "false", "no"}
 
 
 def load_settings() -> Settings:

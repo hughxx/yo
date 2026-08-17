@@ -336,9 +336,31 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 - `GET /update/status`：获取版本检查、下载和安装状态。
 - `POST /update/install`：下载并安装当前可用更新，成功受理返回 `202`。
 
-强制更新生效后，`/capabilities` 及所有 `/welink/*` 业务接口返回 `426`，响应中包含更新状态。
+强制更新生效后，`/capabilities` 及所有 `/welink/*`、`/email/*` 业务接口返回 `426`，响应中包含更新状态。
 
-## 11. 常见错误
+## 11. Outlook 邮件接口
+
+邮件页面初始化依次调用 `GET /email/status`、`GET /email/config`、
+`GET /email/skill/list`，用户刷新文件夹时调用 `GET /email/folder/list`。
+
+- `PUT /email/config`：保存文件夹、规则、黑名单、Skill、入库方式和用户工号。
+- `POST /email/message/list`：按文件夹、时间、搜索词和规则状态分页读取摘要。
+- `POST /email/message/get`：读取单封正文用于预览，不上传附件。
+- `POST /email/extract`：只提交 Outlook EntryID 选择条件，启动本地邮件 Skill 提取。
+- `GET /email/extract/status`：轮询手动或定时邮件任务。
+- `GET /email/extract/tasks`：获取近期邮件任务。
+- `POST /email/extract/cancel`：取消当前邮件任务。
+- `POST /email/schedule/set`：设置邮件定时增量任务，首次或重置时传 `since`。
+- `POST /email/schedule/cancel`：取消邮件定时任务并保留游标。
+
+邮件正式提取由 EXE 重新读取正文和附件。图片执行 OCR 并写成
+`![OCR结果](公开URL)`，普通附件写成 `[文件名](公开URL)`；生成的 Markdown
+按固定大小分块后进入邮件 Skill。定时窗口为 `(scheduleCursor, 本次触发时间]`，
+只有 Outlook 读取、Skill 和最终入库全部成功才推进游标。
+
+完整请求字段和前端调用时机见 `front_api.txt`。
+
+## 12. 常见错误
 
 | HTTP 状态 | 常见原因 |
 |---|---|
@@ -348,5 +370,6 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 | `422` | 请求字段缺失、时间格式错误、Skill/账号配置无效 |
 | `426` | 当前版本被强制停止，必须升级 |
 | `502` | WeLink CLI、Hermes、文件服务或其他下游调用失败 |
+| `503` | Outlook 未安装、未登录或 COM 访问组件不可用 |
 
 遇到问题时应同时记录：请求 URL、HTTP 方法、请求体、状态码和响应中的 `detail`。仅凭状态码无法区分具体原因。

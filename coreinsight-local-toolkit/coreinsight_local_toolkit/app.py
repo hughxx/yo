@@ -14,8 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .config import Settings, load_settings
 from .extraction import ExtractionRuntime
+from .email_runtime import EmailRuntime, EmailScheduleRuntime
+from .email_store import EmailConfigStore
+from .outlook import OutlookClient
 from .processor import LocalExperienceProcessor
 from .models import (
+    EmailConfig, EmailDetailRequest, EmailExtractRequest, EmailListRequest,
+    EmailScheduleSetRequest,
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
     ExtractCancelRequest, ExtractRequest, MessageQuery, PreviewMessage,
     ScheduleCancelRequest,
@@ -44,7 +49,7 @@ def _to_timestamp(value: str | None, field_name: str) -> int:
 
 def _uses_api_envelope(path: str) -> bool:
     return path in {'/health', '/capabilities', '/version'} or path.startswith(
-        ('/welink/', '/update/'))
+        ('/welink/', '/email/', '/update/'))
 
 
 def _envelope(status_code: int, payload) -> tuple[int, dict]:
@@ -68,10 +73,16 @@ def create_app(settings: Settings | None = None,
     update_manager = update_manager or UpdateManager(settings)
     store = GroupStore(settings.data_dir)
     history = WelinkHistory(settings.welink_cli)
+    processor = LocalExperienceProcessor(settings)
+    notifier = MessageNotifier(settings)
     extraction = ExtractionRuntime(
-        history, store, LocalExperienceProcessor(settings), settings.upload_by,
-        MessageNotifier(settings))
+        history, store, processor, settings.upload_by, notifier)
     scheduler = ScheduleRuntime(store, extraction)
+    email_store = EmailConfigStore(settings.data_dir)
+    outlook = OutlookClient(settings)
+    email = EmailRuntime(
+        outlook, email_store, processor, notifier, settings.upload_by)
+    email_scheduler = EmailScheduleRuntime(email_store, email)
     browser_origins = {
         *settings.allowed_origins,
         f"http://127.0.0.1:{settings.port}",
@@ -94,7 +105,7 @@ def create_app(settings: Settings | None = None,
             return JSONResponse(status_code=403, content={"detail": "Origin 不在本地服务白名单中"})
         if (request.method != "OPTIONS" and update_manager.forced
                 and (request.url.path == "/capabilities"
-                     or request.url.path.startswith("/welink/"))):
+                     or request.url.path.startswith(("/welink/", "/email/")))):
             return JSONResponse(status_code=426, content={
                 "detail": "当前版本已停止服务，必须升级后继续使用",
                 "update": update_manager.snapshot(),
@@ -148,6 +159,12 @@ def create_app(settings: Settings | None = None,
             "welinkScheduling": True,
             "welinkSkillExtraction": True,
             "welinkCliProbe": True,
+            "outlookProbe": True,
+            "emailFolderManagement": True,
+            "emailPreview": True,
+            "emailRuleFiltering": True,
+            "emailSkillExtraction": True,
+            "emailScheduling": True,
         }
 
     @app.get("/welink/cli/status", response_model=WelinkCliStatus)
@@ -185,7 +202,110 @@ def create_app(settings: Settings | None = None,
 
     @app.get("/welink/skill/list")
     def list_skills():
-        return available_skills()
+        return [skill for skill in available_skills()
+                if skill["id"].startswith("welink-")]
+
+    @app.get("/email/skill/list")
+    def list_email_skills():
+        return [skill for skill in available_skills()
+                if skill["id"].startswith("email-")]
+
+    @app.get("/email/status")
+    def email_status():
+        return outlook.probe()
+
+    @app.get("/email/folder/list")
+    def email_folders():
+        try:
+            return outlook.list_folders()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"读取 Outlook 文件夹失败：{exc}") from exc
+
+    @app.get("/email/config", response_model=EmailConfig)
+    def get_email_config():
+        return email_store.get()
+
+    @app.put("/email/config", response_model=EmailConfig)
+    def update_email_config(payload: EmailConfig):
+        current = email_store.get()
+        current.folders = payload.folders
+        current.rules = payload.rules
+        current.blacklist = payload.blacklist
+        current.skillId = payload.skillId
+        current.extractMode = payload.extractMode
+        current.uploadBy = payload.uploadBy.strip()
+        return email_store.save(current)
+
+    @app.post("/email/message/list")
+    def list_email_messages(payload: EmailListRequest):
+        start_ms = _to_timestamp(payload.startTime, "startTime")
+        end_ms = _to_timestamp(payload.endTime, "endTime")
+        if start_ms and end_ms and start_ms > end_ms:
+            raise HTTPException(status_code=422, detail="startTime 不能晚于 endTime")
+        try:
+            rows = email.list_messages(
+                payload.folders, start_ms, end_ms,
+                payload.query, payload.matchedOnly)
+            return {"items": rows[payload.offset:payload.offset + payload.limit],
+                    "total": len(rows), "offset": payload.offset,
+                    "limit": payload.limit,
+                    "hasMore": payload.offset + payload.limit < len(rows)}
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"读取 Outlook 邮件失败：{exc}") from exc
+
+    @app.post("/email/message/get")
+    def get_email_message(payload: EmailDetailRequest):
+        try:
+            return outlook.get_message(payload.itemId, process_attachments=False)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"读取邮件正文失败：{exc}") from exc
+
+    @app.post("/email/extract", status_code=202)
+    def start_email_extract(payload: EmailExtractRequest):
+        start_ms = _to_timestamp(payload.startTime, "startTime")
+        end_ms = _to_timestamp(payload.endTime, "endTime")
+        if start_ms and end_ms and start_ms > end_ms:
+            raise HTTPException(status_code=422, detail="startTime 不能晚于 endTime")
+        try:
+            return email.start(payload, start_ms, end_ms)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/email/extract/status")
+    def email_extract_status():
+        return email.status()
+
+    @app.get("/email/extract/tasks")
+    def email_extract_tasks():
+        return email.tasks()
+
+    @app.post("/email/extract/cancel")
+    def cancel_email_extract():
+        task = email.status()
+        if not task.get("running"):
+            raise HTTPException(status_code=404, detail="没有正在运行的邮件提取任务")
+        return email.cancel()
+
+    @app.post("/email/schedule/set")
+    def set_email_schedule(payload: EmailScheduleSetRequest):
+        if email.status().get("running"):
+            raise HTTPException(status_code=409, detail="邮件提取正在执行，请完成或取消后再设置定时")
+        try:
+            return email_scheduler.set(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/email/schedule/cancel")
+    def cancel_email_schedule():
+        return email_scheduler.cancel()
 
     @app.get("/welink/group/list", response_model=list[GroupConfig])
     def list_groups():
@@ -312,6 +432,8 @@ def create_app(settings: Settings | None = None,
     def shutdown_scheduler():
         scheduler.close()
         extraction.close()
+        email_scheduler.close()
+        email.close()
 
     @app.get("/", include_in_schema=False)
     def demo_redirect():

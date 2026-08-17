@@ -3,6 +3,8 @@ from __future__ import annotations
 
 WELINK_EXPERIENCE_SKILL_ID = "welink-experience-extractor"
 WELINK_EXPERIENCE_SKILL_NAME = "WeLink 经验提取"
+EMAIL_EXPERIENCE_SKILL_ID = "email-experience-extractor"
+EMAIL_EXPERIENCE_SKILL_NAME = "邮件经验提取"
 
 WELINK_EXPERIENCE_SKILL = """---
 name: welink-experience-extractor
@@ -47,16 +49,69 @@ JSONL 每行严格为一个 UTF-8 JSON 对象，不要使用 Markdown 代码围�
 """
 
 
+EMAIL_EXPERIENCE_SKILL = """---
+name: email-experience-extractor
+description: 从 Outlook 邮件 Markdown、附件链接和图片 OCR 中提取可复用技术经验。
+---
+
+# 邮件经验提取
+
+## 输入
+
+- 本轮邮件位于 `input/` 下一个或多个 `.md` 文件，必须按六位数字文件名前缀顺序完整读取。
+- 每封邮件包含邮件 ID、真实发件人、接收时间、主题、正文和附件。
+- 图片统一为 `![OCR结果](公开URL)`；普通附件为 `[文件名](公开URL)`。
+- `output/experiences.jsonl` 若存在，是同一长期定时任务此前已入库的经验版本。
+
+## 工作流
+
+1. 从邮件线程中识别值得沉淀的技术问题、背景、现象、分析过程、根因、解决方案、验证结果和关键结论；通知、广告、寒暄及无实质内容的邮件应忽略。
+2. 同一会话和同一问题的多封邮件应合并理解，保留真实主题、发件人和接收时间，不得编造结论。
+3. 代码、配置、错误日志、命令、接口信息和关键附件必须准确保留。
+4. 所有与经验有关的公开图片 Markdown 必须原样保留在最终 `experience` 的对应上下文中，不得删除、改写 URL 或丢弃 OCR alt 文本。
+5. 先检查已有 `output/experiences.jsonl`。新邮件补充已有经验时，使用原 `doc_id` 输出 `operation: update`，并输出合并后的完整版本；不得创建重复经验。
+6. 新主题输出 `operation: create` 且不带 `doc_id`。每形成一条经验，就向 `output/experiences.jsonl` 追加一个单行 JSON；禁止改写或删除旧行。
+7. 没有可沉淀内容时不追加任何内容。
+
+## 输出格式
+
+每行必须是一个完整 UTF-8 JSON 对象，不使用 Markdown 代码围栏：
+
+{
+  "operation": "create 或 update",
+  "doc_id": "更新时必填；新建时省略",
+  "title": "简洁标题，不超过50字",
+  "summary": "完整、详细、可独立阅读的经验正文",
+  "experience": "结构化 Markdown 剧本，包含必要的邮件证据和图片",
+  "rag_search_text": "空格分隔的检索关键词",
+  "scene_id": "251",
+  "scene": "邮件技术经验"
+}
+
+新建时 title、summary、experience、rag_search_text 必须为非空字符串。更新时必须沿用已有 doc_id，并输出合并后的完整版本。
+"""
+
+
 def available_skills() -> list[dict]:
     return [{
         "id": WELINK_EXPERIENCE_SKILL_ID,
         "name": WELINK_EXPERIENCE_SKILL_NAME,
         "description": "读取聊天记录和附件，提取结构化技术经验并写入经验引擎。",
+    }, {
+        "id": EMAIL_EXPERIENCE_SKILL_ID,
+        "name": EMAIL_EXPERIENCE_SKILL_NAME,
+        "description": "读取 Outlook 邮件、附件链接和图片 OCR，提取并合并技术经验。",
     }]
 
 
 def get_skill(skill_id: str) -> dict:
-    if skill_id != WELINK_EXPERIENCE_SKILL_ID:
+    skills = {
+        WELINK_EXPERIENCE_SKILL_ID: (WELINK_EXPERIENCE_SKILL_NAME,
+                                     WELINK_EXPERIENCE_SKILL),
+        EMAIL_EXPERIENCE_SKILL_ID: (EMAIL_EXPERIENCE_SKILL_NAME,
+                                    EMAIL_EXPERIENCE_SKILL),
+    }
+    if skill_id not in skills:
         raise ValueError(f"不支持的 Skill：{skill_id}")
-    return {"id": skill_id, "name": WELINK_EXPERIENCE_SKILL_NAME,
-            "content": WELINK_EXPERIENCE_SKILL}
+    name, content = skills[skill_id]
+    return {"id": skill_id, "name": name, "content": content}

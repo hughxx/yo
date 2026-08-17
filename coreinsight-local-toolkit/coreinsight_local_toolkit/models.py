@@ -139,3 +139,104 @@ class ScheduleSetRequest(BaseModel):
 
 class ScheduleCancelRequest(BaseModel):
     groupId: str = Field(min_length=1)
+
+
+class EmailRule(BaseModel):
+    id: str = ""
+    name: str = Field(min_length=1)
+    subjectKeywords: list[str] = Field(default_factory=list)
+    bodyKeywords: list[str] = Field(default_factory=list)
+    senders: list[str] = Field(default_factory=list)
+    logic: Literal["OR", "AND"] = "OR"
+    enabled: bool = True
+
+    @validator("name")
+    def normalize_rule_name(cls, value: str) -> str:
+        return value.strip()
+
+    @validator("subjectKeywords", "bodyKeywords", "senders")
+    def normalize_rule_values(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(
+            str(item).strip() for item in value if str(item).strip()))
+
+
+class EmailConfig(BaseModel):
+    folders: list[str] = Field(default_factory=list)
+    rules: list[EmailRule] = Field(default_factory=list)
+    blacklist: list[EmailRule] = Field(default_factory=list)
+    skillId: str = "email-experience-extractor"
+    extractMode: Literal["direct", "draft"] = "direct"
+    uploadBy: str = ""
+    scheduleEnabled: bool = False
+    scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
+    scheduleTime: str = "09:00:00"
+    scheduleCron: str = ""
+    scheduleSince: str = ""
+    scheduleCursor: str = ""
+    scheduleNextRun: str = ""
+    scheduleWeekday: int = Field(default=0, ge=0, le=6)
+    scheduleDay: int = Field(default=1, ge=1, le=31)
+
+    @validator("folders")
+    def normalize_folders(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(
+            str(item).strip() for item in value if str(item).strip()))
+
+    @validator("scheduleSince", "scheduleCursor", "scheduleNextRun")
+    def normalize_email_datetimes(cls, value: str) -> str:
+        try:
+            return str(normalize_datetime(value) or "")
+        except ValueError as exc:
+            raise ValueError("时间必须是有效的日期时间") from exc
+
+
+class EmailListRequest(BaseModel):
+    folders: list[str] = Field(default_factory=list)
+    startTime: Optional[str] = None
+    endTime: Optional[str] = None
+    query: str = ""
+    matchedOnly: bool = False
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class EmailDetailRequest(BaseModel):
+    itemId: str = Field(min_length=1)
+
+
+class EmailSelection(BaseModel):
+    mode: Literal["all", "explicit"] = "explicit"
+    excludedItemIds: list[str] = Field(default_factory=list)
+    selectedItemIds: list[str] = Field(default_factory=list)
+
+
+class EmailExtractRequest(BaseModel):
+    folders: list[str] = Field(default_factory=list)
+    startTime: Optional[str] = None
+    endTime: Optional[str] = None
+    query: str = ""
+    matchedOnly: bool = False
+    skillId: str = "email-experience-extractor"
+    extractMode: Literal["direct", "draft"] = "direct"
+    uploadBy: str = Field(min_length=1)
+    selection: EmailSelection = Field(default_factory=EmailSelection)
+
+
+class EmailScheduleSetRequest(BaseModel):
+    folders: list[str] = Field(default_factory=list)
+    uploadBy: str = Field(min_length=1)
+    skillId: str = "email-experience-extractor"
+    extractMode: Literal["direct", "draft"] = "direct"
+    scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
+    scheduleTime: str = "09:00:00"
+    scheduleCron: str = ""
+    since: Optional[str] = None
+
+    @validator("since")
+    def normalize_email_since(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = normalize_datetime(value)
+        if not normalized:
+            raise ValueError("since 不能为空")
+        return str(normalized)

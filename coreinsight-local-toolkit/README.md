@@ -5,7 +5,7 @@ service）。它不是插件，也不是面向用户操作的 CLI：正式域名
 HTTP 调用它，由它访问只能在本机使用的 WeLink CLI、Outlook 等能力。最终只有一个常驻
 Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI。
 
-当前第一阶段只包含 WeLink 聊天记录：
+当前包含 WeLink 聊天记录和 Outlook 邮件两类本地来源：
 
 - 本地保存群组配置；
 - 按时间范围从 `welink-cli` 分页读取群消息；
@@ -16,8 +16,14 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 - Hermes Remote Agent 通过 Skill 处理超长 Markdown，并保留图片超链接；
 - 提供健康检查和能力声明。
 
+邮件能力直接访问用户当前登录的桌面 Outlook，可选择扫描文件夹和时间范围，支持主题、
+正文、发件人规则以及黑名单。正式提取时，邮件 HTML 转为 Markdown，内嵌图片和图片附件
+执行 OCR 并变成 `![OCR结果](公开URL)`，普通附件变成可访问链接。浏览器只传 Outlook
+EntryID 选择条件，不传正文或附件。邮件也使用独立 Skill，支持手动选择、草稿/直入库、
+结果通知和成功后才推进游标的定时增量提取。
+
 提取支持直接写入经验引擎和生成平台待审核草稿。Skill 不感知入库模式，统一负责经验的提取、合并和更新；
-Local Toolkit 根据 `extractMode` 与 Skill 返回的 `doc_id` 路由到经验接口或 GaussDB 草稿表。定时任务支持每天、每周、每月
+Local Toolkit 根据 `extractMode` 与 Skill 返回的 `doc_id` 路由到经验接口或平台草稿接口。定时任务支持每天、每周、每月
 和五字段 Cron，并在本机持久化。只有提取和入库成功后才推进增量起点，失败会在下次重试。
 
 ## 为什么叫 Local Toolkit
@@ -47,6 +53,8 @@ docId、入库结果和异常堆栈。
 转换完成的聊天 Markdown 会长期保存在
 `D:\CoreInsight\LocalToolkit\markdown\<groupId>\<workspaceId>`。文件内容与上传到远端
 workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副本不会随远端 workspace 清理自动删除。
+邮件 Markdown 保存在
+`D:\CoreInsight\LocalToolkit\markdown\email\outlook-mailbox\<workspaceId>`。
 
 演示前端直接访问 `http://127.0.0.1:17831/demo/`，不需要另外启动 Node 服务。
 

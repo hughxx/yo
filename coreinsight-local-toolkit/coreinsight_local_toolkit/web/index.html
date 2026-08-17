@@ -2,12 +2,45 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CoreInsight · WeLink 消息提取</title><link rel="stylesheet" href="styles.css">
+  <title>CoreInsight · 本地经验提取</title><link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="shell">
-    <header class="topbar"><div class="brand"><span class="brand-mark">CI</span><span>CoreInsight</span></div><div class="agent-state"><i></i><span>Local Toolkit 已连接</span></div></header>
+    <header class="topbar"><div class="brand"><span class="brand-mark">CI</span><span>CoreInsight</span></div><nav class="product-nav"><button class="active" data-product="email">邮件提取</button><button data-product="welink">聊天记录提取</button></nav><div class="agent-state"><i></i><span>Local Toolkit 已连接</span></div></header>
     <main>
+      <section id="email-demo" class="product-page">
+        <section class="page-head"><div class="step">02</div><div><h1>邮件经验提取</h1><p>从本机 Outlook 读取邮件和附件，通过 Skill 提炼为可复用经验</p></div><span class="phase-tag">MAIL MINING</span></section>
+        <section class="email-workspace">
+          <aside class="email-sidebar">
+            <div class="outlook-card"><div class="outlook-icon">O</div><div><b>Microsoft Outlook</b><small id="outlook-message">正在检测…</small></div><i id="outlook-dot"></i></div>
+            <div class="sidebar-head"><div><b>扫描文件夹</b><small id="email-folder-count">默认收件箱</small></div><button class="icon-button" id="refresh-email-folders" title="刷新文件夹">↻</button></div>
+            <div id="email-folder-list" class="email-folder-list"><div class="sidebar-empty compact">等待读取 Outlook 文件夹</div></div>
+            <button class="outline full" id="email-rules-button">规则与黑名单 <span>→</span></button>
+          </aside>
+          <section class="email-main">
+            <div class="email-toolbar">
+              <div class="search-field"><span>⌕</span><input id="email-query" placeholder="搜索主题、发件人、正文或会话"></div>
+              <label class="toggle-label"><input type="checkbox" id="email-matched-only"><span></span>仅显示规则命中</label>
+              <button class="ghost" id="refresh-email-list">刷新邮件</button>
+            </div>
+            <div class="email-range"><div class="range-buttons" id="email-range-buttons"><button data-email-range="today">今天</button><button data-email-range="7d" class="active">最近 7 天</button><button data-email-range="30d">最近 30 天</button><button data-email-range="all">全部</button><button data-email-range="custom">自定义</button></div><label>从 <input type="datetime-local" id="email-start"></label><label>到 <input type="datetime-local" id="email-end"></label></div>
+            <div class="email-table-wrap">
+              <div class="email-loading hidden" id="email-loading"><i></i><span>正在读取 Outlook 邮件…</span></div>
+              <table class="email-table"><thead><tr><th><input type="checkbox" id="email-check-all"></th><th>接收时间</th><th>发件人</th><th>主题</th><th>会话</th><th>规则</th><th></th></tr></thead><tbody id="email-body"></tbody></table>
+              <div class="email-empty" id="email-empty">点击“刷新邮件”读取本机 Outlook</div>
+            </div>
+            <footer class="email-pager"><span id="email-total">尚未读取邮件</span><span></span><button class="ghost small" id="email-prev">← 上一页</button><b id="email-page">1 / 1</b><button class="ghost small" id="email-next">下一页 →</button></footer>
+            <section class="email-extract-bar">
+              <label><span>提取 Skill</span><select id="email-skill"></select></label>
+              <label><span>入库方式</span><select id="email-mode"><option value="direct">直接入库</option><option value="draft">用户确认后入库</option></select></label>
+              <label><span>用户工号</span><input id="email-upload-by" value="w00899061"></label>
+              <div class="email-task-state"><b id="email-task-title">准备就绪</b><small id="email-task-message">选择邮件后即可提取</small></div>
+              <button class="ghost hidden" id="email-cancel-schedule">取消定时</button><button class="ghost" id="email-schedule-button">定时增量</button><button class="primary" id="email-extract-button">提取选中邮件 →</button>
+            </section>
+          </section>
+        </section>
+      </section>
+      <section id="welink-demo" class="product-page hidden">
       <section class="page-head"><div class="step">03</div><div><h1>群组管理</h1><p>绑定 WeLink 群组，配置消息范围并执行经验提取</p></div><span class="phase-tag">CHAT MINING</span></section>
       <section class="workspace">
         <aside class="sidebar">
@@ -27,9 +60,13 @@
           </form>
         </section>
       </section>
+      </section>
     </main>
   </div>
   <div class="modal-backdrop hidden" id="preview-modal"><section class="modal"><header><div><small>MESSAGE PREVIEW</small><h2 id="modal-title">消息预览</h2><p id="modal-range"></p></div><button class="modal-close" id="close-preview">×</button></header><div class="modal-tools"><label><input type="checkbox" id="check-all" checked> 选择当前范围全部消息</label><span id="selected-count">范围内全选</span><span></span><button class="ghost small" id="refresh-preview">↻ 刷新</button></div><div class="message-wrap"><div class="loading hidden" id="message-loading"><i></i><span>正在从 WeLink 读取聊天记录…</span></div><div class="message-empty hidden" id="message-empty">当前时间范围内没有消息</div><table id="message-table"><thead><tr><th></th><th>时间</th><th>发送人</th><th>类型</th><th>聊天内容</th></tr></thead><tbody id="message-body"></tbody></table></div><footer><span id="message-total">已加载 0 条</span><button class="ghost hidden" id="load-more">加载更早消息</button><button class="primary" id="confirm-preview">确认选择</button></footer></section></div>
   <div class="modal-backdrop hidden" id="schedule-modal"><section class="modal schedule-modal"><header><div><small>SCHEDULE</small><h2>定时提取</h2><p>每次提取上次成功运行以来的新消息；失败不会跳过消息。</p></div><button class="modal-close" id="close-schedule">×</button></header><form id="schedule-form" class="schedule-form"><label><span>执行频率</span><select id="schedule-freq"><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="custom">自定义 Cron</option></select></label><label id="schedule-time-wrap"><span>执行时间</span><input type="time" step="1" id="schedule-time" value="09:00:00"></label><label class="hidden" id="schedule-cron-wrap"><span>Cron（分 时 日 月 星期）</span><input id="schedule-cron" placeholder="0 9 * * 1-5"></label><div class="schedule-note" id="schedule-note"></div><footer><button type="button" class="ghost" id="schedule-back">取消</button><button class="primary">保存定时任务</button></footer></form></section></div>
+  <div class="modal-backdrop hidden" id="email-detail-modal"><section class="modal email-detail-modal"><header><div><small>MAIL PREVIEW</small><h2 id="email-detail-title">邮件预览</h2><p id="email-detail-meta"></p></div><button class="modal-close" data-email-close="email-detail-modal">×</button></header><article id="email-detail-body" class="email-detail-body"></article><footer><span>预览不会上传附件；正式提取时才会生成 OCR 和公开链接。</span><button class="primary" data-email-close="email-detail-modal">关闭</button></footer></section></div>
+  <div class="modal-backdrop hidden" id="email-rules-modal"><section class="modal email-rules-modal"><header><div><small>FILTER RULES</small><h2>邮件规则与黑名单</h2><p>主题、正文、发件人支持多个关键词；规则命中后再排除黑名单。</p></div><button class="modal-close" data-email-close="email-rules-modal">×</button></header><div class="rule-tabs"><button class="active" data-email-rule-kind="rules">提取规则</button><button data-email-rule-kind="blacklist">黑名单</button></div><div id="email-rule-list" class="email-rule-list"></div><button class="outline" id="email-add-rule">＋ 添加规则</button><footer><span>AND 表示已填写的各类条件都必须命中，OR 表示任一命中。</span><button class="primary" id="email-save-rules">保存规则</button></footer></section></div>
+  <div class="modal-backdrop hidden" id="email-schedule-modal"><section class="modal schedule-modal"><header><div><small>MAIL SCHEDULE</small><h2>邮件定时增量提取</h2><p>首次从 since 开始；成功后推进游标，失败不会跳过邮件。</p></div><button class="modal-close" data-email-close="email-schedule-modal">×</button></header><form id="email-schedule-form" class="schedule-form"><label><span>增量起点（since）</span><input type="datetime-local" step="1" id="email-since" required></label><label><span>执行频率</span><select id="email-schedule-freq"><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="custom">自定义 Cron</option></select></label><label id="email-schedule-time-wrap"><span>执行时间</span><input type="time" step="1" id="email-schedule-time" value="09:00:00"></label><label class="hidden" id="email-schedule-cron-wrap"><span>Cron（分 时 日 月 星期）</span><input id="email-schedule-cron" placeholder="0 9 * * 1-5"></label><div class="schedule-note" id="email-schedule-note">定时任务使用当前选中的文件夹、规则和黑名单。</div><footer><button type="button" class="ghost" data-email-close="email-schedule-modal">取消</button><button class="primary">保存定时任务</button></footer></form></section></div>
   <div class="toast hidden" id="toast"></div><script src="app.js"></script>
 </body></html>

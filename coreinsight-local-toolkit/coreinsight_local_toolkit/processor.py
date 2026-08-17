@@ -60,12 +60,13 @@ class LocalExperienceProcessor:
     def process(self, messages: list[dict], skill_id: str, upload_by: str,
                 task_id: str, progress=None, cancel_event=None,
                 group_id: str = "", scheduled: bool = False,
-                extract_mode: str = "direct") -> dict:
+                extract_mode: str = "direct", source_type: str = "welink") -> dict:
         self._check_cancel(cancel_event)
         self.validate(upload_by, skill_id, extract_mode)
         skill = get_skill(skill_id)
         workspace_id = self._workspace_id(
-            task_id, group_id, skill_id, upload_by, scheduled, extract_mode)
+            task_id, group_id, skill_id, upload_by, scheduled, extract_mode,
+            source_type)
         session_id = workspace_id
         state = self._load_workspace_state(workspace_id) if scheduled else {
             "nextChunkSeq": 1, "outputLineOffset": 0}
@@ -84,7 +85,7 @@ class LocalExperienceProcessor:
                 sequence = first_sequence + offset
                 path = self._chunk_path(sequence, chunk)
                 self._archive_markdown(
-                    group_id, workspace_id, path, chunk["content"])
+                    group_id, workspace_id, path, chunk["content"], source_type)
                 self.workspaces.write_text(workspace_id, path, chunk["content"])
                 input_paths.append(path)
             logger.info("workspace prepared task_id=%s chunks=%d", task_id, len(chunks))
@@ -121,6 +122,9 @@ class LocalExperienceProcessor:
                 self._check_cancel(cancel_event)
                 record = records[index]
                 operation = record["operation"]
+                if operation == "create" and source_type == "email":
+                    record.setdefault("scene_id", "251")
+                    record.setdefault("scene", "邮件技术经验")
                 doc_id = self._push_experience(record, upload_by, extract_mode)
                 record["doc_id"] = doc_id
                 record["operation"] = "update"
@@ -175,12 +179,14 @@ class LocalExperienceProcessor:
     @staticmethod
     def _workspace_id(task_id: str, group_id: str, skill_id: str,
                       upload_by: str, scheduled: bool,
-                      extract_mode: str = "direct") -> str:
+                      extract_mode: str = "direct",
+                      source_type: str = "welink") -> str:
+        prefix = re.sub(r"[^0-9a-z-]+", "-", source_type.lower()).strip("-") or "source"
         if not scheduled:
-            return f"welink-manual-{task_id}"
+            return f"{prefix}-manual-{task_id}"
         identity = "\0".join(
             (upload_by, group_id, skill_id, extract_mode)).encode("utf-8")
-        return "welink-schedule-" + hashlib.sha256(identity).hexdigest()[:24]
+        return f"{prefix}-schedule-" + hashlib.sha256(identity).hexdigest()[:24]
 
     def _load_workspace_state(self, workspace_id: str) -> dict:
         with self._state_lock:
@@ -211,11 +217,15 @@ class LocalExperienceProcessor:
             temporary.replace(self._state_path)
 
     def _archive_markdown(self, group_id: str, workspace_id: str,
-                          remote_path: str, content: str) -> Path:
+                          remote_path: str, content: str,
+                          source_type: str = "welink") -> Path:
         safe_group_id = re.sub(
             r"[^0-9A-Za-z._-]+", "_", str(group_id or "")).strip("._")
         safe_group_id = safe_group_id[:120] or "unknown-group"
-        archive_dir = self.settings.data_dir / "markdown" / safe_group_id / workspace_id
+        archive_root = self.settings.data_dir / "markdown"
+        if source_type != "welink":
+            archive_root /= source_type
+        archive_dir = archive_root / safe_group_id / workspace_id
         archive_dir.mkdir(parents=True, exist_ok=True)
         destination = archive_dir / Path(remote_path).name
         temporary = destination.with_suffix(destination.suffix + ".tmp")
@@ -259,6 +269,9 @@ class LocalExperienceProcessor:
                 timestamp / 1000, timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S") \
                 if timestamp else ""
             content = str(item.get("rawContent") or item.get("content") or "")
+            if item.get("preformattedMarkdown"):
+                rows.append({"timestamp": timestamp, "content": content.strip() + "\n"})
+                continue
             content = _UM_RE.sub(
                 lambda match: self._replace_attachment(match, cancel_event), content)
             rows.append({

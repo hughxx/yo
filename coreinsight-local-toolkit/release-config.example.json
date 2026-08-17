@@ -1,14 +1,14 @@
 {
   "enabled": true,
-  "latestVersion": "0.4.0",
+  "latestVersion": "0.5.0",
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://replace-with-direct-download/coreinsight-local-toolkit.exe",
-  "sha256": "e6fe0e5d4aaa6f73fe19cc40510cad85bc0e7006775960f2b88c582c21caf55b",
+  "sha256": "8f5dd8321b523b3e7178091b028899cb2858fc4ac21ea4e361b053b0a30a69a4",
   "releaseNotes": [
-    "新增用户确认后入库：提取结果写入平台待审核草稿",
-    "定时草稿支持使用 doc_id 持续合并和更新，并重置为 pending",
-    "直接入库与草稿模式使用相互隔离的增量 workspace"
+    "新增 Outlook 邮件、文件夹、正文预览和规则/黑名单管理",
+    "邮件附件转 Markdown，图片保留 OCR 结果和公开链接",
+    "邮件支持 Skill 提取、草稿/直接入库、完成通知和定时增量"
   ],
-  "publishedAt": "2026-08-14T18:00:00+08:00"
+  "publishedAt": "2026-08-17T22:00:00+08:00"
 }
