@@ -13,7 +13,7 @@ from urllib.parse import quote
 import requests
 
 from .config import Settings
-from .drafts import DraftStore
+from .drafts import DraftClient
 from .remote import HermesClient, WorkspaceClient
 from .skills import get_skill
 
@@ -33,7 +33,7 @@ class LocalExperienceProcessor:
         self.workspaces = WorkspaceClient(settings.workspace_file_server_url)
         self.hermes = HermesClient(
             settings.hermes_url, settings.hermes_api_key, settings.hermes_timeout_seconds)
-        self.drafts = DraftStore(settings)
+        self.drafts = DraftClient(settings)
         self._state_path = settings.data_dir / "welink_workspace_state.json"
         self._state_lock = threading.RLock()
 
@@ -120,9 +120,10 @@ class LocalExperienceProcessor:
             for index in range(output_offset, len(records)):
                 self._check_cancel(cancel_event)
                 record = records[index]
-                operation = "update" if record.get("doc_id") else "create"
+                operation = record["operation"]
                 doc_id = self._push_experience(record, upload_by, extract_mode)
                 record["doc_id"] = doc_id
+                record["operation"] = "update"
                 raw_lines[index] = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
                 self.workspaces.write_text(
                     workspace_id, "output/experiences.jsonl", "\n".join(raw_lines) + "\n")
@@ -381,13 +382,24 @@ class LocalExperienceProcessor:
             if not isinstance(result, dict):
                 raise RuntimeError(f"Skill 输出第 {record_number} 条经验必须是 JSON 对象")
             doc_id = str(result.get("doc_id") or "").strip()
+            operation = str(result.get("operation") or "").strip().lower()
+            if not operation and doc_id:
+                operation = "update"
+                result["operation"] = operation
+            if operation not in ("create", "update"):
+                raise RuntimeError(
+                    f"Skill 输出第 {record_number} 条缺少合法 operation（create/update）")
             required = ("title", "summary", "experience", "rag_search_text")
-            if not doc_id and any(not isinstance(result.get(key), str) or
+            if operation == "create" and doc_id:
+                raise RuntimeError(f"Skill 新建经验第 {record_number} 条不能携带 doc_id")
+            if operation == "create" and any(not isinstance(result.get(key), str) or
                                   not result.get(key).strip() for key in required):
                 raise RuntimeError(
                     f"Skill 新建经验第 {record_number} 条必须包含四个非空字符串字段")
             allowed = required + ("scene_id", "scene", "product", "metadata")
-            if doc_id and not any(key in result for key in allowed):
+            if operation == "update" and not doc_id:
+                raise RuntimeError(f"Skill 更新经验第 {record_number} 条必须携带 doc_id")
+            if operation == "update" and not any(key in result for key in allowed):
                 raise RuntimeError(f"Skill 更新经验第 {record_number} 条没有可更新字段")
             normalized_lines.append(json.dumps(
                 result, ensure_ascii=False, separators=(",", ":")))
@@ -414,8 +426,11 @@ class LocalExperienceProcessor:
     def _push_experience(self, result: dict, upload_by: str,
                          extract_mode: str = "direct") -> str:
         if extract_mode == "draft":
-            return self.drafts.upsert(result, upload_by)
+            return self.drafts.save(result, upload_by)
+        operation = str(result.get("operation") or "").strip().lower()
         doc_id = str(result.get("doc_id") or "").strip()
+        if not operation and doc_id:
+            operation = "update"
         create_url = self.settings.experience_engine_url.rstrip("/")
         if not create_url.endswith("/memory/experience/doc"):
             create_url += "/memory/experience/doc"
@@ -424,7 +439,7 @@ class LocalExperienceProcessor:
                     "scene_id", "scene", "product", "metadata"):
             if key in result:
                 payload[key] = result[key]
-        if doc_id:
+        if operation == "update":
             response = requests.put(
                 f"{create_url}/{quote(doc_id, safe='')}", json=payload,
                 timeout=60, verify=False)

@@ -8,5 +8,4 @@ dist/
 .build-venv/
 .pyinstaller-cache/
 .pip-cache/
-coreinsight_local_toolkit/_build_secrets.py
 API.md

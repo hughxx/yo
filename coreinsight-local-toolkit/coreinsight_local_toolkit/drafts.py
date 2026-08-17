@@ -1,97 +1,87 @@
 from __future__ import annotations
 
 import logging
-import re
 import uuid
+from urllib.parse import quote
+
+import requests
 
 from .config import Settings
 
 
 logger = logging.getLogger(__name__)
-_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-class DraftStore:
-    """Write Skill results to the platform's GaussDB draft table."""
-
-    def __init__(self, settings: Settings, connect=None):
+class DraftClient:
+    def __init__(self, settings: Settings, session=None):
         self.settings = settings
-        self._connect = connect
+        self.session = session or requests
 
     def validate(self) -> None:
-        missing = []
-        for name, value in (
-            ("COREINSIGHT_DRAFT_DB_HOST", self.settings.draft_db_host),
-            ("COREINSIGHT_DRAFT_DB_NAME", self.settings.draft_db_name),
-            ("COREINSIGHT_DRAFT_DB_USER", self.settings.draft_db_user),
-            ("COREINSIGHT_DRAFT_DB_PASSWORD", self.settings.draft_db_password),
-        ):
-            if not value:
-                missing.append(name)
-        if missing:
-            raise ValueError("缺少草稿数据库配置：" + ", ".join(missing))
-        if not _IDENTIFIER.fullmatch(self.settings.draft_db_schema):
-            raise ValueError("COREINSIGHT_DRAFT_DB_SCHEMA 不是合法标识符")
+        url = self.settings.draft_api_url.strip()
+        if not url:
+            raise ValueError('缺少 COREINSIGHT_DRAFT_API_URL')
+        if not url.lower().startswith('https://'):
+            raise ValueError('COREINSIGHT_DRAFT_API_URL 必须使用 HTTPS')
 
-    def upsert(self, result: dict, user_id: str) -> str:
+    def save(self, result: dict, user_id: str) -> str:
         self.validate()
-        doc_id = str(result.get("doc_id") or "").strip() or uuid.uuid4().hex
-        connect = self._connect
-        if connect is None:
-            import psycopg2
-            connect = psycopg2.connect
-        connection = connect(
-            host=self.settings.draft_db_host, port=self.settings.draft_db_port,
-            dbname=self.settings.draft_db_name, user=self.settings.draft_db_user,
-            password=self.settings.draft_db_password, connect_timeout=10)
-        updated = False
+        operation = str(result.get('operation') or '').strip().lower()
+        if operation == 'create':
+            return self._create(result, user_id)
+        if operation == 'update':
+            return self._update(result, user_id)
+        raise ValueError('草稿结果 operation 必须是 create 或 update')
+
+    def _create(self, result: dict, user_id: str) -> str:
+        if str(result.get('doc_id') or '').strip():
+            raise ValueError('新建草稿不能携带 doc_id')
+        required = ('title', 'summary', 'experience')
+        missing = [key for key in required
+                   if not isinstance(result.get(key), str) or not result[key].strip()]
+        if missing:
+            raise ValueError('新建草稿缺少字段: ' + ', '.join(missing))
+        doc_id = uuid.uuid4().hex
+        payload = {
+            'doc_id': doc_id,
+            'user_id': user_id,
+            'scene': str(result.get('scene') or 'WeLink问题定位经验'),
+            'scene_id': str(result.get('scene_id') or '251'),
+            'title': result['title'],
+            'summary': result['summary'],
+            'experience': result['experience'],
+        }
+        return self._request('post', '/experience/draft/create', payload)
+
+    def _update(self, result: dict, user_id: str) -> str:
+        doc_id = str(result.get('doc_id') or '').strip()
+        if not doc_id:
+            raise ValueError('更新草稿必须携带 doc_id')
+        payload = {'user_id': user_id}
+        for key in ('title', 'summary', 'experience'):
+            if key in result:
+                payload[key] = result[key]
+        if len(payload) == 1:
+            raise ValueError('更新草稿没有可更新字段')
+        path = '/experience/draft/' + quote(doc_id, safe='')
+        return self._request('put', path, payload)
+
+    def _request(self, method: str, path: str, payload: dict) -> str:
+        url = self.settings.draft_api_url.rstrip('/') + path
         try:
-            cursor = connection.cursor()
-            try:
-                updated = self._update(cursor, doc_id, user_id, result)
-                if not updated:
-                    self._insert(cursor, doc_id, user_id, result)
-                connection.commit()
-            finally:
-                cursor.close()
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
-        logger.info("draft saved doc_id=%s operation=%s title=%s", doc_id,
-                    "update" if updated else "create", str(result.get("title") or ""))
-        return doc_id
-
-    @property
-    def _table(self) -> str:
-        return f'"{self.settings.draft_db_schema}"."t_experience_draft"'
-
-    def _update(self, cursor, doc_id: str, user_id: str, result: dict) -> bool:
-        assignments, values = [], []
-        for source, column in (
-            ("scene", "scene"), ("scene_id", "scene_id"),
-            ("title", "title"), ("title", "llm_title"),
-            ("summary", "llm_description"), ("experience", "llm_content"),
-        ):
-            if source in result:
-                assignments.append(f'"{column}" = %s')
-                values.append(result[source])
-        assignments.extend(['"status" = %s', '"updated_at" = CURRENT_TIMESTAMP'])
-        values.extend(["pending", doc_id, user_id])
-        cursor.execute(
-            f'UPDATE {self._table} SET {", ".join(assignments)} '
-            'WHERE "id" = %s AND "user_id" = %s', values)
-        return cursor.rowcount > 0
-
-    def _insert(self, cursor, doc_id: str, user_id: str, result: dict) -> None:
-        title = result.get("title")
-        cursor.execute(
-            f'''INSERT INTO {self._table}
-                ("id", "user_id", "scene", "scene_id", "title", "llm_title",
-                 "llm_description", "llm_content", "status", "created_at", "updated_at")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)''',
-            (doc_id, user_id, result.get("scene") or "WeLink问题定位经验",
-             str(result.get("scene_id") or "251"), title, title,
-             result.get("summary"), result.get("experience"), "pending"))
+            response = getattr(self.session, method)(
+                url, json=payload, timeout=60, verify=False)
+            body = response.json()
+        except requests.RequestException as exc:
+            raise RuntimeError(f'草稿接口调用失败: {exc}') from exc
+        except ValueError as exc:
+            raise RuntimeError('草稿接口返回的不是 JSON') from exc
+        message = str(body.get('msg') or '草稿写入失败') if isinstance(body, dict) else '草稿写入失败'
+        if response.status_code >= 400:
+            raise RuntimeError(message)
+        data = body.get('data') if isinstance(body, dict) else None
+        returned_id = data.get('id') if isinstance(data, dict) else None
+        if not isinstance(body, dict) or body.get('code') != 0 or not returned_id:
+            raise RuntimeError(message)
+        logger.info('draft saved operation=%s doc_id=%s', method, returned_id)
+        return str(returned_id)

@@ -72,12 +72,7 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 | `COREINSIGHT_UPDATE_CONFIG_KEY` | `coreinsight_local_toolkit_release` | 版本配置 key；任一项为空时关闭检查 |
 | `COREINSIGHT_UPDATE_ENABLED` | `1` | 设为 `0` 时关闭自动更新，用于故障排查 |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
-| `COREINSIGHT_DRAFT_DB_HOST` | `gauss.mlops.rnd.huawei.com` | 平台草稿 GaussDB 地址 |
-| `COREINSIGHT_DRAFT_DB_PORT` | `8000` | 平台草稿 GaussDB 端口 |
-| `COREINSIGHT_DRAFT_DB_NAME` | `mlops` | 平台草稿数据库名 |
-| `COREINSIGHT_DRAFT_DB_SCHEMA` | `coreinsight` | 草稿表 schema |
-| `COREINSIGHT_DRAFT_DB_USER` | 无 | 仅在编译机器上使用，打包时嵌入草稿库账号 |
-| `COREINSIGHT_DRAFT_DB_PASSWORD` | 无 | 仅在编译机器上使用，打包时嵌入草稿库密码 |
+| `COREINSIGHT_DRAFT_API_URL` | `https://coreinsight.rnd.huawei.com/chat` | 平台草稿新建/更新接口前缀 |
 | `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |
 | `COREINSIGHT_FILE_SERVER_URL` | `http://7.224.100.105:32169` | 永久图片上传服务 |
 | `COREINSIGHT_RAG_PIC_PUBLIC_BASE` | `https://fuyao-data-server.rnd.huawei.com` | Markdown 图片公开地址 |
@@ -148,15 +143,9 @@ workspace 不会删除已经进入经验正文的永久图片。
 
 取消任务时 EXE 会调用 Hermes stop 接口，并保证不会继续写入经验引擎。
 
-草稿模式下，新经验使用本地生成的 32 位 UUID 作为 `t_experience_draft.id`，并回写为 Skill 后续可见的
-`doc_id`。同一定时 workspace 后续产生同一 `doc_id` 时，Skill 给出合并后的字段，Toolkit 只更新明确返回的
-`title/summary/experience/scene/scene_id`，同时把状态重置为 `pending`；若草稿已被审核流程移走，则用相同 ID
-重新建立待审核草稿。`title` 与 `llm_title` 始终同步，`summary` 写入 `llm_description`，`experience` 写入
-`llm_content`，`rag_search_text` 在草稿模式下直接丢弃。
-
-打包前在编译机器的系统环境变量中设置 `COREINSIGHT_DRAFT_DB_USER` 和
-`COREINSIGHT_DRAFT_DB_PASSWORD`。`build.ps1` 缺少任一变量都会停止构建；构建时会生成被 Git 忽略的临时
-`_build_secrets.py` 并将值嵌入 EXE，构建结束后立即删除临时文件。最终用户电脑不需要配置这两个环境变量。
+草稿模式下，新经验使用本地生成的 32 位 UUID 调用草稿新建接口，成功后回写为 Skill 后续可见的
+`doc_id`。已有 `doc_id` 时只调用更新接口，Skill 负责输出合并后的完整内容；更新目标不存在或无权限时
+直接失败，不会降级为新建。`rag_search_text` 不发送到草稿接口。
 
 ## 桌面悬浮图标、托盘与版本检查
 

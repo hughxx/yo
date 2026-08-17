@@ -4,13 +4,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    from ._build_secrets import DRAFT_DB_PASSWORD, DRAFT_DB_USER
-except ImportError:
-    DRAFT_DB_USER = ""
-    DRAFT_DB_PASSWORD = ""
-
-
 DEFAULT_ORIGINS = (
     "https://coreinsight-beta.rnd.huawei.com",
     "https://coreinsight.rnd.huawei.com",
@@ -56,16 +49,9 @@ class Settings:
     experience_engine_url: str = os.getenv(
         "COREINSIGHT_EXPERIENCE_ENGINE_URL", "https://fuyao.rnd.huawei.com"
     ).strip().rstrip("/")
-    draft_db_host: str = os.getenv(
-        "COREINSIGHT_DRAFT_DB_HOST", "gauss.mlops.rnd.huawei.com"
-    ).strip()
-    draft_db_port: int = 8000
-    draft_db_name: str = os.getenv("COREINSIGHT_DRAFT_DB_NAME", "mlops").strip()
-    draft_db_schema: str = os.getenv(
-        "COREINSIGHT_DRAFT_DB_SCHEMA", "coreinsight"
-    ).strip()
-    draft_db_user: str = DRAFT_DB_USER.strip()
-    draft_db_password: str = DRAFT_DB_PASSWORD.strip()
+    draft_api_url: str = os.getenv(
+        'COREINSIGHT_DRAFT_API_URL', 'https://coreinsight.rnd.huawei.com/chat'
+    ).strip().rstrip('/')
     ocr_url: str = os.getenv(
         "COREINSIGHT_OCR_URL", "http://10.90.113.228:5678/ocr"
     ).strip()
@@ -113,13 +99,4 @@ def load_settings() -> Settings:
         raise RuntimeError("COREINSIGHT_HERMES_TIMEOUT_SECONDS 必须是整数") from exc
     if hermes_timeout < 30:
         raise RuntimeError("COREINSIGHT_HERMES_TIMEOUT_SECONDS 不能小于 30")
-    raw_draft_port = os.getenv("COREINSIGHT_DRAFT_DB_PORT", "8000")
-    try:
-        draft_db_port = int(raw_draft_port)
-    except ValueError as exc:
-        raise RuntimeError("COREINSIGHT_DRAFT_DB_PORT 必须是整数") from exc
-    if not 1 <= draft_db_port <= 65535:
-        raise RuntimeError("COREINSIGHT_DRAFT_DB_PORT 必须在 1-65535 之间")
-    return Settings(
-        port=port, hermes_timeout_seconds=hermes_timeout,
-        draft_db_port=draft_db_port)
+    return Settings(port=port, hermes_timeout_seconds=hermes_timeout)

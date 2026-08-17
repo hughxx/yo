@@ -13,6 +13,9 @@ RESULT = {"title": "标题", "summary": "摘要", "experience": "## 方案\n内�
           "rag_search_text": "关键词"}
 
 
+RESULT["operation"] = "create"
+
+
 class FakeWorkspaces:
     def __init__(self):
         self.files = {}
@@ -126,10 +129,10 @@ class ProcessorTests(unittest.TestCase):
     def test_draft_mode_routes_to_draft_store(self):
         processor = self.processor()
         processor.drafts = Mock()
-        processor.drafts.upsert.return_value = "draft-1"
+        processor.drafts.save.return_value = "draft-1"
         self.assertEqual("draft-1", processor._push_experience(
             RESULT, "u1", "draft"))
-        processor.drafts.upsert.assert_called_once_with(RESULT, "u1")
+        processor.drafts.save.assert_called_once_with(RESULT, "u1")
 
     def test_result_parser_accepts_pretty_json_jsonl_and_array(self):
         processor = self.processor()
@@ -140,7 +143,7 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual(1, len(lines))
         self.assertEqual(RESULT, json.loads(lines[0]))
 
-        updated = {"doc_id": "123", "summary": "补充内容"}
+        updated = {"operation": "update", "doc_id": "123", "summary": "补充内容"}
         processor.workspaces.files["output/experiences.jsonl"] = (
             json.dumps(RESULT, ensure_ascii=False) + "\n" +
             json.dumps(updated, ensure_ascii=False, indent=2))

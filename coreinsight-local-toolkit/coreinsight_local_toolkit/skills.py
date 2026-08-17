@@ -26,8 +26,8 @@ description: 从带公开图片链接和 OCR alt 文本的 WeLink 群聊 Markdow
 3. 剔除问候、确认、无关闲聊等低价值内容，保留代码、接口、错误日志、配置和关键时间线。
 4. 讨论摘要必须使用输入中的真实发送人和时间，不得使用“用户”“发言人”等占位符。
 5. 输入中的所有公开图片 `![OCR结果](url)` 必须原样保留在最终 experience 的对应上下文中，不得删除、改写 URL、清空 alt 文本或只保留 OCR 文字。
-6. 先查看已有 `output/experiences.jsonl`。若新聊天补充了某条已有经验，使用该行的 `doc_id`，合并旧内容与新内容后追加一个完整的新版本；不要创建重复经验。
-7. 新主题不带 `doc_id`。每形成一条经验，就把一个单行 JSON 追加到 `output/experiences.jsonl`；只能追加，禁止改写或删除旧行。
+6. 先查看已有 `output/experiences.jsonl`。若新聊天补充了某条已有经验，输出 `operation: update`，使用该行的 `doc_id`，合并旧内容与新内容后追加一个完整的新版本；不要创建重复经验。
+7. 新主题输出 `operation: create` 且不带 `doc_id`。每形成一条经验，就把一个单行 JSON 追加到 `output/experiences.jsonl`；只能追加，禁止改写或删除旧行。
 8. 没有可沉淀内容时不要输出占位经验，也不要追加任何行。
 
 ## 输出格式
@@ -35,6 +35,7 @@ description: 从带公开图片链接和 OCR alt 文本的 WeLink 群聊 Markdow
 JSONL 每行严格为一个 UTF-8 JSON 对象，不要使用 Markdown 代码围栏。字符串中的换行必须由 JSON 转义：
 
 {
+  "operation": "create 或 update，必填",
   "doc_id": "已有经验的真实 ID；新经验省略此字段",
   "title": "简洁标题，不超过50字",
   "summary": "详细经验正文，无字数限制",
@@ -42,7 +43,7 @@ JSONL 每行严格为一个 UTF-8 JSON 对象，不要使用 Markdown 代码围�
   "rag_search_text": "空格分隔的检索关键词"
 }
 
-新建时四个业务字段都必须是字符串。更新已有经验时也应输出合并后的完整版本，`doc_id` 必须沿用已有值。
+`operation` 必须显式输出。新建时四个业务字段都必须是字符串。更新已有经验时也应输出合并后的完整版本，`doc_id` 必须沿用已有值。
 """
 
 
