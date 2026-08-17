@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 import requests
 from fastapi import FastAPI, HTTPException, Request
@@ -226,7 +227,7 @@ def create_app(settings: Settings | None = None,
         return extraction.tasks()
 
     @app.post('/welink/extract/cancel')
-    def cancel_extract(payload: ExtractCancelRequest | None = None):
+    def cancel_extract(payload: Optional[ExtractCancelRequest] = None):
         payload = payload or ExtractCancelRequest()
         task = extraction.cancel(task_id=payload.taskId.strip(),
                                  group_id=payload.groupId.strip())
