@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -15,6 +16,26 @@ def message(message_id: int, timestamp: int):
 
 
 class WelinkHistoryTests(unittest.TestCase):
+    def test_probe_resolves_executable_on_every_call(self):
+        completed = Mock(stdout=json.dumps({
+            'conversation_info': [],
+            'error': {'error_code': 'IM.0000', 'error_msg': 'success'},
+        }), stderr='')
+        history = WelinkHistory()
+        commands = [
+            ('welink-cli', {'PATH': 'old'}),
+            (r'C:\new-cli\welink-cli.cmd', {'PATH': 'new'}),
+        ]
+        with patch.object(history, '_command', side_effect=commands) as command:
+            with patch('coreinsight_local_toolkit.welink.subprocess.run',
+                       return_value=completed) as run:
+                history.probe()
+                history.probe()
+        self.assertEqual(2, command.call_count)
+        self.assertEqual(r'C:\new-cli\welink-cli.cmd',
+                         run.call_args.args[0][0])
+        self.assertEqual('new', run.call_args.kwargs['env']['PATH'])
+
     def test_probe_reports_installed_and_ready(self):
         completed = Mock(stdout='''{
           "conversation_info": [{"group_id": "986359484802794599"}],

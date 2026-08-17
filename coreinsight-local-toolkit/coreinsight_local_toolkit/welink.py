@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -12,16 +14,51 @@ if sys.platform == "win32":
     _STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
 
+def _fresh_command_path() -> str:
+    current = os.environ.get('PATH', '')
+    if sys.platform != 'win32':
+        return current
+    try:
+        import winreg
+    except ImportError:
+        return current
+    values = [current]
+    locations = (
+        (winreg.HKEY_LOCAL_MACHINE,
+         r'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'),
+        (winreg.HKEY_CURRENT_USER, r'Environment'),
+    )
+    for hive, key_name in locations:
+        try:
+            with winreg.OpenKey(hive, key_name) as key:
+                value, _ = winreg.QueryValueEx(key, 'Path')
+            if isinstance(value, str) and value.strip():
+                values.append(os.path.expandvars(value.strip()))
+        except OSError:
+            continue
+    return os.pathsep.join(value for value in values if value)
+
+
 class WelinkHistory:
     def __init__(self, executable: str = "welink-cli"):
         self.executable = executable
 
+    def _command(self) -> tuple[str, dict]:
+        search_path = _fresh_command_path()
+        environment = os.environ.copy()
+        environment['PATH'] = search_path
+        executable = self.executable
+        if not os.path.dirname(executable):
+            executable = shutil.which(executable, path=search_path) or executable
+        return executable, environment
+
     def _run(self, args: list[str], timeout: int = 60) -> dict:
+        executable, environment = self._command()
         try:
             result = subprocess.run(
-                [self.executable, *args], capture_output=True, text=True,
+                [executable, *args], capture_output=True, text=True,
                 encoding="utf-8", errors="ignore", timeout=timeout,
-                startupinfo=_STARTUPINFO,
+                startupinfo=_STARTUPINFO, env=environment,
             )
         except FileNotFoundError as exc:
             raise RuntimeError("未找到 welink-cli，请先安装并登录 WeLink CLI") from exc
@@ -41,11 +78,12 @@ class WelinkHistory:
 
     def probe(self) -> dict:
         """Check that welink-cli exists and can query the current login."""
+        executable, environment = self._command()
         try:
             result = subprocess.run(
-                [self.executable, "im", "query-recent-conversation", "--count", "1"],
+                [executable, "im", "query-recent-conversation", "--count", "1"],
                 capture_output=True, text=True, encoding="utf-8", errors="ignore",
-                timeout=30, startupinfo=_STARTUPINFO,
+                timeout=30, startupinfo=_STARTUPINFO, env=environment,
             )
         except FileNotFoundError:
             return {

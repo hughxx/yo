@@ -1,9 +1,9 @@
-CoreInsight LocalToolkit 前端接口
+CoreInsight LocalToolkit 前端接口（统一信封版）
 Base URL: http://127.0.0.1:17831
 
 统一响应：
 所有成功接口的 HTTP status 均为 200。
-成功响应：code=200，msg=ok，data=实际业务数据。
+成功响应：code=200，msg=ok，data=实际业务数据；前端统一从 data 取值。
 错误响应：HTTP status 保留 409/422/426/502/500 等，code 与 HTTP status 相同，msg 为错误原因，data=null。
 以下各接口所述“响应”均指信封中的 data 字段。
 
@@ -91,7 +91,7 @@ Base URL: http://127.0.0.1:17831
     "selectedMessageIds": []
   }
 }
-使用：保存响应中的 taskId，并立即开始查询该任务状态。
+使用：保存响应中的 data.taskId，并立即开始查询该任务状态。
 规则：同群组已有未结束任务时返回 409；其他群组的任务会正常进入 queued 队列。
 规则：该群组已启用定时提取时，应先调用 /welink/schedule/cancel。
 
@@ -150,6 +150,7 @@ selection 用法：
 时间格式：YYYY-MM-DD HH:mm:ss。
 POST /welink/extract 返回成功只表示任务已受理，不代表提取已完成。
 403：当前网页 Origin 不在 LocalToolkit 白名单。
+404：群组或任务不存在，或群组尚未绑定。
 409：同群组任务或定时状态冲突。
 422：请求字段或时间格式错误。
 426：LocalToolkit 必须升级，停止继续调用 WeLink 业务接口。
