@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +29,9 @@ from .welink import WelinkHistory
 from .time_format import epoch_milliseconds
 
 
+logger = logging.getLogger(__name__)
+
+
 def _to_timestamp(value: str | None, field_name: str) -> int:
     if not value:
         return 0
@@ -34,6 +39,26 @@ def _to_timestamp(value: str | None, field_name: str) -> int:
         return epoch_milliseconds(value)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"{field_name} 不是有效的 ISO 8601 时间") from exc
+
+
+def _uses_api_envelope(path: str) -> bool:
+    return path in {'/health', '/capabilities', '/version'} or path.startswith(
+        ('/welink/', '/update/'))
+
+
+def _envelope(status_code: int, payload) -> tuple[int, dict]:
+    if status_code >= 400:
+        message = payload.get('detail') if isinstance(payload, dict) else None
+        if isinstance(message, list):
+            message = '; '.join(
+                str(item.get('msg', item)) if isinstance(item, dict) else str(item)
+                for item in message)
+        return status_code, {
+            'code': status_code,
+            'msg': str(message or '请求失败'),
+            'data': None,
+        }
+    return 200, {'code': 200, 'msg': 'ok', 'data': payload}
 
 
 def create_app(settings: Settings | None = None,
@@ -78,6 +103,34 @@ def create_app(settings: Settings | None = None,
         if request.url.path.startswith("/demo"):
             response.headers["Cache-Control"] = "no-store"
         return response
+
+    @app.middleware('http')
+    async def api_response_envelope(request: Request, call_next):
+        try:
+            response = await call_next(request)
+        except Exception:
+            if not _uses_api_envelope(request.url.path):
+                raise
+            logger.exception('unhandled api error path=%s', request.url.path)
+            return JSONResponse(
+                content={'code': 500, 'msg': '本地服务内部错误', 'data': None},
+                status_code=500)
+        if not _uses_api_envelope(request.url.path):
+            return response
+        raw = b''.join([chunk async for chunk in response.body_iterator])
+        if raw:
+            try:
+                payload = json.loads(raw.decode('utf-8'))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = raw.decode('utf-8', errors='replace')
+        else:
+            payload = None
+        http_status, content = _envelope(response.status_code, payload)
+        headers = {
+            key: value for key, value in response.headers.items()
+            if key.lower() not in {'content-length', 'content-type'}
+        }
+        return JSONResponse(content=content, status_code=http_status, headers=headers)
 
     @app.get("/health")
     def health():

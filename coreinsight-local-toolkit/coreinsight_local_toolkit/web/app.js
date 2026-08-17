@@ -1,7 +1,7 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const state={groups:[],skills:[],activeId:'',messages:[],cursor:'',hasMore:false,totalHint:0,selectionMode:'all',excluded:new Set(),included:new Set(),loading:false,extractTask:{status:'idle',running:false}};
 
-async function api(path,options={}){const response=await fetch(path,{headers:{'Content-Type':'application/json','X-CoreInsight-Protocol':'1'},...options});if(!response.ok){let message=`请求失败 (${response.status})`;try{const body=await response.json();message=body.detail||message}catch{}throw new Error(message)}return response.status===204?null:response.json()}
+async function api(path,options={}){const response=await fetch(path,{headers:{'Content-Type':'application/json','X-CoreInsight-Protocol':'1'},...options});let body=null;try{body=await response.json()}catch{}if(!response.ok){const message=body?.msg||body?.detail||`请求失败 (${response.status})`;throw new Error(message)}return body&&typeof body==='object'&&'code' in body&&'data' in body?body.data:body}
 function toast(message,error=false){const el=$('#toast');el.textContent=message;el.className=`toast${error?' error':''}`;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),2800)}
 function active(){return state.groups.find(group=>group.groupId===state.activeId)}
 function localValue(date){const offset=date.getTimezoneOffset()*60000;return new Date(date-offset).toISOString().slice(0,16)}

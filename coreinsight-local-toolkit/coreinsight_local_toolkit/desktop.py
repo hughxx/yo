@@ -68,6 +68,8 @@ def _activate_existing(port: int) -> bool:
         with urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/health", timeout=1) as response:
             health = json.loads(response.read().decode("utf-8"))
+        if isinstance(health, dict) and isinstance(health.get('data'), dict):
+            health = health['data']
         if health.get("service") != "coreinsight-local-toolkit":
             return False
     except (OSError, ValueError, urllib.error.URLError):

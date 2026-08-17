@@ -18,7 +18,9 @@ class DesktopTests(unittest.TestCase):
     @patch("coreinsight_local_toolkit.desktop.urllib.request.urlopen")
     def test_existing_instance_can_be_activated(self, urlopen):
         health = MagicMock()
-        health.read.return_value = b'{"service":"coreinsight-local-toolkit"}'
+        health.read.return_value = (
+            b'{"code":200,"msg":"ok","data":'
+            b'{"service":"coreinsight-local-toolkit"}}')
         activated = MagicMock(status=200)
         urlopen.side_effect = [
             MagicMock(__enter__=MagicMock(return_value=health)),
