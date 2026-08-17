@@ -15,10 +15,10 @@
       <div class="desktop"><img class="float-logo" src="/welcome/icon.svg" alt="桌面悬浮图标"><div class="menu"><div>云见主页</div><div>经验提取</div><hr><div>✓ 生产环境</div><div>测试环境</div><hr><div>隐藏悬浮图标</div><div>退出</div></div><div class="taskbar"><img src="/welcome/icon.svg" alt="任务栏图标"></div></div>
       <div class="guide"><h2>接下来怎么使用</h2><div class="tip"><b>1</b><div><strong>找到桌面悬浮 Logo</strong><span>Logo 会悬挂在桌面右侧，可以拖动到合适位置。</span></div></div><div class="tip"><b>2</b><div><strong>右键打开功能菜单</strong><span>可以进入云见、经验提取、切换环境，或隐藏和退出。</span></div></div><div class="tip"><b>3</b><div><strong>任务栏也能找回来</strong><span>隐藏 Logo 后，仍可从右下角系统托盘恢复或退出。</span></div></div></div>
     </section>
-    <footer><span class="progress"><i></i></span><span id="countdown">此页面将在 3 秒后自动关闭</span><button id="close">立即关闭</button></footer>
+    <footer><span id="close-hint">Toolkit 将继续在后台运行。</span><button id="close">关闭页面</button></footer>
   </main>
   <script>
-    let remaining=3;const label=document.querySelector('#countdown');const closePage=()=>{window.open('','_self');window.close();setTimeout(()=>label.textContent='Toolkit 已启动，可手动关闭此页面',250)};document.querySelector('#close').onclick=closePage;const timer=setInterval(()=>{remaining-=1;if(remaining<=0){clearInterval(timer);closePage()}else label.textContent=`此页面将在 ${remaining} 秒后自动关闭`},1000);
+    const hint=document.querySelector('#close-hint');document.querySelector('#close').onclick=()=>{window.open('','_self');window.close();setTimeout(()=>{hint.textContent='浏览器未允许自动关闭，请直接关闭当前标签页。'},250)};
   </script>
 </body>
 </html>
