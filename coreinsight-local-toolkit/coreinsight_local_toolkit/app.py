@@ -8,7 +8,7 @@ from typing import Optional
 import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
@@ -21,6 +21,7 @@ from .models import (
     ScheduleCancelRequest,
     ScheduleSetRequest, WelinkCliStatus,
 )
+from .notifications import MessageNotifier
 from .scheduler import ScheduleRuntime
 from .skills import available_skills
 from .store import GroupStore
@@ -67,7 +68,9 @@ def create_app(settings: Settings | None = None,
     update_manager = update_manager or UpdateManager(settings)
     store = GroupStore(settings.data_dir)
     history = WelinkHistory(settings.welink_cli)
-    extraction = ExtractionRuntime(history, store, LocalExperienceProcessor(settings), settings.upload_by)
+    extraction = ExtractionRuntime(
+        history, store, LocalExperienceProcessor(settings), settings.upload_by,
+        MessageNotifier(settings))
     scheduler = ScheduleRuntime(store, extraction)
     browser_origins = {
         *settings.allowed_origins,
@@ -315,6 +318,15 @@ def create_app(settings: Settings | None = None,
         return RedirectResponse("/demo/")
 
     web_dir = Path(__file__).with_name("web")
+    @app.get("/welcome/icon.svg", include_in_schema=False)
+    def welcome_icon():
+        return FileResponse(
+            Path(__file__).with_name("assets") / "icon.svg",
+            media_type="image/svg+xml")
+
+    app.mount(
+        "/welcome", StaticFiles(directory=web_dir / "welcome", html=True),
+        name="welcome")
     app.mount("/demo", StaticFiles(directory=web_dir, html=True), name="demo")
 
     return app

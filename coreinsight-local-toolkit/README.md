@@ -65,8 +65,9 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 | `COREINSIGHT_WORKSPACE_FILE_SERVER_URL` | `http://7.183.107.92:30864` | 共享 workspace 文件服务 |
 | `COREINSIGHT_HERMES_TIMEOUT_SECONDS` | `1800` | 单次 Skill 最长等待时间 |
 | `COREINSIGHT_PORTAL_URL` | `https://coreinsight.rnd.huawei.com` | 悬浮图标“云见主页”的地址 |
-| `COREINSIGHT_EMAIL_URL` | 同云见主页 | “邮件提取”的正式前端地址 |
-| `COREINSIGHT_CHAT_URL` | `http://127.0.0.1:17831/demo/` | “聊天记录提取”的前端地址 |
+| `COREINSIGHT_EXPERIENCE_CREATE_URL` | `https://coreinsight.rnd.huawei.com/experience/create` | 右键菜单“经验提取”的地址 |
+| `COREINSIGHT_IM_NOTIFICATION_URL` | `http://fuyao.rnd.huawei.com/coreinsight-bot/im/message/coreinsight-local-toolkit` | 提取成功后的用户聊天通知接口 |
+| `COREINSIGHT_WELCOME_ENABLED` | `1` | 启动成功后是否自动打开 welcome 引导页 |
 | `COREINSIGHT_TRAY_ENABLED` | `1` | Windows 托盘；设为 `0` 可用于无桌面调试 |
 | `COREINSIGHT_UPDATE_CONFIG_URL` | Fuyao `selectConfigByKey` | 配置中心查询接口 |
 | `COREINSIGHT_UPDATE_CONFIG_KEY` | `coreinsight_local_toolkit_release` | 版本配置 key；任一项为空时关闭检查 |
@@ -150,9 +151,13 @@ workspace 不会删除已经进入经验正文的永久图片。
 ## 桌面悬浮图标、托盘与版本检查
 
 Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色悬浮图标。图标可拖动，
-左键打开云见主页；右键菜单包含云见主页、邮件提取、聊天记录提取、关于、隐藏和退出。
+左键打开云见主页；右键菜单包含云见主页、经验提取、生产/测试环境切换、关于、隐藏和退出。
 隐藏只收起悬浮图标，本地服务继续运行，可从系统托盘的“显示悬浮图标”恢复。系统托盘还
 提供日志目录和版本检查入口。
+
+环境选择保存在 `D:\CoreInsight\LocalToolkit\environment.json`。生产环境使用
+`coreinsight.rnd.huawei.com`，测试环境使用 `coreinsight-beta.rnd.huawei.com`；切换仅替换这两个域名，
+不会修改 Hermes、文件服务、经验引擎、OCR、图片、云盘或升级配置中心地址。
 
 启动后会自动检查一次版本。Toolkit 调用配置中心
 `selectConfigByKey?key=coreinsight_local_toolkit_release`，并将返回的 `data.configVal` 解析为：

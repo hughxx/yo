@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -8,8 +9,10 @@ from coreinsight_local_toolkit.drafts import DraftClient
 
 class DraftClientTests(unittest.TestCase):
     def settings(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
         return Settings(
-            data_dir=Path('D:/CoreInsight/LocalToolkit'),
+            data_dir=Path(directory.name),
             draft_api_url='https://coreinsight.rnd.huawei.com/chat')
 
     @staticmethod

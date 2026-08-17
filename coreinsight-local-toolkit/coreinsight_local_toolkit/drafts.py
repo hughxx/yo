@@ -7,6 +7,7 @@ from urllib.parse import quote
 import requests
 
 from .config import Settings
+from .environment import EnvironmentManager
 
 
 logger = logging.getLogger(__name__)
@@ -16,9 +17,10 @@ class DraftClient:
     def __init__(self, settings: Settings, session=None):
         self.settings = settings
         self.session = session or requests
+        self.environments = EnvironmentManager(settings.data_dir)
 
     def validate(self) -> None:
-        url = self.settings.draft_api_url.strip()
+        url = self.environments.resolve_url(self.settings.draft_api_url).strip()
         if not url:
             raise ValueError('缺少 COREINSIGHT_DRAFT_API_URL')
         if not url.lower().startswith('https://'):
@@ -67,7 +69,8 @@ class DraftClient:
         return self._request('put', path, payload)
 
     def _request(self, method: str, path: str, payload: dict) -> str:
-        url = self.settings.draft_api_url.rstrip('/') + path
+        url = self.environments.resolve_url(
+            self.settings.draft_api_url).rstrip('/') + path
         try:
             response = getattr(self.session, method)(
                 url, json=payload, timeout=60, verify=False)

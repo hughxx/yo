@@ -127,9 +127,22 @@ class ScheduleRuntime:
         group.scheduleCron = payload.scheduleCron.strip()
         group.scheduleWeekday = now.weekday()
         group.scheduleDay = now.day
+        since = payload.since
+        if not group.scheduleEnabled:
+            initial = since or format_datetime(now)
+            group.scheduleSince = initial
+            group.scheduleCursor = initial
+            group.scheduleLastRun = initial
+        elif since is not None:
+            group.scheduleSince = since
+            group.scheduleCursor = since
+            group.scheduleLastRun = since
         group.scheduleEnabled = True
-        if not group.scheduleLastRun:
-            group.scheduleLastRun = format_datetime(now)
+        if not group.scheduleCursor:
+            group.scheduleCursor = group.scheduleLastRun or format_datetime(now)
+        if not group.scheduleSince:
+            group.scheduleSince = group.scheduleCursor
+        group.scheduleLastRun = group.scheduleCursor
         group.scheduleNextRun = format_datetime(next_run(group, now))
         group.status = "scheduled"
         return self.groups.update(group)
@@ -172,7 +185,8 @@ class ScheduleRuntime:
             due = parse_datetime(group.scheduleNextRun)
             if due > now:
                 continue
-            start = parse_datetime(group.scheduleLastRun) if group.scheduleLastRun else due
+            cursor = group.scheduleCursor or group.scheduleLastRun
+            start = parse_datetime(cursor) if cursor else due
             payload = ExtractRequest(
                 groupId=group.groupId, uploadBy=group.uploadBy,
                 skillId=group.skillId, extractMode=group.extractMode,
@@ -194,6 +208,7 @@ class ScheduleRuntime:
             return
         completed = datetime.fromtimestamp(end_ms / 1000).astimezone()
         if success:
+            group.scheduleCursor = format_datetime(completed)
             group.scheduleLastRun = format_datetime(completed)
         group.scheduleNextRun = format_datetime(next_run(group, completed))
         group.status = "scheduled"

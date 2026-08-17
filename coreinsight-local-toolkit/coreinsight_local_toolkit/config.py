@@ -67,8 +67,14 @@ class Settings:
     portal_url: str = os.getenv(
         "COREINSIGHT_PORTAL_URL", "https://coreinsight.rnd.huawei.com"
     ).strip()
-    email_url: str = os.getenv("COREINSIGHT_EMAIL_URL", "").strip()
-    chat_url: str = os.getenv("COREINSIGHT_CHAT_URL", "").strip()
+    experience_create_url: str = os.getenv(
+        "COREINSIGHT_EXPERIENCE_CREATE_URL",
+        "https://coreinsight.rnd.huawei.com/experience/create",
+    ).strip()
+    notification_url: str = os.getenv(
+        "COREINSIGHT_IM_NOTIFICATION_URL",
+        "http://fuyao.rnd.huawei.com/coreinsight-bot/im/message/coreinsight-local-toolkit",
+    ).strip()
     update_config_url: str = os.getenv(
         "COREINSIGHT_UPDATE_CONFIG_URL",
         "https://fuyao.rnd.huawei.com/dataengineering/rag-knowledge-config/selectConfigByKey",
@@ -81,6 +87,12 @@ class Settings:
     ).strip().lower() not in {"0", "false", "no"}
     tray_enabled: bool = os.getenv(
         "COREINSIGHT_TRAY_ENABLED", "1"
+    ).strip().lower() not in {"0", "false", "no"}
+    welcome_enabled: bool = os.getenv(
+        "COREINSIGHT_WELCOME_ENABLED", "1"
+    ).strip().lower() not in {"0", "false", "no"}
+    welcome_enabled: bool = os.getenv(
+        "COREINSIGHT_WELCOME_ENABLED", "1"
     ).strip().lower() not in {"0", "false", "no"}
 
 

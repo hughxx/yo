@@ -3,6 +3,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from coreinsight_local_toolkit.extraction import ExtractionRuntime
 from coreinsight_local_toolkit.models import ExtractRequest, GroupCreate
@@ -15,6 +16,14 @@ class FakeHistory:
             return {'items': [{'id': '3'}, {'id': '2'}],
                     'nextCursor': '2', 'hasMore': True}
         return {'items': [{'id': '1'}], 'nextCursor': '', 'hasMore': False}
+
+
+class BoundaryHistory:
+    def fetch_page(self, group_id, start_ms, end_ms, cursor, limit):
+        return {'items': [
+            {'id': 'boundary', 'timestamp': start_ms},
+            {'id': 'new', 'timestamp': start_ms + 1},
+        ], 'nextCursor': '', 'hasMore': False}
 
 
 class FakeProcessor:
@@ -40,6 +49,15 @@ class BlockingProcessor(FakeProcessor):
         self.entered.set()
         self.release.wait(2)
         return {'docId': 'doc-1', 'title': 'Test title'}
+
+
+class FakeNotifier:
+    def __init__(self):
+        self.calls = []
+
+    def notify(self, *args):
+        self.calls.append(args)
+        return True
 
 
 class ExtractionRuntimeTests(unittest.TestCase):
@@ -88,6 +106,44 @@ class ExtractionRuntimeTests(unittest.TestCase):
             self.assertEqual(('welink-experience-extractor', 'u1'), processor.calls[0][1:3])
             self.assertEqual('done', runtime.status()['status'])
             self.assertEqual('idle', groups.get('g1').status)
+            runtime.close()
+
+    def test_scheduled_window_excludes_the_previous_cursor_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            groups = GroupStore(Path(directory))
+            groups.add(GroupCreate(groupId='g1'))
+            processor = FakeProcessor()
+            runtime = ExtractionRuntime(BoundaryHistory(), groups, processor, 'u1')
+            payload = ExtractRequest(groupId='g1', uploadBy='u1')
+            task = runtime.start(payload, 100, 200, scheduled=True)
+            for _ in range(100):
+                if not runtime.status(task_id=task['taskId'])['running']:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(['new'], [item['id'] for item in processor.calls[0][0]])
+            runtime.close()
+
+    def test_success_notifies_uploading_user_with_experience_preview(self):
+        with tempfile.TemporaryDirectory() as directory:
+            groups = GroupStore(Path(directory))
+            groups.add(GroupCreate(groupId='g1'))
+            processor = FakeProcessor()
+            processor.process = Mock(return_value={
+                'docId': 'doc-1', 'title': '标题',
+                'experiences': [{'docId': 'doc-1', 'title': '标题'}],
+            })
+            notifier = FakeNotifier()
+            runtime = ExtractionRuntime(
+                FakeHistory(), groups, processor, 'u1', notifier)
+            task = runtime.start(
+                ExtractRequest(groupId='g1', uploadBy='w00899061'), 0, 10)
+            for _ in range(100):
+                if not runtime.status(task_id=task['taskId'])['running']:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(
+                [('w00899061', 'direct',
+                  [{'docId': 'doc-1', 'title': '标题'}])], notifier.calls)
             runtime.close()
 
 

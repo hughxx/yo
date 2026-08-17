@@ -14,6 +14,10 @@ class ConfigTests(unittest.TestCase):
         settings = Settings()
         self.assertIn("http://localhost.huawei.com:8080", settings.allowed_origins)
         self.assertIn("https://localhost.huawei.com:8080", settings.allowed_origins)
+        self.assertEqual(
+            "https://coreinsight.rnd.huawei.com/experience/create",
+            settings.experience_create_url)
+        self.assertTrue(settings.welcome_enabled)
 
     def test_default_data_dir_is_on_d_drive(self):
         self.assertEqual(Path("D:/CoreInsight/LocalToolkit"), Settings().data_dir)

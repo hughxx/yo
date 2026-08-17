@@ -81,7 +81,9 @@ LocalToolkit 会执行一次只查询一条最近会话的 WeLink CLI 探测命�
 | `startTime` / `endTime` | 手动提取时间范围 |
 | `quickRange` | `all`、`7d`、`3d`、`2d`、`today`、`custom` |
 | `scheduleEnabled` | 是否已启用定时提取 |
-| `scheduleLastRun` | 上次定时增量提取成功截止时间 |
+| `scheduleSince` | 用户设置的首次增量起点 |
+| `scheduleCursor` | 当前成功增量游标；正式前端应展示此字段 |
+| `scheduleLastRun` | 兼容字段，与 `scheduleCursor` 同步 |
 | `scheduleNextRun` | 下次计划执行时间 |
 
 ### `POST /welink/group/add`
@@ -302,13 +304,18 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
   "extractMode": "direct",
   "scheduleFreq": "daily",
   "scheduleTime": "09:00:00",
-  "scheduleCron": ""
+  "scheduleCron": "",
+  "since": "2026-08-17 10:00:00"
 }
 ```
 
 - `scheduleFreq` 支持 `daily`、`weekly`、`monthly`、`custom`。
 - `custom` 使用 5 段 Cron：`分 时 日 月 星期`。
-- 定时提取不提交手动起止时间，每次读取 `scheduleLastRun` 之后的新消息。
+- 首次设置时提交 `since`；第一次读取 `(since, 本次触发时间]`。
+- 后续每次读取 `(scheduleCursor, 本次触发时间]`，固定处理窗口内全部消息，不使用手动预览的 `selection`。
+- 成功或窗口内没有新消息时推进 `scheduleCursor`；失败、取消时不推进。
+- 修改频率但不重置进度时省略 `since`；重新提交 `since` 会重置游标，可能重复提取。
+- 前端建议把“指定时间范围”和“定时增量”作为互斥模式；定时模式只显示 since、频率和执行时间。
 - 到期后创建普通队列任务；其他群组正在提取时，该任务进入 `queued`。
 - 同一群组已有手动或定时任务未结束时，设置定时配置返回 `409`。
 

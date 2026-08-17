@@ -161,6 +161,7 @@ class LocalExperienceProcessor:
                     workspace_id, len(compacted), len(input_paths))
             return {"docId": pushed[0]["docId"] if pushed else "",
                     "docIds": [item["docId"] for item in pushed],
+                    "experiences": pushed,
                     "title": pushed[0]["title"] if pushed else "",
                     "experienceCount": len(pushed), "skillId": skill_id,
                     "remoteRunId": run_id, "workspaceId": workspace_id}

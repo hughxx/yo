@@ -49,6 +49,11 @@ class GroupStore:
 
     @staticmethod
     def _normalized(raw: dict) -> GroupConfig:
+        legacy_cursor = str(raw.get("scheduleLastRun") or "")
+        if not raw.get("scheduleCursor") and legacy_cursor:
+            raw = {**raw, "scheduleCursor": legacy_cursor}
+        if not raw.get("scheduleSince") and legacy_cursor:
+            raw = {**raw, "scheduleSince": legacy_cursor}
         return GroupConfig(**raw)
 
     def list(self) -> list[GroupConfig]:

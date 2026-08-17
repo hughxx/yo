@@ -1,4 +1,5 @@
 import tempfile
+import json
 import unittest
 from pathlib import Path
 
@@ -41,6 +42,15 @@ class GroupStoreTests(unittest.TestCase):
         group.status = "extracting"
         self.store.update(group)
         self.assertEqual("scheduled", GroupStore(Path(self.temporary.name)).get("group-1").status)
+
+    def test_legacy_last_run_is_migrated_to_schedule_cursor(self):
+        self.store._path.write_text(json.dumps([{
+            "groupId": "group-1", "scheduleEnabled": True,
+            "scheduleLastRun": "2026-08-17 09:00:00",
+        }]), encoding="utf-8")
+        group = self.store.get("group-1")
+        self.assertEqual("2026-08-17 09:00:00", group.scheduleCursor)
+        self.assertEqual("2026-08-17 09:00:00", group.scheduleSince)
 
 
 if __name__ == "__main__":

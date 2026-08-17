@@ -18,6 +18,7 @@ import uvicorn
 from . import __version__
 from .app import create_app
 from .config import Settings
+from .environment import EnvironmentManager, PRODUCTION, TESTING
 from .updates import (
     UpdateManager, UpdateStatus, create_updater_script, download_update,
     launch_updater,
@@ -125,17 +126,25 @@ def run_desktop(settings: Settings) -> None:
         _native_notice(f"本地服务启动失败，请查看日志：{settings.data_dir / 'logs'}")
         return
 
-    local_url = f"http://127.0.0.1:{settings.port}/demo/"
-    email_url = settings.email_url or settings.portal_url
-    chat_url = settings.chat_url or local_url
+    environments = EnvironmentManager(settings.data_dir)
     source_image = Image.open(asset_path("icon.png")).convert("RGBA")
 
     def open_url(url: str) -> None:
         webbrowser.open(url)
 
+    def environment_url(url: str) -> str:
+        return environments.resolve_url(url)
+
+    def open_portal() -> None:
+        open_url(environment_url(settings.portal_url))
+
+    def open_experience_create() -> None:
+        open_url(environment_url(settings.experience_create_url))
+
     def show_about(*_args) -> None:
         _native_notice(
             f"CoreInsight Local Toolkit\n版本：{__version__}\n"
+            f"环境：{environments.label(settings.portal_url)}\n"
             f"本地服务：http://127.0.0.1:{settings.port}",
             "关于 CoreInsight Local Toolkit")
 
@@ -150,6 +159,19 @@ def run_desktop(settings: Settings) -> None:
 
     exiting = threading.Event()
     install_lock = threading.Lock()
+
+    def switch_environment(environment: str) -> None:
+        previous = environments.current(settings.portal_url)
+        environments.set(environment)
+        if previous == environment:
+            return
+        label = environments.label(settings.portal_url)
+        logger.info('desktop environment changed environment=%s', environment)
+        try:
+            tray.update_menu()
+            tray.notify(f'已切换到{label}', 'CoreInsight Local Toolkit')
+        except Exception:
+            logger.debug('tray environment refresh unavailable', exc_info=True)
 
     def begin_install(status: UpdateStatus) -> None:
         if not install_lock.acquire(blocking=False):
@@ -213,9 +235,11 @@ def run_desktop(settings: Settings) -> None:
 
     try:
         floating = FloatingWindow(source_image, {
-            "portal": lambda: open_url(settings.portal_url),
-            "email": lambda: open_url(email_url),
-            "chat": lambda: open_url(chat_url),
+            "portal": open_portal,
+            "experience_create": open_experience_create,
+            "environment_current": lambda: environments.current(settings.portal_url),
+            "environment_production": lambda: switch_environment(PRODUCTION),
+            "environment_testing": lambda: switch_environment(TESTING),
             "logs": open_logs,
             "update": lambda: check_update(True),
             "about": show_about,
@@ -243,9 +267,17 @@ def run_desktop(settings: Settings) -> None:
         "coreinsight-local-toolkit", source_image,
         "CoreInsight Local Toolkit",
         menu=pystray.Menu(
-            pystray.MenuItem("云见主页", lambda *_: open_url(settings.portal_url)),
-            pystray.MenuItem("邮件提取", lambda *_: open_url(email_url)),
-            pystray.MenuItem("聊天记录提取", lambda *_: open_url(chat_url)),
+            pystray.MenuItem("云见主页", lambda *_: open_portal()),
+            pystray.MenuItem("经验提取", lambda *_: open_experience_create()),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "生产环境", lambda *_: switch_environment(PRODUCTION),
+                checked=lambda _item: environments.current(settings.portal_url) == PRODUCTION,
+                radio=True),
+            pystray.MenuItem(
+                "测试环境", lambda *_: switch_environment(TESTING),
+                checked=lambda _item: environments.current(settings.portal_url) == TESTING,
+                radio=True),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("打开日志目录", open_logs),
             pystray.MenuItem("检查更新", lambda *_: check_update(True)),
@@ -257,6 +289,9 @@ def run_desktop(settings: Settings) -> None:
     )
     tray_thread = threading.Thread(target=tray.run, name="coreinsight-tray", daemon=True)
     tray_thread.start()
+    if settings.welcome_enabled:
+        welcome_url = f"http://127.0.0.1:{settings.port}/welcome/"
+        threading.Timer(0.5, lambda: open_url(welcome_url)).start()
     threading.Timer(2.0, lambda: check_update(False)).start()
     logger.info("desktop floating icon and tray started")
     try:

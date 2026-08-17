@@ -28,11 +28,13 @@ class _Job:
 
 class ExtractionRuntime:
     def __init__(self, history: WelinkHistory, groups: GroupStore,
-                 processor: LocalExperienceProcessor, default_upload_by: str = ''):
+                 processor: LocalExperienceProcessor, default_upload_by: str = '',
+                 notifier=None):
         self.history = history
         self.groups = groups
         self.processor = processor
         self.default_upload_by = default_upload_by
+        self.notifier = notifier
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
         self._stop = False
@@ -168,6 +170,8 @@ class ExtractionRuntime:
                     payload.groupId, job.start_ms, job.end_ms, cursor, 100)
                 scanned += len(page['items'])
                 for item in page['items']:
+                    if job.scheduled and int(item.get('timestamp') or 0) <= job.start_ms:
+                        continue
                     message_id = str(item['id'])
                     include = (message_id not in excluded
                                if payload.selection.mode == 'all'
@@ -202,6 +206,10 @@ class ExtractionRuntime:
                 messages, payload.skillId, job.upload_by, job.task_id,
                 progress, job.cancel, group_id=payload.groupId,
                 scheduled=job.scheduled, extract_mode=payload.extractMode)
+            if self.notifier:
+                self.notifier.notify(
+                    job.upload_by, payload.extractMode,
+                    result.get('experiences') or [])
             message = ('草稿提取完成，已进入平台待审核列表'
                        if payload.extractMode == 'draft'
                        else '经验提取并入库完成')

@@ -21,6 +21,16 @@ Base URL: http://127.0.0.1:17831
 
 4. GET /welink/group/list
 时机：页面初始化、添加/修改/删除群组、任务状态结束后调用，刷新群组配置和状态。
+定时相关返回字段：
+{
+  "scheduleEnabled": true,
+  "scheduleSince": "2026-08-17 10:00:00",
+  "scheduleCursor": "2026-08-18 09:00:00",
+  "scheduleLastRun": "2026-08-18 09:00:00",
+  "scheduleNextRun": "2026-08-19 09:00:00"
+}
+使用：scheduleSince 是用户设置的首次起点；scheduleCursor 是系统当前成功游标；scheduleLastRun 是兼容字段，正式前端读取 scheduleCursor。
+使用：定时任务结束后重新调用本接口，刷新 scheduleCursor 和 scheduleNextRun。
 
 5. GET /welink/extract/tasks
 时机：页面初始化时调用，恢复各群组未结束任务及近期任务状态。
@@ -39,6 +49,8 @@ Base URL: http://127.0.0.1:17831
 7. PUT /welink/group/update
 时机：用户保存群组配置时调用。
 使用：提交 GET /welink/group/list 返回的完整群组对象，修改其中的用户配置字段后整体提交。
+使用：startTime、endTime、quickRange 只用于“指定时间范围”的手动提取。
+使用：不要通过本接口修改 scheduleSince、scheduleCursor、scheduleLastRun、scheduleNextRun；定时配置统一调用 /welink/schedule/set。
 
 8. DELETE /welink/group/delete
 时机：用户删除群组时调用。
@@ -122,6 +134,10 @@ selection 用法：
 
 五、定时提取
 
+页面：将“指定时间范围”和“定时增量”作为互斥选项。
+指定时间范围：显示 startTime、endTime、消息预览和手动提取。
+定时增量：显示 since、执行频率和执行时间；不显示消息勾选。
+
 14. POST /welink/schedule/set
 时机：用户确认新增或修改定时提取配置时调用。
 请求：
@@ -132,10 +148,15 @@ selection 用法：
   "extractMode": "direct",
   "scheduleFreq": "daily",
   "scheduleTime": "09:00:00",
-  "scheduleCron": ""
+  "scheduleCron": "",
+  "since": "2026-08-17 10:00:00"
 }
 使用：scheduleFreq 支持 daily、weekly、monthly、custom；custom 时填写五段 Cron。
+使用：首次设置定时必须传 since，表示首次增量起点；运行窗口为 (since, 本次触发时间]。
+使用：修改频率但不重置进度时省略 since；重新传 since 会重置增量游标，可能重复提取。
+使用：定时模式固定处理增量窗口内全部消息，不使用手动预览的 selection。
 使用：同群组存在未结束任务时返回 409。
+响应：返回完整群组对象；保存其中的 scheduleSince、scheduleCursor、scheduleNextRun。
 
 15. POST /welink/schedule/cancel
 时机：用户点击“取消定时”，或手动提取前需要取消该群组定时时调用。
@@ -143,9 +164,16 @@ selection 用法：
 {
   "groupId": "群组ID"
 }
+使用：取消后保留 scheduleSince 和 scheduleCursor，不删除历史增量进度。
+使用：取消后重新启用时必须传希望使用的 since；要接着上次进度，传当前 scheduleCursor。
 
 
 六、统一处理
+
+本次定时改动没有新增或删除接口。
+请求变更：POST /welink/schedule/set 新增 since。
+响应变更：群组对象新增 scheduleSince、scheduleCursor；scheduleLastRun 仅兼容保留。
+未变化：消息预览、手动提取、任务轮询和取消接口路径均不变。
 
 时间格式：YYYY-MM-DD HH:mm:ss。
 POST /welink/extract 返回成功只表示任务已受理，不代表提取已完成。

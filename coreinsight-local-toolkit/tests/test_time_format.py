@@ -15,10 +15,14 @@ class TimeFormatTests(unittest.TestCase):
         group = GroupConfig(
             groupId="g1", startTime="2026-01-23T00:00:00",
             endTime="2026-01-24 01:02:03.456",
+            scheduleSince="2026-01-24T01:00:00",
+            scheduleCursor="2026-01-24T02:00:00",
             scheduleLastRun="2026-01-24T02:03:04",
             scheduleNextRun="2026-01-25 03:04:05")
         self.assertEqual("2026-01-23 00:00:00", group.startTime)
         self.assertEqual("2026-01-24 01:02:03", group.endTime)
+        self.assertEqual("2026-01-24 01:00:00", group.scheduleSince)
+        self.assertEqual("2026-01-24 02:00:00", group.scheduleCursor)
         self.assertEqual("2026-01-24 02:03:04", group.scheduleLastRun)
         self.assertEqual("2026-01-25 03:04:05", group.scheduleNextRun)
 

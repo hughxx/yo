@@ -92,7 +92,7 @@ class WNDCLASSW(ctypes.Structure):
 
 
 class FloatingWindow:
-    def __init__(self, image: Image.Image, actions: dict[str, Callable[[], None]]):
+    def __init__(self, image: Image.Image, actions: dict[str, Callable]):
         self.user32 = ctypes.windll.user32
         self.gdi32 = ctypes.windll.gdi32
         self.kernel32 = ctypes.windll.kernel32
@@ -254,9 +254,14 @@ class FloatingWindow:
 
     def _show_menu(self) -> None:
         menu = self.user32.CreatePopupMenu()
+        environment = self.actions["environment_current"]()
         entries = [
-            (101, "云见主页", "portal"), (102, "邮件提取", "email"),
-            (103, "聊天记录提取", "chat"), (0, "", ""),
+            (101, "云见主页", "portal"),
+            (102, "经验提取", "experience_create"), (0, "", ""),
+            (109, ("✓ " if environment == "production" else "") + "生产环境",
+             "environment_production"),
+            (110, ("✓ " if environment == "testing" else "") + "测试环境",
+             "environment_testing"), (0, "", ""),
             (104, "打开日志目录", "logs"), (105, "检查更新", "update"),
             (106, "关于", "about"), (0, "", ""),
             (107, "隐藏悬浮图标", "hide"), (108, "退出", "exit"),

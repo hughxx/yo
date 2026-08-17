@@ -39,12 +39,15 @@ class GroupConfig(GroupBase):
     scheduleTime: str = "09:00:00"
     scheduleCron: str = ""
     scheduleEnabled: bool = False
+    scheduleSince: str = ""
+    scheduleCursor: str = ""
     scheduleLastRun: str = ""
     scheduleNextRun: str = ""
     scheduleWeekday: int = Field(default=0, ge=0, le=6)
     scheduleDay: int = Field(default=1, ge=1, le=31)
 
-    @validator("startTime", "endTime", "scheduleLastRun", "scheduleNextRun")
+    @validator("startTime", "endTime", "scheduleSince", "scheduleCursor",
+               "scheduleLastRun", "scheduleNextRun")
     def normalize_datetime_fields(cls, value: str) -> str:
         try:
             return str(normalize_datetime(value) or "")
@@ -119,6 +122,19 @@ class ScheduleSetRequest(BaseModel):
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
     scheduleTime: str = "09:00:00"
     scheduleCron: str = ""
+    since: Optional[str] = None
+
+    @validator("since")
+    def normalize_since(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            normalized = normalize_datetime(value)
+        except ValueError as exc:
+            raise ValueError("since 必须是有效的日期时间") from exc
+        if not normalized:
+            raise ValueError("since 不能为空")
+        return str(normalized)
 
 
 class ScheduleCancelRequest(BaseModel):

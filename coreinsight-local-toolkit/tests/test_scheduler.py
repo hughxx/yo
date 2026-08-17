@@ -67,7 +67,35 @@ class SchedulerTests(unittest.TestCase):
         self.assertTrue(call[3])
         group = self.store.get("g1")
         self.assertEqual("2026-08-13 09:00:01", group.scheduleLastRun)
+        self.assertEqual("2026-08-13 09:00:01", group.scheduleCursor)
+        self.assertEqual("2026-08-13 08:00:00", group.scheduleSince)
         self.assertEqual("scheduled", group.status)
+
+    def test_explicit_since_initializes_cursor_and_edit_without_since_preserves_it(self):
+        now = datetime.fromisoformat("2026-08-13T08:00:00+08:00")
+        saved = self.runtime.set(ScheduleSetRequest(
+            groupId="g1", uploadBy="u1", scheduleFreq="daily",
+            scheduleTime="09:00:00", since="2026-08-01T00:00:00"), now)
+        self.assertEqual("2026-08-01 00:00:00", saved.scheduleSince)
+        self.assertEqual("2026-08-01 00:00:00", saved.scheduleCursor)
+
+        saved.scheduleCursor = "2026-08-12 09:00:00"
+        saved.scheduleLastRun = saved.scheduleCursor
+        self.store.update(saved)
+        edited = self.runtime.set(ScheduleSetRequest(
+            groupId="g1", uploadBy="u1", scheduleFreq="daily",
+            scheduleTime="10:00:00"), now)
+        self.assertEqual("2026-08-12 09:00:00", edited.scheduleCursor)
+        self.assertEqual("2026-08-01 00:00:00", edited.scheduleSince)
+
+    def test_passing_since_when_editing_resets_cursor(self):
+        now = datetime.fromisoformat("2026-08-13T08:00:00+08:00")
+        self.runtime.set(ScheduleSetRequest(
+            groupId="g1", uploadBy="u1", since="2026-08-01 00:00:00"), now)
+        reset = self.runtime.set(ScheduleSetRequest(
+            groupId="g1", uploadBy="u1", since="2026-08-10 00:00:00"), now)
+        self.assertEqual("2026-08-10 00:00:00", reset.scheduleSince)
+        self.assertEqual("2026-08-10 00:00:00", reset.scheduleCursor)
 
     def test_custom_cron(self):
         value = next_cron("*/15 9 * * 1-5", datetime.fromisoformat("2026-08-13T09:07:00+08:00"))
