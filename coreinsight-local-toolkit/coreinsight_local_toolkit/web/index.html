@@ -24,6 +24,7 @@
               <button class="ghost" id="refresh-email-list">刷新邮件</button>
             </div>
             <div class="email-range"><div class="range-buttons" id="email-range-buttons"><button data-email-range="today">今天</button><button data-email-range="7d" class="active">最近 7 天</button><button data-email-range="30d">最近 30 天</button><button data-email-range="all">全部</button><button data-email-range="custom">自定义</button></div><label>从 <input type="datetime-local" id="email-start"></label><label>到 <input type="datetime-local" id="email-end"></label></div>
+            <div class="email-rule-warning hidden" id="email-rule-warning"><span>⚠ 尚未配置有效的提取规则。全量读取可能涉及隐私信息，请先配置提取规则。</span><button id="email-configure-rules">去配置规则</button></div>
             <div class="email-table-wrap">
               <div class="email-loading hidden" id="email-loading"><i></i><span>正在读取 Outlook 邮件…</span></div>
               <table class="email-table"><thead><tr><th><input type="checkbox" id="email-check-all"></th><th>接收时间</th><th>发件人</th><th>主题</th><th>会话</th><th>规则</th><th></th></tr></thead><tbody id="email-body"></tbody></table>

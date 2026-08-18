@@ -236,6 +236,12 @@ def create_app(settings: Settings | None = None,
         current.skillId = payload.skillId
         current.extractMode = payload.extractMode
         current.uploadBy = payload.uploadBy.strip()
+        if current.scheduleEnabled and not any(
+                rule.enabled and (rule.subjectKeywords or rule.bodyKeywords
+                                  or rule.senders)
+                for rule in current.rules):
+            current.scheduleEnabled = False
+            current.scheduleNextRun = ""
         return email_store.save(current)
 
     @app.post("/email/message/list")

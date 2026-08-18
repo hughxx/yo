@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 DOCUMENT_CHUNK_SIZE = 36_000
 
 
+def _active_filter_rules(config: EmailConfig) -> list[EmailRule]:
+    """Only enabled rules with at least one real condition are privacy filters."""
+    return [rule for rule in config.rules if rule.enabled and (
+        rule.subjectKeywords or rule.bodyKeywords or rule.senders)]
+
+
 def _rule_match(row: dict, rule: EmailRule, body: str = "",
                 body_hit: bool | None = None) -> bool:
     if not rule.enabled:
@@ -294,10 +300,12 @@ class EmailScheduleRuntime:
 
     def set(self, payload: EmailScheduleSetRequest, now: datetime | None = None):
         now = now or datetime.now().astimezone()
+        config = self.store.get()
+        if not _active_filter_rules(config):
+            raise ValueError("定时增量提取必须先配置并启用至少一条有效的提取规则")
         self.runtime.processor.validate(
             payload.uploadBy, payload.skillId, payload.extractMode)
         _parse_time(payload.scheduleTime)
-        config = self.store.get()
         config.folders = payload.folders or config.folders
         config.uploadBy = payload.uploadBy.strip()
         config.skillId = payload.skillId
@@ -328,13 +336,19 @@ class EmailScheduleRuntime:
         config = self.store.get()
         if not config.scheduleEnabled or not config.scheduleNextRun:
             return False
+        if not _active_filter_rules(config):
+            logger.warning("email schedule disabled because no active filter rule exists")
+            config.scheduleEnabled = False
+            config.scheduleNextRun = ""
+            self.store.save(config)
+            return False
         if parse_datetime(config.scheduleNextRun) > now:
             return False
         start = parse_datetime(config.scheduleCursor or config.scheduleSince)
         payload = EmailExtractRequest(
             folders=config.folders, uploadBy=config.uploadBy,
             skillId=config.skillId, extractMode=config.extractMode,
-            matchedOnly=bool([rule for rule in config.rules if rule.enabled]),
+            matchedOnly=True,
             selection={"mode": "all"})
         try:
             self.runtime.start(
@@ -358,6 +372,12 @@ class EmailScheduleRuntime:
     def _recover(self):
         config = self.store.get()
         if not config.scheduleEnabled:
+            return
+        if not _active_filter_rules(config):
+            logger.warning("email schedule recovery skipped: no active filter rule")
+            config.scheduleEnabled = False
+            config.scheduleNextRun = ""
+            self.store.save(config)
             return
         try:
             if not config.scheduleCursor:

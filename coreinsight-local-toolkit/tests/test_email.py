@@ -99,6 +99,8 @@ class EmailTests(unittest.TestCase):
     def test_schedule_advances_cursor_only_after_success(self):
         with tempfile.TemporaryDirectory() as directory:
             store = EmailConfigStore(Path(directory))
+            store.save(EmailConfig(rules=[EmailRule(
+                name="technical", subjectKeywords=["failure"])]))
             processor = FakeProcessor()
             runtime = EmailRuntime(FakeOutlook(), store, processor)
             scheduler = EmailScheduleRuntime(store, runtime)
@@ -111,6 +113,19 @@ class EmailTests(unittest.TestCase):
             self.assertEqual(before, store.get().scheduleCursor)
             scheduler._completed(True, int(now.timestamp() * 1000))
             self.assertEqual(format_datetime(now), store.get().scheduleCursor)
+            scheduler.close()
+
+    def test_schedule_requires_an_active_filter_rule(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = EmailConfigStore(Path(directory))
+            processor = FakeProcessor()
+            runtime = EmailRuntime(FakeOutlook(), store, processor)
+            scheduler = EmailScheduleRuntime(store, runtime)
+            with self.assertRaisesRegex(ValueError, "至少一条有效的提取规则"):
+                scheduler.set(EmailScheduleSetRequest(
+                    uploadBy="u1", since=format_datetime(
+                        datetime.now().astimezone() - timedelta(days=1))))
+            self.assertFalse(store.get().scheduleEnabled)
             scheduler.close()
 
 

@@ -350,7 +350,7 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 - `GET /email/extract/status`：轮询手动或定时邮件任务。
 - `GET /email/extract/tasks`：获取近期邮件任务。
 - `POST /email/extract/cancel`：取消当前邮件任务。
-- `POST /email/schedule/set`：设置邮件定时增量任务，首次或重置时传 `since`。
+- `POST /email/schedule/set`：设置邮件定时增量任务，首次或重置时传 `since`。必须先配置并启用至少一条包含主题、正文或发件人条件的有效提取规则，否则返回 `422`，不会扫描全部增量邮件。
 - `POST /email/schedule/cancel`：取消邮件定时任务并保留游标。
 
 邮件正式提取由 EXE 重新读取正文和附件。图片执行 OCR 并写成
