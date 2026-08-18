@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
@@ -24,6 +25,7 @@ MAIL_ITEM_CLASS = 43
 PR_ATTACH_CONTENT_ID = "http://schemas.microsoft.com/mapi/proptag/0x3712001E"
 BODY_DASL_FIELD = '"urn:schemas:httpmail:textdescription"'
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
+PROBE_CACHE_SECONDS = 30
 
 
 def _imports():
@@ -163,18 +165,60 @@ class OutlookClient:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.lock = threading.Lock()
+        self.probe_lock = threading.Lock()
+        self.probe_cache: dict | None = None
+        self.probe_checked_monotonic = 0.0
+        self.probe_inflight = False
 
     def probe(self) -> dict:
+        """Return quickly and refresh the real MAPI probe in the background."""
+        now = time.monotonic()
+        with self.probe_lock:
+            fresh = bool(self.probe_cache and
+                         now - self.probe_checked_monotonic < PROBE_CACHE_SECONDS)
+            if fresh:
+                return {**self.probe_cache, "checking": False,
+                        "busy": self.lock.locked()}
+            if not self.probe_inflight:
+                self.probe_inflight = True
+                threading.Thread(target=self._refresh_probe, daemon=True).start()
+            cached = dict(self.probe_cache or {
+                "installed": None, "ready": False, "account": "", "inbox": "",
+                "message": "正在检测 Outlook…", "checkedAt": "",
+            })
+            return {**cached, "checking": True, "busy": self.lock.locked()}
+
+    def _refresh_probe(self):
+        try:
+            result = self._probe_now()
+        except Exception as exc:  # defensive: _probe_now normally normalizes errors
+            logger.exception("unexpected Outlook probe failure")
+            result = {"installed": False, "ready": False, "account": "",
+                      "inbox": "", "message": f"Outlook 未就绪：{exc}"}
+        result["checkedAt"] = format_datetime(datetime.now().astimezone())
+        with self.probe_lock:
+            self.probe_cache = result
+            self.probe_checked_monotonic = time.monotonic()
+            self.probe_inflight = False
+
+    def _probe_now(self) -> dict:
+        inbox = account_item = None
         try:
             with self.lock, outlook_session() as namespace:
-                inbox = namespace.GetDefaultFolder(INBOX)
-                account = ""
                 try:
-                    account = str(namespace.Accounts.Item(1).SmtpAddress or "")
-                except Exception:
-                    pass
-                return {"installed": True, "ready": True, "account": account,
-                        "inbox": str(inbox.Name or "收件箱"), "message": "Outlook 已就绪"}
+                    inbox = namespace.GetDefaultFolder(INBOX)
+                    inbox_name = str(inbox.Name or "收件箱")
+                    account = ""
+                    try:
+                        account_item = namespace.Accounts.Item(1)
+                        account = str(account_item.SmtpAddress or "")
+                    except Exception:
+                        pass
+                    return {"installed": True, "ready": True, "account": account,
+                            "inbox": inbox_name, "message": "Outlook 已就绪"}
+                finally:
+                    account_item = None
+                    inbox = None
         except RuntimeError as exc:
             return {"installed": False, "ready": False, "account": "",
                     "inbox": "", "message": str(exc)}
@@ -185,75 +229,107 @@ class OutlookClient:
     def list_folders(self) -> list[dict]:
         with self.lock, outlook_session() as namespace:
             result = []
-            for store in namespace.Stores:
-                try:
-                    _collect_folders(store.GetRootFolder(), result)
-                except Exception:
-                    continue
+            store = root = None
+            try:
+                for store in namespace.Stores:
+                    try:
+                        root = store.GetRootFolder()
+                        _collect_folders(root, result)
+                    except Exception:
+                        continue
+            finally:
+                root = None
+                store = None
             return result
 
     def list_messages(self, paths: list[str], start_ms: int = 0,
                       end_ms: int = 0, maximum: int = 10000) -> list[dict]:
         with self.lock, outlook_session() as namespace:
             result = []
-            for folder in _folders(namespace, paths):
-                folder_path = str(getattr(folder, "FolderPath", "") or "").lstrip("\\")
-                try:
-                    items = folder.Items
-                    items.Sort("[ReceivedTime]", True)
-                    item = items.GetFirst()
-                    while item is not None and len(result) < maximum:
-                        try:
-                            if int(getattr(item, "Class", 0)) == MAIL_ITEM_CLASS:
-                                row = _summary(item, folder_path)
-                                timestamp = row["timestamp"]
-                                if end_ms and timestamp > end_ms:
-                                    item = items.GetNext()
-                                    continue
-                                if start_ms and timestamp < start_ms:
-                                    break
-                                result.append(row)
-                        except Exception:
-                            logger.debug("skip unreadable Outlook item", exc_info=True)
-                        item = items.GetNext()
-                except Exception:
-                    logger.warning("failed reading Outlook folder=%s", folder_path,
-                                   exc_info=True)
+            folders = _folders(namespace, paths)
+            folder = items = item = None
+            try:
+                for folder in folders:
+                    folder_path = str(getattr(folder, "FolderPath", "") or "").lstrip("\\")
+                    try:
+                        items = folder.Items
+                        items.Sort("[ReceivedTime]", True)
+                        item = items.GetFirst()
+                        folder_count = 0
+                        # Read at most ``maximum`` rows from every sorted folder.  Taking
+                        # the first K rows from each folder is sufficient to calculate
+                        # the global first K rows after merging, and avoids one large
+                        # folder starving all folders that follow it.
+                        while item is not None and folder_count < maximum:
+                            try:
+                                if int(getattr(item, "Class", 0)) == MAIL_ITEM_CLASS:
+                                    row = _summary(item, folder_path)
+                                    timestamp = row["timestamp"]
+                                    if end_ms and timestamp > end_ms:
+                                        item = items.GetNext()
+                                        continue
+                                    if start_ms and timestamp < start_ms:
+                                        break
+                                    result.append(row)
+                                    folder_count += 1
+                            except Exception:
+                                logger.debug("skip unreadable Outlook item", exc_info=True)
+                            item = items.GetNext()
+                    except Exception:
+                        logger.warning("failed reading Outlook folder=%s", folder_path,
+                                       exc_info=True)
+            finally:
+                item = None
+                items = None
+                folder = None
+                folders.clear()
             result.sort(key=lambda value: (value["timestamp"], value["id"]), reverse=True)
             return result[:maximum]
 
     def get_message(self, item_id: str, process_attachments: bool = True) -> dict:
+        item = None
         with self.lock, outlook_session() as namespace:
-            item = namespace.GetItemFromID(item_id)
-            summary = _summary(item, "")
-            html_body = str(getattr(item, "HTMLBody", "") or "")
-            plain_body = str(getattr(item, "Body", "") or "")
-            attachment_markdown = []
-            attachment_rows = []
-            if process_attachments:
-                html_body, attachment_markdown, attachment_rows = self._attachments(
-                    item, html_body)
-            html_body = re.sub(r"src=[\"']cid:[^\"']*[\"']", 'src=""', html_body,
-                               flags=re.I)
-            body_markdown = html_to_markdown(html_body) if html_body else plain_body.strip()
-            markdown = self._email_markdown(summary, body_markdown, attachment_markdown)
-            return {**summary, "htmlBody": html_body, "body": plain_body,
-                    "markdown": markdown, "attachments": attachment_rows}
+            try:
+                item = namespace.GetItemFromID(item_id)
+                summary = _summary(item, "")
+                html_body = str(getattr(item, "HTMLBody", "") or "")
+                plain_body = str(getattr(item, "Body", "") or "")
+                attachments = self._read_attachments(item, html_body) \
+                    if process_attachments else []
+            finally:
+                item = None
+        # Upload and OCR are network operations.  They must not keep MAPI, the COM
+        # apartment, or the Outlook serialization lock alive for up to 300 seconds.
+        html_body, attachment_markdown, attachment_rows = self._process_attachments(
+            attachments, html_body)
+        html_body = re.sub(r"src=[\"']cid:[^\"']*[\"']", 'src=""', html_body,
+                           flags=re.I)
+        body_markdown = html_to_markdown(html_body) if html_body else plain_body.strip()
+        markdown = self._email_markdown(summary, body_markdown, attachment_markdown)
+        return {**summary, "htmlBody": html_body, "body": plain_body,
+                "markdown": markdown, "attachments": attachment_rows}
 
     def body_text(self, item_id: str) -> str:
+        item = None
         with self.lock, outlook_session() as namespace:
-            item = namespace.GetItemFromID(item_id)
-            return str(getattr(item, "Body", "") or "")
+            try:
+                item = namespace.GetItemFromID(item_id)
+                return str(getattr(item, "Body", "") or "")
+            finally:
+                item = None
 
     def body_texts(self, item_ids: list[str]) -> dict[str, str]:
         result = {}
         with self.lock, outlook_session() as namespace:
+            item = None
             for item_id in item_ids:
                 try:
                     item = namespace.GetItemFromID(item_id)
                     result[item_id] = str(getattr(item, "Body", "") or "")
                 except Exception:
                     result[item_id] = ""
+                finally:
+                    item = None
         return result
 
     def search_body_matches(self, paths: list[str],
@@ -262,55 +338,100 @@ class OutlookClient:
         results = [set() for _ in keyword_sets]
         with self.lock, outlook_session() as namespace:
             folders = _folders(namespace, paths)
-            for index, keywords in enumerate(keyword_sets):
-                conditions = []
-                for keyword in keywords:
-                    escaped = keyword.replace("'", "''")
-                    conditions.append(f"{BODY_DASL_FIELD} LIKE '%{escaped}%'")
-                if not conditions:
-                    continue
-                query = "@SQL=" + (conditions[0] if len(conditions) == 1
-                                    else "(" + " OR ".join(conditions) + ")")
-                for folder in folders:
-                    try:
-                        restricted = folder.Items.Restrict(query)
-                        item = restricted.GetFirst()
-                        while item is not None:
-                            try:
-                                results[index].add(str(item.EntryID))
-                            except Exception:
-                                pass
-                            item = restricted.GetNext()
-                    except Exception:
-                        logger.warning("Outlook body search failed", exc_info=True)
-                        raise
+            folder = restricted = item = None
+            try:
+                for index, keywords in enumerate(keyword_sets):
+                    conditions = []
+                    for keyword in keywords:
+                        escaped = keyword.replace("'", "''")
+                        conditions.append(f"{BODY_DASL_FIELD} LIKE '%{escaped}%'")
+                    if not conditions:
+                        continue
+                    query = "@SQL=" + (conditions[0] if len(conditions) == 1
+                                        else "(" + " OR ".join(conditions) + ")")
+                    for folder in folders:
+                        try:
+                            restricted = folder.Items.Restrict(query)
+                            item = restricted.GetFirst()
+                            while item is not None:
+                                try:
+                                    results[index].add(str(item.EntryID))
+                                except Exception:
+                                    pass
+                                item = restricted.GetNext()
+                        except Exception:
+                            logger.warning("Outlook body search failed", exc_info=True)
+                            raise
+            finally:
+                item = None
+                restricted = None
+                folder = None
+                folders.clear()
         return results
 
-    def _attachments(self, item, html_body: str):
+    @staticmethod
+    def _read_attachments(item, html_body: str) -> list[dict]:
+        """Copy attachment bytes while MAPI is alive; perform no network I/O."""
+        copied = []
+        referenced = set(re.findall(r"cid:([^\"'> ]+)", html_body, flags=re.I))
+        attachment = None
+        try:
+            for attachment in item.Attachments:
+                try:
+                    filename = Path(str(
+                        attachment.FileName or "attachment.bin")).name
+                    suffix = Path(filename).suffix.lower()
+                    cid = ""
+                    try:
+                        cid = str(attachment.PropertyAccessor.GetProperty(
+                            PR_ATTACH_CONTENT_ID) or "").strip("<>")
+                    except Exception:
+                        pass
+                    temporary = tempfile.NamedTemporaryFile(
+                        delete=False, suffix=suffix or ".bin")
+                    temporary.close()
+                    try:
+                        attachment.SaveAsFile(temporary.name)
+                        copied.append({
+                            "filename": filename, "suffix": suffix, "cid": cid,
+                            "content": Path(temporary.name).read_bytes(),
+                            "inline": bool(cid and cid in referenced),
+                        })
+                    finally:
+                        try:
+                            os.unlink(temporary.name)
+                        except OSError:
+                            pass
+                except Exception as exc:
+                    logger.warning("email attachment copy failed", exc_info=True)
+                    copied.append({
+                        "filename": str(getattr(attachment, "FileName", "attachment.bin")),
+                        "suffix": "", "cid": "", "content": b"", "inline": False,
+                        "readError": str(exc),
+                    })
+        finally:
+            attachment = None
+        return copied
+
+    def _process_attachments(self, attachments: list[dict], html_body: str):
         markdown = []
         rows = []
-        referenced = set(re.findall(r"cid:([^\"'> ]+)", html_body, flags=re.I))
-        for attachment in item.Attachments:
-            filename = Path(str(attachment.FileName or "attachment.bin")).name
-            suffix = Path(filename).suffix.lower()
-            cid = ""
+        for attachment in attachments:
+            filename = attachment["filename"]
+            suffix = attachment["suffix"]
+            cid = attachment["cid"]
+            content = attachment["content"]
+            inline = attachment["inline"]
             try:
-                cid = str(attachment.PropertyAccessor.GetProperty(
-                    PR_ATTACH_CONTENT_ID) or "").strip("<>")
-            except Exception:
-                pass
-            temporary = tempfile.NamedTemporaryFile(delete=False, suffix=suffix or ".bin")
-            temporary.close()
-            try:
-                attachment.SaveAsFile(temporary.name)
-                content = Path(temporary.name).read_bytes()
+                if attachment.get("readError"):
+                    raise RuntimeError(attachment["readError"])
                 url = self._upload(filename, content)
                 ocr = self._ocr(filename, content) if suffix in IMAGE_EXTENSIONS else ""
                 alt = ocr.strip().replace("\r", " ").replace("\n", " ")
                 alt = alt.replace("[", "\\[").replace("]", "\\]")
                 label = alt or filename
                 value = f"![{label}]({url})" if suffix in IMAGE_EXTENSIONS else f"[{filename}]({url})"
-                if cid and cid in referenced:
+                if inline:
                     html_body = re.sub(
                         rf"cid:{re.escape(cid)}", url, html_body, flags=re.I)
                     html_body = re.sub(
@@ -319,17 +440,12 @@ class OutlookClient:
                 else:
                     markdown.append(value)
                 rows.append({"name": filename, "url": url, "ocr": ocr,
-                             "inline": bool(cid and cid in referenced)})
+                             "inline": inline})
             except Exception as exc:
                 logger.warning("email attachment failed name=%s", filename, exc_info=True)
                 markdown.append(f"[附件处理失败：{filename}（{type(exc).__name__}）]")
                 rows.append({"name": filename, "url": "", "ocr": "",
                              "inline": False, "error": str(exc)})
-            finally:
-                try:
-                    os.unlink(temporary.name)
-                except OSError:
-                    pass
         return html_body, markdown, rows
 
     @staticmethod

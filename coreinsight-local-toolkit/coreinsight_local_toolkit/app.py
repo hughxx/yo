@@ -251,13 +251,10 @@ def create_app(settings: Settings | None = None,
         if start_ms and end_ms and start_ms > end_ms:
             raise HTTPException(status_code=422, detail="startTime 不能晚于 endTime")
         try:
-            rows = email.list_messages(
+            return email.list_message_page(
                 payload.folders, start_ms, end_ms,
-                payload.query, payload.matchedOnly)
-            return {"items": rows[payload.offset:payload.offset + payload.limit],
-                    "total": len(rows), "offset": payload.offset,
-                    "limit": payload.limit,
-                    "hasMore": payload.offset + payload.limit < len(rows)}
+                payload.query, payload.matchedOnly,
+                payload.offset, payload.limit)
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:

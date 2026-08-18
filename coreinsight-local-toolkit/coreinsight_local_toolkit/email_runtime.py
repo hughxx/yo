@@ -16,6 +16,7 @@ from .time_format import format_datetime, parse_datetime
 
 logger = logging.getLogger(__name__)
 DOCUMENT_CHUNK_SIZE = 36_000
+EMAIL_LIST_SCAN_LIMIT = 10_000
 
 
 def _active_filter_rules(config: EmailConfig) -> list[EmailRule]:
@@ -108,22 +109,75 @@ class EmailRuntime:
             self.task.update(changes)
 
     def list_messages(self, folders: list[str], start_ms: int, end_ms: int,
-                      query: str = "", matched_only: bool = False) -> list[dict]:
+                      query: str = "", matched_only: bool = False,
+                      maximum: int = EMAIL_LIST_SCAN_LIMIT,
+                      outlook_body_search: bool = True) -> list[dict]:
         config = self.store.get()
-        rows = self.outlook.list_messages(folders or config.folders, start_ms, end_ms)
+        paths = folders or config.folders
+        rows = self.outlook.list_messages(paths, start_ms, end_ms, maximum)
+        return self._filter_messages(
+            rows, paths, config, query, matched_only, outlook_body_search)
+
+    def list_message_page(self, folders: list[str], start_ms: int, end_ms: int,
+                          query: str, matched_only: bool,
+                          offset: int, limit: int) -> dict:
+        """Read only enough Outlook summaries to satisfy the requested page.
+
+        Outlook does not expose a stable cross-folder offset cursor.  Reading the
+        first ``offset + limit + 1`` rows from each sorted folder and globally
+        merging them yields a correct page without materialising the mailbox.
+        Filtered searches grow the scan window until the page is full or the
+        configured safety limit is reached.
+        """
+        target = offset + limit + 1
+        filtered_search = bool(query.strip() or matched_only)
+        scan_limit = min(
+            EMAIL_LIST_SCAN_LIMIT,
+            max(target, 200 if filtered_search else target))
+        paths = folders or self.store.get().folders
+        config = self.store.get()
+
+        while True:
+            rows = self.outlook.list_messages(paths, start_ms, end_ms, scan_limit)
+            source_exhausted = len(rows) < scan_limit
+            filtered = self._filter_messages(
+                rows, paths, config, query, matched_only,
+                outlook_body_search=False)
+            if (len(filtered) >= target or source_exhausted
+                    or scan_limit >= EMAIL_LIST_SCAN_LIMIT):
+                break
+            scan_limit = min(EMAIL_LIST_SCAN_LIMIT, scan_limit * 2)
+
+        total_exact = source_exhausted
+        has_more = len(filtered) > offset + limit
+        if not has_more and not total_exact and scan_limit >= EMAIL_LIST_SCAN_LIMIT:
+            # The 10k safety cap is not proof that the mailbox has ended.  Keep
+            # hasMore truthful as a lower-bound hint for very large mailboxes.
+            has_more = len(filtered) >= offset + limit
+        page = filtered[offset:offset + limit]
+        total = len(filtered) if total_exact else max(
+            len(filtered), offset + len(page) + (1 if has_more else 0))
+        return {"items": page, "total": total, "totalExact": total_exact,
+                "offset": offset, "limit": limit, "hasMore": has_more,
+                "scanned": len(rows)}
+
+    def _filter_messages(self, rows: list[dict], paths: list[str],
+                         config: EmailConfig, query: str,
+                         matched_only: bool,
+                         outlook_body_search: bool) -> list[dict]:
         rules = [*config.rules, *config.blacklist]
         body_rules = [rule for rule in rules if rule.enabled and rule.bodyKeywords]
         query_folded = query.strip().casefold()
         body_matches = {}
         query_body_matches = set()
         bodies = {}
-        if body_rules or query_folded:
+        if (body_rules or query_folded) and outlook_body_search:
             try:
                 keyword_sets = [rule.bodyKeywords for rule in body_rules]
                 if query_folded:
                     keyword_sets.append([query.strip()])
                 matches = self.outlook.search_body_matches(
-                    folders or config.folders, keyword_sets)
+                    paths, keyword_sets)
                 body_matches = {rule.id or str(id(rule)): values
                                 for rule, values in zip(body_rules, matches[:len(body_rules)])}
                 if query_folded:
@@ -133,6 +187,11 @@ class EmailRuntime:
                                exc_info=True)
                 body_ids = [row["id"] for row in rows]
                 bodies = self.outlook.body_texts(body_ids)
+        elif body_rules or query_folded:
+            # A paged preview only needs bodies for the bounded candidate window;
+            # asking Outlook to search the whole mailbox defeats pagination.
+            body_ids = [row["id"] for row in rows]
+            bodies = self.outlook.body_texts(body_ids)
         result = []
         for row in rows:
             body = bodies.get(row["id"], "")

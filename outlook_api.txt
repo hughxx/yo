@@ -64,10 +64,19 @@ data：
   "ready": true,
   "account": "user@huawei.com",
   "inbox": "收件箱",
-  "message": "Outlook 已就绪"
+  "message": "Outlook 已就绪",
+  "checking": false,
+  "busy": false,
+  "checkedAt": "2026-08-18 16:30:00"
 }
 
-使用：ready=true 时才允许读取文件夹、邮件和启动提取。
+使用：
+- 该接口立即返回，不等待 Outlook/MAPI 初始化；实际检查在后台执行，成功结果缓存 30 秒。
+- checking=true：后台仍在检查，前端每 1 秒重新调用，期间显示“正在检测 Outlook”，不要报错。
+- busy=true：Outlook 正在执行其他本地操作；若 checking 也为 true，则后台检查正在等待，前端继续短轮询。
+- checking=false 且 ready=true：Outlook 可用，此时允许读取文件夹、邮件和启动提取。
+- checking=false 且 ready=false：检查已经完成但 Outlook 不可用，展示 message。
+- 首次尚无检查结果时 installed 可能为 null。
 
 
 4. GET /email/skill/list
@@ -195,10 +204,12 @@ data：
       "blockedRule": ""
     }
   ],
-  "total": 126,
+  "total": 51,
+  "totalExact": false,
   "offset": 0,
   "limit": 50,
-  "hasMore": true
+  "hasMore": true,
+  "scanned": 51
 }
 
 字段：
@@ -207,6 +218,11 @@ data：
 - blockedRule：命中的黑名单名称；非空时该邮件被排除。
 - limit 范围为 1 至 500。
 - 全时间范围查询时 startTime、endTime 均传 null。
+- 接口按需渐进读取 Outlook，普通第一页只读取 limit + 1 封候选邮件，不会先加载全部邮箱。
+- totalExact=false：total 是当前已确认的数量下界，前端显示“已加载 N+ 封”，不要据此生成末页页码。
+- totalExact=true：已经扫描到筛选范围末尾，total 是准确总数，可以显示“共 N 封”。
+- hasMore=true 时允许请求下一页；下一页 offset 按 offset + limit 递增。
+- scanned 是本次为得到当前页面而检查的候选邮件数，仅用于诊断，不需要展示。
 
 
 9. POST /email/message/get

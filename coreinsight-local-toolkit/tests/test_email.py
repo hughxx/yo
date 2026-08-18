@@ -1,19 +1,24 @@
 import tempfile
 import time
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
+from coreinsight_local_toolkit.config import Settings
 from coreinsight_local_toolkit.email_runtime import (
     EmailRuntime, EmailScheduleRuntime, _rule_match, _split_markdown)
 from coreinsight_local_toolkit.email_store import EmailConfigStore
 from coreinsight_local_toolkit.models import (
     EmailConfig, EmailExtractRequest, EmailRule, EmailScheduleSetRequest)
+from coreinsight_local_toolkit.outlook import OutlookClient
 from coreinsight_local_toolkit.time_format import format_datetime
 
 
 class FakeOutlook:
     def __init__(self):
+        self.maximums = []
         self.rows = [{
             "id": "mail-1", "subject": "GaussDB connection failure",
             "senderName": "Alice", "senderEmail": "alice@example.com",
@@ -22,7 +27,8 @@ class FakeOutlook:
         }]
 
     def list_messages(self, folders, start_ms, end_ms, maximum=10000):
-        return list(self.rows)
+        self.maximums.append(maximum)
+        return list(self.rows[:maximum])
 
     def body_texts(self, item_ids):
         return {item_id: "timeout fixed by ssl configuration" for item_id in item_ids}
@@ -56,6 +62,132 @@ class FakeProcessor:
 
 
 class EmailTests(unittest.TestCase):
+    def test_outlook_probe_returns_immediately_and_caches_background_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client = OutlookClient(Settings(data_dir=Path(directory)))
+            client._probe_now = lambda: {
+                "installed": True, "ready": True, "account": "u@example.com",
+                "inbox": "Inbox", "message": "Outlook 已就绪",
+            }
+
+            started = time.monotonic()
+            initial = client.probe()
+            elapsed = time.monotonic() - started
+            for _ in range(100):
+                current = client.probe()
+                if not current["checking"]:
+                    break
+                time.sleep(.01)
+
+            self.assertLess(elapsed, .1)
+            self.assertTrue(initial["checking"])
+            self.assertTrue(current["ready"])
+            self.assertFalse(current["checking"])
+            self.assertEqual("u@example.com", current["account"])
+            self.assertTrue(current["checkedAt"])
+            with client.lock:
+                self.assertTrue(client.probe()["busy"])
+
+    def test_attachment_network_work_runs_outside_outlook_lock(self):
+        class PropertyAccessor:
+            @staticmethod
+            def GetProperty(_name):
+                return "image-1"
+
+        class Attachment:
+            FileName = "evidence.png"
+
+            @staticmethod
+            def SaveAsFile(path):
+                Path(path).write_bytes(b"image")
+
+        Attachment.PropertyAccessor = PropertyAccessor()
+
+        class Attachments:
+            Count = 1
+
+            def __iter__(self):
+                return iter([Attachment()])
+
+        class Item:
+            EntryID = "mail-1"
+            Subject = "Failure"
+            SenderName = "Alice"
+            SenderEmailAddress = "alice@example.com"
+            SenderEmailType = "SMTP"
+            ReceivedTime = datetime.now().astimezone()
+            ConversationTopic = "Failure"
+            HTMLBody = '<p>Evidence</p><img src="cid:image-1">'
+            Body = "Evidence"
+
+        Item.Attachments = Attachments()
+
+        class Namespace:
+            @staticmethod
+            def GetItemFromID(_item_id):
+                return Item()
+
+        @contextmanager
+        def fake_session():
+            yield Namespace()
+
+        with tempfile.TemporaryDirectory() as directory:
+            client = OutlookClient(Settings(data_dir=Path(directory)))
+            lock_states = []
+
+            def upload(_filename, _content):
+                lock_states.append(client.lock.locked())
+                return "https://example.test/evidence.png"
+
+            def ocr(_filename, _content):
+                lock_states.append(client.lock.locked())
+                return "截图内容"
+
+            client._upload = upload
+            client._ocr = ocr
+            with patch("coreinsight_local_toolkit.outlook.outlook_session",
+                       fake_session):
+                message = client.get_message("mail-1")
+
+            self.assertEqual([False, False], lock_states)
+            self.assertIn("https://example.test/evidence.png", message["htmlBody"])
+            self.assertEqual("截图内容", message["attachments"][0]["ocr"])
+
+    def test_list_page_only_reads_enough_outlook_summaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = EmailConfigStore(Path(directory))
+            outlook = FakeOutlook()
+            outlook.rows = [{
+                "id": f"mail-{index}", "subject": f"Subject {index}",
+                "senderName": "Alice", "senderEmail": "alice@example.com",
+                "receivedTime": "2026-08-17 10:00:00",
+                "timestamp": 200 - index, "conversationTopic": "topic",
+                "hasAttachments": False,
+            } for index in range(200)]
+            runtime = EmailRuntime(outlook, store, FakeProcessor())
+
+            page = runtime.list_message_page([], 0, 0, "", False, 0, 50)
+
+            self.assertEqual(50, len(page["items"]))
+            self.assertEqual([51], outlook.maximums)
+            self.assertTrue(page["hasMore"])
+            self.assertFalse(page["totalExact"])
+            self.assertEqual(51, page["scanned"])
+
+    def test_list_last_page_reports_exact_total(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = EmailConfigStore(Path(directory))
+            outlook = FakeOutlook()
+            outlook.rows *= 75
+            runtime = EmailRuntime(outlook, store, FakeProcessor())
+
+            page = runtime.list_message_page([], 0, 0, "", False, 50, 50)
+
+            self.assertEqual(25, len(page["items"]))
+            self.assertFalse(page["hasMore"])
+            self.assertTrue(page["totalExact"])
+            self.assertEqual(75, page["total"])
+
     def test_rule_matching_and_long_markdown_split(self):
         row = {"subject": "Database timeout", "senderName": "Alice",
                "senderEmail": "alice@example.com"}
