@@ -56,7 +56,8 @@ def request_json(session: requests.Session, method: str, url: str,
     if response.status_code >= 400:
         raise AssertionError(
             f"HTTP 状态异常：{response.status_code}，{body.get('msg', '')}")
-    if not isinstance(body, dict) or body.get("code") != 0:
+    # 当前平台统一信封使用 code=200；兼容草稿接口早期的 code=0。
+    if not isinstance(body, dict) or body.get("code") not in (0, 200):
         raise AssertionError(f"业务响应失败：{body}")
     if not isinstance(body.get("data"), dict) or not body["data"].get("id"):
         raise AssertionError(f"响应缺少 data.id：{body}")

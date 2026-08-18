@@ -84,7 +84,9 @@ class DraftClient:
             raise RuntimeError(message)
         data = body.get('data') if isinstance(body, dict) else None
         returned_id = data.get('id') if isinstance(data, dict) else None
-        if not isinstance(body, dict) or body.get('code') != 0 or not returned_id:
+        # 平台统一响应信封使用 code=200；保留对草稿接口旧 code=0 的兼容。
+        if (not isinstance(body, dict) or body.get('code') not in (0, 200)
+                or not returned_id):
             raise RuntimeError(message)
         logger.info('draft saved operation=%s doc_id=%s', method, returned_id)
         return str(returned_id)

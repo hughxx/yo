@@ -20,7 +20,7 @@ class DraftClientTests(unittest.TestCase):
         response = Mock()
         response.status_code = status
         response.json.return_value = body or {
-            'code': 0, 'msg': 'success', 'data': {'id': 'draft-1'}}
+            'code': 200, 'msg': 'success', 'data': {'id': 'draft-1'}}
         return response
 
     def test_create_posts_complete_contract(self):
@@ -76,6 +76,20 @@ class DraftClientTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, '创建失败'):
             client.save({'operation': 'create', 'title': 't',
                          'summary': 's', 'experience': 'e'}, 'u1')
+
+    def test_legacy_code_zero_is_still_accepted(self):
+        session = Mock()
+        session.post.return_value = self.response(
+            200, {'code': 0, 'msg': 'success', 'data': {'id': 'draft-1'}})
+        client = DraftClient(self.settings(), session=session)
+        generated = Mock(hex='draft-1')
+        with patch('coreinsight_local_toolkit.drafts.uuid.uuid4',
+                   return_value=generated):
+            doc_id = client.save({
+                'operation': 'create', 'title': 't',
+                'summary': 's', 'experience': 'e',
+            }, 'u1')
+        self.assertEqual('draft-1', doc_id)
 
     def test_operation_and_shape_are_strict(self):
         client = DraftClient(self.settings(), session=Mock())
