@@ -1,0 +1,385 @@
+CoreInsight LocalToolkit - Outlook 邮件提取前端接口
+
+基础地址：http://127.0.0.1:17831
+
+统一响应格式
+
+成功：
+{
+  "code": 200,
+  "msg": "ok",
+  "data": 实际业务数据
+}
+
+失败：
+{
+  "code": 422,
+  "msg": "错误原因",
+  "data": null
+}
+
+说明：
+- 所有成功响应的 HTTP 状态码和 code 均为 200，包括启动异步任务。
+- 失败时 HTTP 状态码与 code 相同。
+- 前端业务数据统一读取 response.data.data。
+- 时间统一传 YYYY-MM-DD HH:mm:ss；没有起止限制时传 null。
+
+
+一、页面初始化
+
+1. GET /health
+
+时机：进入邮件页面时，先检测 LocalToolkit 是否已经启动。
+
+data：
+{
+  "status": "ok",
+  "service": "coreinsight-local-toolkit",
+  "version": "0.5.0"
+}
+
+
+2. GET /capabilities
+
+时机：LocalToolkit 连接成功后调用，确认当前版本支持邮件能力。
+
+邮件相关字段：
+{
+  "outlookProbe": true,
+  "emailFolderManagement": true,
+  "emailPreview": true,
+  "emailRuleFiltering": true,
+  "emailSkillExtraction": true,
+  "emailScheduling": true
+}
+
+
+3. GET /email/status
+
+时机：邮件页面初始化、用户重新检测 Outlook 时调用。
+
+data：
+{
+  "installed": true,
+  "ready": true,
+  "account": "user@huawei.com",
+  "inbox": "收件箱",
+  "message": "Outlook 已就绪"
+}
+
+使用：ready=true 时才允许读取文件夹、邮件和启动提取。
+
+
+4. GET /email/skill/list
+
+时机：邮件页面初始化时调用；填充手动提取和定时增量弹窗中的 Skill 列表。
+
+data：
+[
+  {
+    "id": "email-experience-extractor",
+    "name": "邮件经验提取",
+    "description": "读取 Outlook 邮件、附件链接和图片 OCR，提取并合并技术经验。"
+  }
+]
+
+
+5. GET /email/config
+
+时机：邮件页面初始化、保存规则后、保存或取消定时任务后调用。
+
+data：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "rules": [],
+  "blacklist": [],
+  "skillId": "email-experience-extractor",
+  "extractMode": "direct",
+  "uploadBy": "w00899061",
+  "scheduleEnabled": false,
+  "scheduleFreq": "daily",
+  "scheduleTime": "09:00:00",
+  "scheduleCron": "",
+  "scheduleSince": "",
+  "scheduleCursor": "",
+  "scheduleNextRun": "",
+  "scheduleWeekday": 0,
+  "scheduleDay": 1
+}
+
+
+二、文件夹、规则和配置
+
+6. GET /email/folder/list
+
+时机：首次进入邮件页面或用户点击“刷新文件夹”时调用。
+
+data：
+[
+  {
+    "path": "邮箱 - 用户\\收件箱",
+    "name": "收件箱",
+    "depth": 1
+  }
+]
+
+使用：前端显示 name 和层级，保存及后续请求提交 path。folders 为空时默认读取 Outlook 收件箱。
+
+
+7. PUT /email/config
+
+时机：保存扫描文件夹、提取规则、黑名单，或保存 Skill、入库方式、用户工号时调用。
+
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "rules": [
+    {
+      "id": "已有规则传原 ID；新增规则可传空字符串",
+      "name": "故障经验",
+      "subjectKeywords": ["故障", "异常"],
+      "bodyKeywords": ["根因", "解决方案"],
+      "senders": ["zhangsan", "@huawei.com"],
+      "logic": "OR",
+      "enabled": true
+    }
+  ],
+  "blacklist": [],
+  "skillId": "email-experience-extractor",
+  "extractMode": "direct",
+  "uploadBy": "w00899061"
+}
+
+字段：
+- logic：OR 或 AND。
+- extractMode：direct 或 draft。
+- 新增规则保存后，响应会返回 LocalToolkit 生成的规则 ID。
+- 有效提取规则必须 enabled=true，并至少填写 subjectKeywords、bodyKeywords、senders 中的一类。
+- 删除或禁用最后一条有效提取规则时，已有邮件定时任务会被停止，但保留增量游标。
+- schedule 字段由定时接口管理，不通过本接口修改。
+
+响应 data：完整 EmailConfig。
+
+
+三、邮件列表与预览
+
+8. POST /email/message/list
+
+时机：点击“刷新”、搜索、切换“按规则匹配”、修改时间范围或翻页时调用。
+
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "startTime": "2026-08-11 00:00:00",
+  "endTime": "2026-08-18 23:59:59",
+  "query": "GaussDB",
+  "matchedOnly": false,
+  "offset": 0,
+  "limit": 50
+}
+
+data：
+{
+  "items": [
+    {
+      "id": "Outlook EntryID",
+      "subject": "邮件主题",
+      "senderName": "张三",
+      "senderEmail": "zhangsan@huawei.com",
+      "receivedTime": "2026-08-18 15:30:00",
+      "timestamp": 1787038200000,
+      "conversationTopic": "会话主题",
+      "folder": "邮箱 - 用户\\收件箱",
+      "hasAttachments": true,
+      "matchedRule": "故障经验",
+      "blockedRule": ""
+    }
+  ],
+  "total": 126,
+  "offset": 0,
+  "limit": 50,
+  "hasMore": true
+}
+
+字段：
+- matchedOnly=true：只返回命中提取规则且未被黑名单排除的邮件。
+- matchedRule：最终命中的提取规则名称。
+- blockedRule：命中的黑名单名称；非空时该邮件被排除。
+- limit 范围为 1 至 500。
+- 全时间范围查询时 startTime、endTime 均传 null。
+
+
+9. POST /email/message/get
+
+时机：用户点击某封邮件的“预览”时调用。
+
+请求：
+{
+  "itemId": "Outlook EntryID"
+}
+
+data 主要字段：
+{
+  "id": "Outlook EntryID",
+  "subject": "邮件主题",
+  "senderName": "张三",
+  "senderEmail": "zhangsan@huawei.com",
+  "receivedTime": "2026-08-18 15:30:00",
+  "htmlBody": "<html>...</html>",
+  "body": "纯文本正文",
+  "hasAttachments": true
+}
+
+使用：本接口只用于正文预览，不上传附件、不执行 OCR。正式提取时由 LocalToolkit 重新读取正文和附件。
+
+
+四、手动提取
+
+10. POST /email/extract
+
+时机：用户在“提取选中”弹窗确认 Skill、入库方式和用户工号后调用。
+
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "startTime": "2026-08-11 00:00:00",
+  "endTime": "2026-08-18 23:59:59",
+  "query": "",
+  "matchedOnly": false,
+  "skillId": "email-experience-extractor",
+  "extractMode": "direct",
+  "uploadBy": "w00899061",
+  "selection": {
+    "mode": "explicit",
+    "selectedItemIds": ["Outlook EntryID-1", "Outlook EntryID-2"],
+    "excludedItemIds": []
+  }
+}
+
+使用：
+- 前端只传 Outlook EntryID，不传邮件正文或附件。
+- 当前前端固定使用 selection.mode=explicit，避免无意全量提取。
+- folders、时间、query、matchedOnly 应与生成当前选择集合时的筛选条件一致。
+- LocalToolkit 会重新读取邮件，将 HTML 转成 Markdown，处理附件、图片公开链接和 OCR，再运行 Skill。
+
+data：
+{
+  "running": true,
+  "taskId": "任务 ID",
+  "status": "fetching",
+  "scanned": 0,
+  "selected": 0,
+  "processed": 0,
+  "message": "正在读取 Outlook 邮件",
+  "error": "",
+  "docId": "",
+  "docIds": [],
+  "title": "",
+  "scheduled": false
+}
+
+
+11. GET /email/extract/status
+
+时机：页面初始化时调用一次；POST /email/extract 成功后每 2 秒轮询。
+
+停止轮询：running=false。
+
+status：
+- idle：空闲。
+- fetching：读取 Outlook 邮件。
+- workspace：转换邮件、附件、图片和 Markdown。
+- skill：Skill 执行中。
+- pushing：写入经验或草稿。
+- done：成功。
+- failed：失败，读取 error。
+- cancelled：已取消。
+
+成功后的 data 还会包含 docId、docIds、title；scheduled 表示是否由定时任务触发。
+
+
+12. POST /email/extract/cancel
+
+时机：用户点击“停止提取”时调用。
+
+请求体：{}，也可以不发送请求体。
+
+data：取消请求提交后的当前任务状态。取消是协作式的，前端继续轮询，直到 running=false 且 status=cancelled。
+
+
+五、定时增量
+
+13. POST /email/schedule/set
+
+时机：用户在“启动定时”或“修改定时”弹窗保存时调用。
+
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "uploadBy": "w00899061",
+  "skillId": "email-experience-extractor",
+  "extractMode": "direct",
+  "scheduleFreq": "daily",
+  "scheduleTime": "09:00:00",
+  "scheduleCron": "",
+  "since": "2026-08-18 00:00:00"
+}
+
+字段：
+- scheduleFreq：daily、weekly、monthly、custom。
+- scheduleFreq=custom 时填写 scheduleCron，格式为“分 时 日 月 星期”。
+- 首次创建或主动重置增量起点时传 since。
+- 仅修改执行频率、执行时间、Skill 或入库方式时省略 since，保留现有 scheduleCursor。
+- 用户选择“从最早记录开始”时，since 传 1970-01-01 00:00:00。
+- 必须先通过 PUT /email/config 保存至少一条有效且启用的提取规则，否则返回 422。
+- 定时任务只处理提取规则命中且未被黑名单排除的邮件，不允许无规则全量增量扫描。
+- 每次窗口为 (scheduleCursor, 本次触发时间]；全部处理成功才推进 scheduleCursor。
+
+响应 data：完整 EmailConfig，前端读取 scheduleEnabled、scheduleCursor、scheduleNextRun。
+
+
+14. POST /email/schedule/cancel
+
+时机：用户在定时配置弹窗点击“取消当前定时”时调用。
+
+请求体：{}，也可以不发送请求体。
+
+响应 data：完整 EmailConfig。
+
+使用：取消后 scheduleEnabled=false；scheduleSince 和 scheduleCursor 保留。
+
+
+六、前端需要处理的错误码
+
+403：当前网页 Origin 不在 LocalToolkit 白名单中。
+404：取消提取时没有正在运行的任务。
+409：已有邮件提取任务运行中，或运行期间尝试修改定时任务。
+422：请求字段、时间范围、Cron、Skill 配置错误，或设置定时时没有有效提取规则。
+426：当前 LocalToolkit 版本已停止服务，必须升级。
+502：读取 Outlook 数据或下游服务调用失败。
+503：Outlook 未安装、未登录或本机 Outlook 访问组件不可用。
+500：LocalToolkit 内部错误。
+
+
+七、页面主要调用顺序
+
+初始化：
+GET /health
+→ GET /capabilities
+→ 并行调用 GET /email/status、GET /email/skill/list、GET /email/config
+→ Outlook ready=true 后调用 GET /email/folder/list
+→ GET /email/extract/status
+
+刷新邮件：
+PUT /email/config（保存当前文件夹和规则）
+→ POST /email/message/list
+
+手动提取：
+PUT /email/config（保存弹窗配置）
+→ POST /email/extract
+→ 每 2 秒 GET /email/extract/status
+
+定时增量：
+PUT /email/config（先保存文件夹、有效规则和弹窗配置）
+→ POST /email/schedule/set
+→ 使用 GET /email/config 刷新定时状态
