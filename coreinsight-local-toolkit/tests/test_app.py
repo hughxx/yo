@@ -18,7 +18,11 @@ class AppCorsTests(unittest.TestCase):
                 icon = client.get('/welcome/icon.svg')
         self.assertEqual(200, page.status_code)
         self.assertIn('Local Toolkit 已启动', page.text)
-        self.assertIn('桌面悬浮 Logo', page.text)
+        self.assertIn('本地服务器已就绪，Toolkit将持续在后台运行', page.text)
+        self.assertIn('<strong>桌面悬浮 Logo</strong>', page.text)
+        self.assertIn('<strong>邮件功能菜单</strong>', page.text)
+        self.assertIn('<strong>任务栏</strong>', page.text)
+        self.assertIn('href="https://coreinsight.rnd.huawei.com"', page.text)
         self.assertEqual(200, icon.status_code)
         self.assertIn('image/svg+xml', icon.headers['content-type'])
 
