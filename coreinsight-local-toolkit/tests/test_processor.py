@@ -155,6 +155,32 @@ class ProcessorTests(unittest.TestCase):
         records, _ = processor._read_results("w1", "")
         self.assertEqual([RESULT, updated], records)
 
+    def test_result_parser_repairs_common_skill_json_mistakes(self):
+        processor = self.processor()
+        malformed_quotes = (
+            '{"operation":"create","title":"引号问题",'
+            '"summary":"正文包含 "quoted value" 文本",'
+            '"experience":"第一行\n第二行",'
+            '"rag_search_text":"json repair",}')
+        processor.workspaces.files["output/experiences.jsonl"] = (
+            json.dumps(RESULT, ensure_ascii=False) + "\n" + malformed_quotes)
+        records, normalized = processor._read_results("w1", "")
+        self.assertEqual(2, len(records))
+        self.assertEqual('正文包含 "quoted value" 文本', records[1]["summary"])
+        self.assertEqual("第一行\n第二行", records[1]["experience"])
+        self.assertEqual(records[1], json.loads(normalized[1]))
+
+        missing_comma = (
+            '{"operation":"create" "title":"标题","summary":"摘要",'
+            '"experience":"正文","rag_search_text":"关键词"}')
+        values = processor._decode_json_values(missing_comma)
+        self.assertEqual("标题", values[0]["title"])
+
+    def test_result_parser_rejects_unrecoverable_json(self):
+        processor = self.processor()
+        with self.assertRaisesRegex(RuntimeError, "自动修复失败"):
+            processor._decode_json_values('{"operation":"create"')
+
     def test_scheduled_workspace_is_stable_and_is_not_deleted(self):
         processor = self.processor()
         processor.workspaces.files["output/experiences.jsonl"] = ""

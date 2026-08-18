@@ -421,6 +421,32 @@ class LocalExperienceProcessor:
 
     @staticmethod
     def _decode_json_values(raw: str) -> list:
+        original_error = None
+        repairs = 0
+        maximum_repairs = 100
+        while True:
+            try:
+                values = LocalExperienceProcessor._decode_strict_json_values(raw)
+                if repairs:
+                    logger.warning(
+                        "repaired malformed Skill JSON output repairs=%d", repairs)
+                return values
+            except json.JSONDecodeError as exc:
+                original_error = original_error or exc
+                if repairs >= maximum_repairs:
+                    break
+                repaired = LocalExperienceProcessor._repair_json_error(raw, exc)
+                if repaired is None or repaired == raw:
+                    break
+                raw = repaired
+                repairs += 1
+        assert original_error is not None
+        raise RuntimeError(
+            f"Skill 输出在第 {original_error.lineno} 行第 "
+            f"{original_error.colno} 列不是合法 JSON，自动修复失败") from original_error
+
+    @staticmethod
+    def _decode_strict_json_values(raw: str) -> list:
         decoder = json.JSONDecoder()
         values = []
         position = 0
@@ -429,13 +455,81 @@ class LocalExperienceProcessor:
                 position += 1
             if position >= len(raw):
                 break
-            try:
-                value, position = decoder.raw_decode(raw, position)
-            except json.JSONDecodeError as exc:
-                raise RuntimeError(
-                    f"Skill 输出在第 {exc.lineno} 行第 {exc.colno} 列不是合法 JSON") from exc
+            value, position = decoder.raw_decode(raw, position)
             values.append(value)
         return values
+
+    @staticmethod
+    def _repair_json_error(raw: str, error: json.JSONDecodeError) -> str | None:
+        """Repair only deterministic, common model-generated JSON mistakes.
+
+        The repaired text is always parsed again by the standard JSON decoder and
+        then subjected to the normal experience schema validation. We deliberately
+        avoid guessing missing values, keys, braces or business fields.
+        """
+        position = min(max(error.pos, 0), len(raw))
+        message = error.msg
+
+        if message.startswith("Invalid control character") and position < len(raw):
+            escapes = {"\n": "\\n", "\r": "\\r", "\t": "\\t",
+                       "\b": "\\b", "\f": "\\f"}
+            if raw[position] in escapes:
+                return raw[:position] + escapes[raw[position]] + raw[position + 1:]
+
+        if message.startswith("Invalid \\escape") and position < len(raw):
+            # Keep the literal backslash (common in Windows paths) by escaping it.
+            if raw[position] == "\\":
+                return raw[:position] + "\\\\" + raw[position + 1:]
+
+        if message == "Expecting ',' delimiter":
+            current = raw[position] if position < len(raw) else ""
+            previous = LocalExperienceProcessor._previous_non_whitespace(raw, position)
+            if current == '"' and previous is not None:
+                # `"value" "nextKey"` -> `"value", "nextKey"`.
+                return raw[:position] + "," + raw[position:]
+            quote = LocalExperienceProcessor._previous_unescaped_quote(raw, position)
+            if quote is not None and current not in ("", ",", "}", "]"):
+                # `"text with "quoted" words"`: the decoder stopped at the
+                # first inner quote. Preserve it as content and retry.
+                return raw[:quote] + "\\" + raw[quote:]
+
+        if message == "Expecting property name enclosed in double quotes":
+            previous = LocalExperienceProcessor._previous_non_whitespace(raw, position)
+            current = raw[position] if position < len(raw) else ""
+            if current in ("}", "]") and previous is not None and raw[previous] == ",":
+                # Remove a trailing comma before an object/array terminator.
+                return raw[:previous] + raw[previous + 1:]
+            # An inner quote followed by punctuation can look like a legitimate
+            # string terminator until the decoder reaches the following word.
+            if previous is not None:
+                comma = raw.rfind(",", 0, position)
+                if comma >= 0:
+                    quote = LocalExperienceProcessor._previous_unescaped_quote(raw, comma)
+                    if quote is not None and raw[quote + 1:comma].strip() == "":
+                        return raw[:quote] + "\\" + raw[quote:]
+        return None
+
+    @staticmethod
+    def _previous_non_whitespace(raw: str, position: int) -> int | None:
+        index = min(position, len(raw)) - 1
+        while index >= 0 and raw[index].isspace():
+            index -= 1
+        return index if index >= 0 else None
+
+    @staticmethod
+    def _previous_unescaped_quote(raw: str, position: int) -> int | None:
+        index = min(position, len(raw)) - 1
+        while index >= 0:
+            if raw[index] == '"':
+                backslashes = 0
+                cursor = index - 1
+                while cursor >= 0 and raw[cursor] == "\\":
+                    backslashes += 1
+                    cursor -= 1
+                if backslashes % 2 == 0:
+                    return index
+            index -= 1
+        return None
 
     def _push_experience(self, result: dict, upload_by: str,
                          extract_mode: str = "direct") -> str:

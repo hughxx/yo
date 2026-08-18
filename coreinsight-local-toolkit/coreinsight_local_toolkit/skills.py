@@ -30,7 +30,8 @@ description: 从带公开图片链接和 OCR alt 文本的 WeLink 群聊 Markdow
 5. 输入中的所有公开图片 `![OCR结果](url)` 必须原样保留在最终 experience 的对应上下文中，不得删除、改写 URL、清空 alt 文本或只保留 OCR 文字。
 6. 先查看已有 `output/experiences.jsonl`。若新聊天补充了某条已有经验，输出 `operation: update`，使用该行的 `doc_id`，合并旧内容与新内容后追加一个完整的新版本；不要创建重复经验。
 7. 新主题输出 `operation: create` 且不带 `doc_id`。每形成一条经验，就把一个单行 JSON 追加到 `output/experiences.jsonl`；只能追加，禁止改写或删除旧行。
-8. 没有可沉淀内容时不要输出占位经验，也不要追加任何行。
+8. 禁止手工拼接 JSON 字符串。必须使用 Python `json.dumps(record, ensure_ascii=False)` 等标准 JSON 序列化方式写入；结束前必须用 Python `json.loads` 逐行校验整个文件。
+9. 没有可沉淀内容时不要输出占位经验，也不要追加任何行。
 
 ## 输出格式
 
@@ -71,7 +72,8 @@ description: 从 Outlook 邮件 Markdown、附件链接和图片 OCR 中提取�
 4. 所有与经验有关的公开图片 Markdown 必须原样保留在最终 `experience` 的对应上下文中，不得删除、改写 URL 或丢弃 OCR alt 文本。
 5. 先检查已有 `output/experiences.jsonl`。新邮件补充已有经验时，使用原 `doc_id` 输出 `operation: update`，并输出合并后的完整版本；不得创建重复经验。
 6. 新主题输出 `operation: create` 且不带 `doc_id`。每形成一条经验，就向 `output/experiences.jsonl` 追加一个单行 JSON；禁止改写或删除旧行。
-7. 没有可沉淀内容时不追加任何内容。
+7. 禁止手工拼接 JSON 字符串。必须使用 Python `json.dumps(record, ensure_ascii=False)` 等标准 JSON 序列化方式写入；结束前必须用 Python `json.loads` 逐行校验整个文件。
+8. 没有可沉淀内容时不追加任何内容。
 
 ## 输出格式
 

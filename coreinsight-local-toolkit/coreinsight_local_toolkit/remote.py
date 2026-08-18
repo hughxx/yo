@@ -62,6 +62,7 @@ class HermesClient:
             "按文件名顺序读取；需要合并时参考 workspace 内已有输出。"
             "严格原样保留 `![OCR结果](公开URL)`，并按 Skill 要求将本轮新增或更新的经验"
             "逐行追加到 output/experiences.jsonl。不要改写已有行。"
+            "必须通过标准 JSON 序列化写入，并在结束前逐行执行 json.loads 校验。"
         )
         instructions = (
             f"当前工作目录是 {workspace_path}。所有文件操作只能在该目录内进行。"
