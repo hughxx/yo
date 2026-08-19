@@ -247,6 +247,12 @@ def create_app(settings: Settings | None = None,
 
     @app.post("/email/message/list")
     def list_email_messages(payload: EmailListRequest):
+        # An empty selection is an explicit "scan nothing" state.  The UI
+        # selects the account-specific default Inbox by its returned path.
+        if not payload.folders:
+            return {"items": [], "total": 0, "totalExact": True,
+                    "offset": payload.offset, "limit": payload.limit,
+                    "hasMore": False, "scanned": 0, "source": "empty-selection"}
         start_ms = _to_timestamp(payload.startTime, "startTime")
         end_ms = _to_timestamp(payload.endTime, "endTime")
         if start_ms and end_ms and start_ms > end_ms:

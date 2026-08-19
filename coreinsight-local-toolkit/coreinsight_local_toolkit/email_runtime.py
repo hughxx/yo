@@ -144,6 +144,12 @@ class EmailRuntime:
                               "incremental": incremental,
                               "message": "正在增量读取邮件" if incremental
                               else "正在全量读取邮件"}
+            if not requested:
+                self.scan_task.update(
+                    running=False, status="done", scanned=0, total=0,
+                    items=[], message="未选择文件夹")
+                self._write_cache([], [])
+                return self.scan_status()
         threading.Thread(target=self._scan_worker,
                          args=(requested, force_full, cache, incremental),
                          daemon=True).start()

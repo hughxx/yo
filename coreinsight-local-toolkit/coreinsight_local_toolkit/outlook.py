@@ -84,7 +84,8 @@ def _collect_folders(folder, result: list[dict], prefix: str = ""):
     try:
         name = str(folder.Name)
         path = f"{prefix}\\{name}" if prefix else name
-        result.append({"path": path, "name": name, "depth": path.count("\\")})
+        result.append({"path": path, "name": name, "depth": path.count("\\"),
+                       "_entryId": str(getattr(folder, "EntryID", "") or "")})
         children = list(folder.Folders)
     except Exception:
         return
@@ -177,11 +178,10 @@ class OutlookClient:
             try:
                 try:
                     default_folder = namespace.GetDefaultFolder(INBOX)
-                    default_path = str(
-                        getattr(default_folder, "FolderPath", "") or ""
-                    ).lstrip("\\")
+                    default_entry_id = str(
+                        getattr(default_folder, "EntryID", "") or "")
                 except Exception:
-                    default_path = ""
+                    default_entry_id = ""
                 for store in namespace.Stores:
                     try:
                         root = store.GetRootFolder()
@@ -190,7 +190,8 @@ class OutlookClient:
                         continue
                 for item in result:
                     item["isDefault"] = bool(
-                        default_path and item["path"] == default_path)
+                        default_entry_id and item.get("_entryId") == default_entry_id)
+                    item.pop("_entryId", None)
             finally:
                 default_folder = None
                 root = None

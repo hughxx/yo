@@ -100,14 +100,18 @@ data：
 data：
 [
   {
-    "path": "邮箱 - 用户\\收件箱",
+    "path": "waxxx@xxs.xxx.com\\收件箱",
     "name": "收件箱",
-    "depth": 1
+    "depth": 1,
+    "isDefault": true
   }
 ]
 
 使用：
-- 前端显示 name 和层级，保存及后续请求提交 path。folders 为空时默认读取 Outlook 收件箱。
+- path 是当前用户 Outlook 账户的真实路径，不能写死；例如 `waxxx@xxs.xxx.com\\收件箱`。前端显示 name 和层级，保存及后续请求提交 path。
+- LocalToolkit 内部通过 Outlook `GetDefaultFolder(INBOX)` 获取默认收件箱的 `EntryID`，再与文件夹树节点的 `EntryID` 匹配生成 `isDefault=true`；这个 ID 不需要返回给前端。
+- isDefault=true 的文件夹就是当前账户默认收件箱，前端只自动勾选这一项。
+- 用户取消所有勾选时 folders=[]，邮件列表应为空，不得回退扫描默认收件箱。
 - 调用期间左侧文件夹区域显示独立转圈和“正在读取文件夹…”，不得遮挡或阻塞整个邮件主页。
 - 首次进入时由扫描任务负责读取 Outlook；扫描完成后再显示缓存列表。本接口可与扫描任务并行调用。
 - 读取失败时保留主页，文件夹区域显示“读取失败，可点击刷新重试”，并展示接口 msg。
@@ -260,6 +264,9 @@ data：沿用原 items/total/offset/limit/hasMore/scanned 字段；缓存扫描�
 - matchedOnly=true：只返回命中提取规则且未被黑名单排除的邮件。
 - limit 范围为 1 至 500。
 - 查询、翻页、切换规则过滤只操作本地缓存，仍需显示表格区域加载状态。
+- 不要在扫描未完成时调用本接口。
+- 同一次扫描快照内，未点击“刷新邮件”或未改变文件夹时，total 不得重新计算或变化。
+- 翻页必须先将 page 重置为 0；只有 hasMore=true 才允许进入下一页，避免出现“第 2 / 1 页”。
 
 
 10. POST /email/message/get
@@ -423,10 +430,11 @@ GET /health
 → /health 成功后立即渲染邮件主页，不显示 Outlook 状态灯
 → 并行调用 GET /email/skill/list、GET /email/config、GET /email/extract/status
 → 根据 GET /email/config 立即判断并显示/隐藏“无有效规则”红色提醒条
-→ POST /email/message/scan
+→ GET /email/folder/list，先渲染完整文件夹树并勾选 isDefault=true 的节点
+→ POST /email/message/scan（folders 取当前勾选项）
 → 每 1 秒 GET /email/message/scan/status，表格区域显示“已读取 N 封”进度
-→ status=done 后使用返回 items 或 POST /email/message/list 展示本地缓存
-→ 同时/随后调用 GET /email/folder/list，左侧区域显示文件夹加载动画
+→ status=done 后使用返回 items 展示本次扫描快照
+→ 翻页只在本地快照上切片，不重新调用 Outlook
 
 禁止：
 - 增加 Outlook 安装状态、账号状态或状态灯；邮件主页只认 LocalToolkit /health。
@@ -435,7 +443,7 @@ GET /health
 
 刷新邮件：
 PUT /email/config（保存当前文件夹和规则）
-→ POST /email/message/scan（再次打开时 forceFull=false，优先增量读取）
+→ 用户点击“刷新邮件”后 POST /email/message/scan（再次打开时 forceFull=false，优先增量读取）
 → 轮询 GET /email/message/scan/status
 → 扫描完成后 POST /email/message/list（只操作本地缓存）
 
