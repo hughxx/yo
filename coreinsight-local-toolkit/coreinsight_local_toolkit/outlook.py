@@ -93,9 +93,10 @@ def _collect_folders(folder, result: list[dict], prefix: str = ""):
         _collect_folders(child, result, path)
 
 
-def _sender_email(item) -> str:
+def _sender_email(item, resolve_exchange: bool = True) -> str:
     value = str(getattr(item, "SenderEmailAddress", "") or "")
-    if str(getattr(item, "SenderEmailType", "") or "").upper() != "EX":
+    if (not resolve_exchange
+            or str(getattr(item, "SenderEmailType", "") or "").upper() != "EX"):
         return value
     try:
         exchange_user = item.Sender.GetExchangeUser()
@@ -114,13 +115,13 @@ def _received(item):
         return value
 
 
-def _summary(item, folder_path: str) -> dict:
+def _summary(item, folder_path: str, resolve_exchange: bool = True) -> dict:
     received = _received(item)
     return {
         "id": str(item.EntryID),
         "subject": str(getattr(item, "Subject", "") or ""),
         "senderName": str(getattr(item, "SenderName", "") or ""),
-        "senderEmail": _sender_email(item),
+        "senderEmail": _sender_email(item, resolve_exchange),
         "receivedTime": format_datetime(received) if received else "",
         "timestamp": int(received.timestamp() * 1000) if received else 0,
         "conversationTopic": str(getattr(item, "ConversationTopic", "") or ""),
@@ -228,7 +229,11 @@ class OutlookClient:
                                                     or folder_count < maximum):
                             try:
                                 if int(getattr(item, "Class", 0)) == MAIL_ITEM_CLASS:
-                                    row = _summary(item, folder_path)
+                                    # Listing only needs lightweight metadata;
+                                    # resolving Exchange users can perform an
+                                    # extra COM lookup for every message.
+                                    row = _summary(item, folder_path,
+                                                   resolve_exchange=False)
                                     timestamp = row["timestamp"]
                                     if end_ms and timestamp > end_ms:
                                         item = items.GetNext()
