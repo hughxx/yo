@@ -359,9 +359,25 @@ class EmailRuntime:
         success = False
         result = {}
         try:
-            rows = self.list_messages(
-                payload.folders, start_ms, end_ms, payload.query,
-                payload.matchedOnly)
+            rows = None
+            # Manual extraction is launched from the already displayed scan
+            # snapshot.  Do not reopen Outlook and scan the mailbox again.
+            if not scheduled:
+                cached = self._read_cache()
+                cached_folders = cached.get("folders") or []
+                requested_folders = list(payload.folders or [])
+                if cached.get("items") and cached_folders == requested_folders:
+                    rows = self._filter_messages(
+                        list(cached["items"]), requested_folders,
+                        self.store.get(), payload.query,
+                        payload.matchedOnly, outlook_body_search=False)
+                    rows = [row for row in rows
+                            if (not start_ms or int(row.get("timestamp") or 0) >= start_ms)
+                            and (not end_ms or int(row.get("timestamp") or 0) <= end_ms)]
+            if rows is None:
+                rows = self.list_messages(
+                    payload.folders, start_ms, end_ms, payload.query,
+                    payload.matchedOnly)
             if scheduled and start_ms:
                 rows = [row for row in rows
                         if int(row.get("timestamp") or 0) > start_ms]
