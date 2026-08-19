@@ -12,9 +12,8 @@
         <section class="page-head"><div class="step">02</div><div><h1>邮件经验提取</h1><p>从本机 Outlook 读取邮件和附件，通过 Skill 提炼为可复用经验</p></div><span class="phase-tag">MAIL MINING</span></section>
         <section class="email-workspace">
           <aside class="email-sidebar">
-            <div class="outlook-card"><div class="outlook-icon">O</div><div><b>Microsoft Outlook</b><small id="outlook-message">正在检测…</small></div><i id="outlook-dot"></i></div>
             <div class="sidebar-head"><div><b>扫描文件夹</b><small id="email-folder-count">默认收件箱</small></div><button class="icon-button" id="refresh-email-folders" title="刷新文件夹">↻</button></div>
-            <div id="email-folder-list" class="email-folder-list"><div class="sidebar-empty compact">等待读取 Outlook 文件夹</div></div>
+            <div id="email-folder-list" class="email-folder-list"><div class="sidebar-loading"><i></i><span>正在读取文件夹…</span></div></div>
           </aside>
           <section class="email-main">
             <div class="email-toolbar">

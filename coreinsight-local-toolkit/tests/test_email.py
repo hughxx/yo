@@ -62,29 +62,19 @@ class FakeProcessor:
 
 
 class EmailTests(unittest.TestCase):
-    def test_outlook_probe_returns_immediately_and_caches_background_result(self):
+    def test_outlook_probe_is_a_fast_compatibility_status_without_mapi(self):
         with tempfile.TemporaryDirectory() as directory:
             client = OutlookClient(Settings(data_dir=Path(directory)))
-            client._probe_now = lambda: {
-                "installed": True, "ready": True, "account": "u@example.com",
-                "inbox": "Inbox", "message": "Outlook 已就绪",
-            }
-
-            started = time.monotonic()
-            initial = client.probe()
-            elapsed = time.monotonic() - started
-            for _ in range(100):
+            with patch("coreinsight_local_toolkit.outlook.outlook_session",
+                       side_effect=AssertionError("status must not open MAPI")):
+                started = time.monotonic()
                 current = client.probe()
-                if not current["checking"]:
-                    break
-                time.sleep(.01)
+                elapsed = time.monotonic() - started
 
             self.assertLess(elapsed, .1)
-            self.assertTrue(initial["checking"])
             self.assertTrue(current["ready"])
             self.assertFalse(current["checking"])
-            self.assertEqual("u@example.com", current["account"])
-            self.assertTrue(current["checkedAt"])
+            self.assertEqual("LocalToolkit 已就绪", current["message"])
             with client.lock:
                 self.assertTrue(client.probe()["busy"])
 

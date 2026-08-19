@@ -45,7 +45,6 @@ data：
 
 邮件相关字段：
 {
-  "outlookProbe": true,
   "emailFolderManagement": true,
   "emailPreview": true,
   "emailRuleFiltering": true,
@@ -54,32 +53,7 @@ data：
 }
 
 
-3. GET /email/status
-
-时机：邮件页面初始化、用户重新检测 Outlook 时调用。
-
-data：
-{
-  "installed": true,
-  "ready": true,
-  "account": "user@huawei.com",
-  "inbox": "收件箱",
-  "message": "Outlook 已就绪",
-  "checking": false,
-  "busy": false,
-  "checkedAt": "2026-08-18 16:30:00"
-}
-
-使用：
-- 该接口立即返回，不等待 Outlook/MAPI 初始化；实际检查在后台执行，成功结果缓存 30 秒。
-- checking=true：后台仍在检查，前端每 1 秒重新调用，期间显示“正在检测 Outlook”，不要报错。
-- busy=true：Outlook 正在执行其他本地操作；若 checking 也为 true，则后台检查正在等待，前端继续短轮询。
-- checking=false 且 ready=true：Outlook 可用，此时允许读取文件夹、邮件和启动提取。
-- checking=false 且 ready=false：检查已经完成但 Outlook 不可用，展示 message。
-- 首次尚无检查结果时 installed 可能为 null。
-
-
-4. GET /email/skill/list
+3. GET /email/skill/list
 
 时机：邮件页面初始化时调用；填充手动提取和定时增量弹窗中的 Skill 列表。
 
@@ -93,7 +67,7 @@ data：
 ]
 
 
-5. GET /email/config
+4. GET /email/config
 
 时机：邮件页面初始化、保存规则后、保存或取消定时任务后调用。
 
@@ -119,9 +93,9 @@ data：
 
 二、文件夹、规则和配置
 
-6. GET /email/folder/list
+5. GET /email/folder/list
 
-时机：首次进入邮件页面或用户点击“刷新文件夹”时调用。
+时机：首次邮件列表加载完成后调用，或用户点击“刷新文件夹”时调用。
 
 data：
 [
@@ -132,10 +106,14 @@ data：
   }
 ]
 
-使用：前端显示 name 和层级，保存及后续请求提交 path。folders 为空时默认读取 Outlook 收件箱。
+使用：
+- 前端显示 name 和层级，保存及后续请求提交 path。folders 为空时默认读取 Outlook 收件箱。
+- 调用期间左侧文件夹区域显示独立转圈和“正在读取文件夹…”，不得遮挡或阻塞整个邮件主页。
+- 首次进入时先调用 /email/message/list 读取默认或已保存范围，再调用本接口；前一次邮件读取会完成 Outlook/MAPI 预热。
+- 读取失败时保留主页，文件夹区域显示“读取失败，可点击刷新重试”，并展示接口 msg。
 
 
-7. PUT /email/config
+6. PUT /email/config
 
 时机：保存扫描文件夹、提取规则、黑名单，或保存 Skill、入库方式、用户工号时调用。
 
@@ -172,9 +150,25 @@ data：
 响应 data：完整 EmailConfig。
 
 
+无有效规则红色提醒条
+
+显示条件：当前不存在任何有效提取规则。有效规则必须同时满足：
+- enabled=true；
+- subjectKeywords、bodyKeywords、senders 至少有一项非空。
+
+前端表现：
+- 提醒条固定放在“时间范围”下方、邮件表格上方，使用浅红背景和红色边框，不要只用 toast。
+- 文案：“尚未配置有效的提取规则。全量读取可能涉及隐私信息，请先配置提取规则。”
+- 右侧显示“去配置规则”按钮，点击后直接打开提取规则编辑区域。
+- 无有效规则时禁用“仅显示规则命中”复选框，并取消其勾选状态。
+- 保存至少一条有效规则后立即隐藏提醒条；删除或禁用最后一条有效规则后立即重新显示。
+- 该提醒判断的是“有没有配置有效规则”，不是当前邮件列表有没有匹配结果。
+- 手动明确勾选邮件仍可提取；定时增量必须有有效规则，否则不得打开定时配置并提示用户先配置规则。
+
+
 三、邮件列表与预览
 
-8. POST /email/message/list
+7. POST /email/message/list
 
 时机：点击“刷新”、搜索、切换“按规则匹配”、修改时间范围或翻页时调用。
 
@@ -225,9 +219,11 @@ data：
 - totalExact=true：已经扫描到筛选范围末尾，total 是准确总数，可以显示“共 N 封”。
 - hasMore=true 时允许请求下一页；下一页 offset 按 offset + limit 递增。
 - scanned 是本次为得到当前页面而检查的候选邮件数，仅用于诊断，不需要展示。
+- 调用期间邮件表格区域必须显示转圈和“正在读取 Outlook 邮件…”，主页、规则入口和时间范围仍可见。
+- 首次进入邮件主页可以自动调用本接口；接口失败时保留页面并提供“刷新”重试，不跳转到状态检测页。
 
 
-9. POST /email/message/get
+8. POST /email/message/get
 
 时机：用户点击某封邮件的“预览”时调用。
 
@@ -253,7 +249,7 @@ data 主要字段：
 
 四、手动提取
 
-10. POST /email/extract
+9. POST /email/extract
 
 时机：用户在“提取选中”弹窗确认 Skill、入库方式和用户工号后调用。
 
@@ -298,7 +294,7 @@ data：
 }
 
 
-11. GET /email/extract/status
+10. GET /email/extract/status
 
 时机：页面初始化时调用一次；POST /email/extract 成功后每 2 秒轮询。
 
@@ -317,7 +313,7 @@ status：
 成功后的 data 还会包含 docId、docIds、title；scheduled 表示是否由定时任务触发。
 
 
-12. POST /email/extract/cancel
+11. POST /email/extract/cancel
 
 时机：用户点击“停止提取”时调用。
 
@@ -328,7 +324,7 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 
 五、定时增量
 
-13. POST /email/schedule/set
+12. POST /email/schedule/set
 
 时机：用户在“启动定时”或“修改定时”弹窗保存时调用。
 
@@ -357,7 +353,7 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 响应 data：完整 EmailConfig，前端读取 scheduleEnabled、scheduleCursor、scheduleNextRun。
 
 
-14. POST /email/schedule/cancel
+13. POST /email/schedule/cancel
 
 时机：用户在定时配置弹窗点击“取消当前定时”时调用。
 
@@ -385,9 +381,16 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 初始化：
 GET /health
 → GET /capabilities
-→ 并行调用 GET /email/status、GET /email/skill/list、GET /email/config
-→ Outlook ready=true 后调用 GET /email/folder/list
-→ GET /email/extract/status
+→ /health 成功后立即渲染邮件主页，不显示 Outlook 状态灯
+→ 并行调用 GET /email/skill/list、GET /email/config、GET /email/extract/status
+→ 根据 GET /email/config 立即判断并显示/隐藏“无有效规则”红色提醒条
+→ POST /email/message/list，表格区域显示邮件加载动画
+→ 邮件列表请求结束后调用 GET /email/folder/list，左侧区域显示文件夹加载动画
+
+禁止：
+- 增加 Outlook 安装状态、账号状态或状态灯；邮件主页只认 LocalToolkit /health。
+- 等待 Outlook 状态检测后才显示邮件主页。
+- 用全屏加载遮罩同时阻塞规则配置、时间范围和其他页面操作。
 
 刷新邮件：
 PUT /email/config（保存当前文件夹和规则）

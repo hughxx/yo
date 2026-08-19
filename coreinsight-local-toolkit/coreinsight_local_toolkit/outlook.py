@@ -6,7 +6,6 @@ import os
 import re
 import tempfile
 import threading
-import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
@@ -25,7 +24,6 @@ MAIL_ITEM_CLASS = 43
 PR_ATTACH_CONTENT_ID = "http://schemas.microsoft.com/mapi/proptag/0x3712001E"
 BODY_DASL_FIELD = '"urn:schemas:httpmail:textdescription"'
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
-PROBE_CACHE_SECONDS = 30
 
 
 def _imports():
@@ -165,66 +163,12 @@ class OutlookClient:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.lock = threading.Lock()
-        self.probe_lock = threading.Lock()
-        self.probe_cache: dict | None = None
-        self.probe_checked_monotonic = 0.0
-        self.probe_inflight = False
 
     def probe(self) -> dict:
-        """Return quickly and refresh the real MAPI probe in the background."""
-        now = time.monotonic()
-        with self.probe_lock:
-            fresh = bool(self.probe_cache and
-                         now - self.probe_checked_monotonic < PROBE_CACHE_SECONDS)
-            if fresh:
-                return {**self.probe_cache, "checking": False,
-                        "busy": self.lock.locked()}
-            if not self.probe_inflight:
-                self.probe_inflight = True
-                threading.Thread(target=self._refresh_probe, daemon=True).start()
-            cached = dict(self.probe_cache or {
-                "installed": None, "ready": False, "account": "", "inbox": "",
-                "message": "正在检测 Outlook…", "checkedAt": "",
-            })
-            return {**cached, "checking": True, "busy": self.lock.locked()}
-
-    def _refresh_probe(self):
-        try:
-            result = self._probe_now()
-        except Exception as exc:  # defensive: _probe_now normally normalizes errors
-            logger.exception("unexpected Outlook probe failure")
-            result = {"installed": False, "ready": False, "account": "",
-                      "inbox": "", "message": f"Outlook 未就绪：{exc}"}
-        result["checkedAt"] = format_datetime(datetime.now().astimezone())
-        with self.probe_lock:
-            self.probe_cache = result
-            self.probe_checked_monotonic = time.monotonic()
-            self.probe_inflight = False
-
-    def _probe_now(self) -> dict:
-        inbox = account_item = None
-        try:
-            with self.lock, outlook_session() as namespace:
-                try:
-                    inbox = namespace.GetDefaultFolder(INBOX)
-                    inbox_name = str(inbox.Name or "收件箱")
-                    account = ""
-                    try:
-                        account_item = namespace.Accounts.Item(1)
-                        account = str(account_item.SmtpAddress or "")
-                    except Exception:
-                        pass
-                    return {"installed": True, "ready": True, "account": account,
-                            "inbox": inbox_name, "message": "Outlook 已就绪"}
-                finally:
-                    account_item = None
-                    inbox = None
-        except RuntimeError as exc:
-            return {"installed": False, "ready": False, "account": "",
-                    "inbox": "", "message": str(exc)}
-        except Exception as exc:
-            return {"installed": True, "ready": False, "account": "",
-                    "inbox": "", "message": f"Outlook 未就绪：{exc}"}
+        """Compatibility status; never start Outlook or open a MAPI session."""
+        return {"installed": True, "ready": True, "account": "", "inbox": "",
+                "message": "LocalToolkit 已就绪", "checking": False,
+                "busy": self.lock.locked(), "checkedAt": ""}
 
     def list_folders(self) -> list[dict]:
         with self.lock, outlook_session() as namespace:
