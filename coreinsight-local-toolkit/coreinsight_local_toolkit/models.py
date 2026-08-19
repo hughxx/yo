@@ -204,6 +204,12 @@ class EmailDetailRequest(BaseModel):
     itemId: str = Field(min_length=1)
 
 
+class EmailScanRequest(BaseModel):
+    """Start a mailbox summary scan. Empty folders means the default Inbox."""
+    folders: list[str] = Field(default_factory=list)
+    forceFull: bool = False
+
+
 class EmailSelection(BaseModel):
     mode: Literal["all", "explicit"] = "explicit"
     excludedItemIds: list[str] = Field(default_factory=list)

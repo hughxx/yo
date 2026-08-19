@@ -109,7 +109,7 @@ data：
 使用：
 - 前端显示 name 和层级，保存及后续请求提交 path。folders 为空时默认读取 Outlook 收件箱。
 - 调用期间左侧文件夹区域显示独立转圈和“正在读取文件夹…”，不得遮挡或阻塞整个邮件主页。
-- 首次进入时先调用 /email/message/list 读取默认或已保存范围，再调用本接口；前一次邮件读取会完成 Outlook/MAPI 预热。
+- 首次进入时由扫描任务负责读取 Outlook；扫描完成后再显示缓存列表。本接口可与扫描任务并行调用。
 - 读取失败时保留主页，文件夹区域显示“读取失败，可点击刷新重试”，并展示接口 msg。
 
 
@@ -168,23 +168,58 @@ data：
 
 三、邮件列表与预览
 
-7. POST /email/message/list
+7. POST /email/message/scan
 
-时机：点击“刷新”、搜索、切换“按规则匹配”、修改时间范围或翻页时调用。
+时机：邮件页面首次进入、用户点击“刷新邮件”时调用。接口只启动后台扫描，不等待 Outlook 全量读取完成。
 
 请求：
 {
   "folders": ["邮箱 - 用户\\收件箱"],
-  "startTime": "2026-08-11 00:00:00",
-  "endTime": "2026-08-18 23:59:59",
-  "query": "GaussDB",
-  "matchedOnly": false,
-  "offset": 0,
-  "limit": 50
+  "forceFull": false
 }
 
-data：
+说明：
+- folders 为空时扫描 Outlook 默认收件箱。
+- 首次扫描或 forceFull=true：全量读取所选文件夹摘要，不按 50/500/10000 条截断。
+- 已有本地缓存且文件夹范围未变化时：只读取缓存最新邮件之后的增量，再与缓存合并。
+- 同一时间只能运行一个扫描任务；正在扫描时返回 HTTP 409。
+
+成功 data：
 {
+  "running": true,
+  "taskId": "scan-task-id",
+  "status": "scanning",
+  "scanned": 0,
+  "total": 0,
+  "incremental": false,
+  "message": "正在全量读取邮件"
+}
+
+
+8. GET /email/message/scan/status
+
+时机：调用 scan 后每 1 秒轮询，直到 status 为 done 或 failed。
+
+扫描中 data：
+{
+  "running": true,
+  "taskId": "scan-task-id",
+  "status": "scanning",
+  "scanned": 1250,
+  "total": 0,
+  "incremental": false,
+  "message": "正在全量读取邮件：已读取 1250 封"
+}
+
+完成 data：
+{
+  "running": false,
+  "taskId": "scan-task-id",
+  "status": "done",
+  "scanned": 8632,
+  "total": 8632,
+  "incremental": false,
+  "message": "全量读取完成",
   "items": [
     {
       "id": "Outlook EntryID",
@@ -195,35 +230,39 @@ data：
       "timestamp": 1787038200000,
       "conversationTopic": "会话主题",
       "folder": "邮箱 - 用户\\收件箱",
-      "hasAttachments": true,
-      "matchedRule": "故障经验",
-      "blockedRule": ""
+      "hasAttachments": true
     }
-  ],
-  "total": 51,
-  "totalExact": false,
-  "offset": 0,
-  "limit": 50,
-  "hasMore": true,
-  "scanned": 51
+  ]
 }
 
+失败时 status=failed，error 提供错误原因。前端应保留页面并提供重新扫描按钮。
+
+
+9. POST /email/message/list
+
+用途：扫描完成后对本地缓存做分页、搜索和规则过滤；不会因翻页再次读取 Outlook。
+
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱"],
+  "startTime": null,
+  "endTime": null,
+  "query": "GaussDB",
+  "matchedOnly": false,
+  "offset": 0,
+  "limit": 50
+}
+
+data：沿用原 items/total/offset/limit/hasMore/scanned 字段；缓存扫描完成后 totalExact 固定为 true，可显示“共 N 封 / 当前页 / 总页数”。
+
 字段：
+- 全量邮件列表默认 startTime、endTime 均传 null；不再默认限制今天、最近 7 天或最近 30 天。
 - matchedOnly=true：只返回命中提取规则且未被黑名单排除的邮件。
-- matchedRule：最终命中的提取规则名称。
-- blockedRule：命中的黑名单名称；非空时该邮件被排除。
 - limit 范围为 1 至 500。
-- 全时间范围查询时 startTime、endTime 均传 null。
-- 接口按需渐进读取 Outlook，普通第一页只读取 limit + 1 封候选邮件，不会先加载全部邮箱。
-- totalExact=false：total 是当前已确认的数量下界，前端显示“已加载 N+ 封”，不要据此生成末页页码。
-- totalExact=true：已经扫描到筛选范围末尾，total 是准确总数，可以显示“共 N 封”。
-- hasMore=true 时允许请求下一页；下一页 offset 按 offset + limit 递增。
-- scanned 是本次为得到当前页面而检查的候选邮件数，仅用于诊断，不需要展示。
-- 调用期间邮件表格区域必须显示转圈和“正在读取 Outlook 邮件…”，主页、规则入口和时间范围仍可见。
-- 首次进入邮件主页可以自动调用本接口；接口失败时保留页面并提供“刷新”重试，不跳转到状态检测页。
+- 查询、翻页、切换规则过滤只操作本地缓存，仍需显示表格区域加载状态。
 
 
-8. POST /email/message/get
+10. POST /email/message/get
 
 时机：用户点击某封邮件的“预览”时调用。
 
@@ -249,7 +288,7 @@ data 主要字段：
 
 四、手动提取
 
-9. POST /email/extract
+11. POST /email/extract
 
 时机：用户在“提取选中”弹窗确认 Skill、入库方式和用户工号后调用。
 
@@ -294,7 +333,7 @@ data：
 }
 
 
-10. GET /email/extract/status
+12. GET /email/extract/status
 
 时机：页面初始化时调用一次；POST /email/extract 成功后每 2 秒轮询。
 
@@ -313,7 +352,7 @@ status：
 成功后的 data 还会包含 docId、docIds、title；scheduled 表示是否由定时任务触发。
 
 
-11. POST /email/extract/cancel
+13. POST /email/extract/cancel
 
 时机：用户点击“停止提取”时调用。
 
@@ -324,7 +363,7 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 
 五、定时增量
 
-12. POST /email/schedule/set
+14. POST /email/schedule/set
 
 时机：用户在“启动定时”或“修改定时”弹窗保存时调用。
 
@@ -353,7 +392,7 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 响应 data：完整 EmailConfig，前端读取 scheduleEnabled、scheduleCursor、scheduleNextRun。
 
 
-13. POST /email/schedule/cancel
+15. POST /email/schedule/cancel
 
 时机：用户在定时配置弹窗点击“取消当前定时”时调用。
 
@@ -384,8 +423,10 @@ GET /health
 → /health 成功后立即渲染邮件主页，不显示 Outlook 状态灯
 → 并行调用 GET /email/skill/list、GET /email/config、GET /email/extract/status
 → 根据 GET /email/config 立即判断并显示/隐藏“无有效规则”红色提醒条
-→ POST /email/message/list，表格区域显示邮件加载动画
-→ 邮件列表请求结束后调用 GET /email/folder/list，左侧区域显示文件夹加载动画
+→ POST /email/message/scan
+→ 每 1 秒 GET /email/message/scan/status，表格区域显示“已读取 N 封”进度
+→ status=done 后使用返回 items 或 POST /email/message/list 展示本地缓存
+→ 同时/随后调用 GET /email/folder/list，左侧区域显示文件夹加载动画
 
 禁止：
 - 增加 Outlook 安装状态、账号状态或状态灯；邮件主页只认 LocalToolkit /health。
@@ -394,7 +435,9 @@ GET /health
 
 刷新邮件：
 PUT /email/config（保存当前文件夹和规则）
-→ POST /email/message/list
+→ POST /email/message/scan（再次打开时 forceFull=false，优先增量读取）
+→ 轮询 GET /email/message/scan/status
+→ 扫描完成后 POST /email/message/list（只操作本地缓存）
 
 手动提取：
 PUT /email/config（保存弹窗配置）

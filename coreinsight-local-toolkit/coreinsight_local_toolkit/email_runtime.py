@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
@@ -85,12 +86,102 @@ class EmailRuntime:
         self.cancel_event = threading.Event()
         self.task = self._idle()
         self.history: list[dict] = []
+        self.scan_task = self._scan_idle()
+        self.cache_path = self.store.path.with_name("email_cache.json")
 
     @staticmethod
     def _idle() -> dict:
         return {"running": False, "taskId": "", "status": "idle", "scanned": 0,
                 "selected": 0, "processed": 0, "message": "", "error": "",
                 "docId": "", "docIds": [], "title": "", "scheduled": False}
+
+    @staticmethod
+    def _scan_idle() -> dict:
+        return {"running": False, "taskId": "", "status": "idle",
+                "scanned": 0, "total": 0, "items": [], "incremental": False,
+                "message": "", "error": ""}
+
+    def scan_status(self, include_items: bool = False) -> dict:
+        with self.lock:
+            value = dict(self.scan_task)
+        if not include_items:
+            value.pop("items", None)
+        return value
+
+    def _scan_set(self, **changes):
+        with self.lock:
+            self.scan_task.update(changes)
+
+    def _read_cache(self) -> dict:
+        try:
+            raw = json.loads(self.cache_path.read_text(encoding="utf-8"))
+            return raw if isinstance(raw, dict) else {}
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    def _write_cache(self, folders: list[str], items: list[dict]):
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.cache_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({
+            "folders": folders, "items": items,
+            "updatedAt": format_datetime(datetime.now().astimezone()),
+        }, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(self.cache_path)
+
+    def start_scan(self, folders: list[str], force_full: bool = False) -> dict:
+        requested = list(dict.fromkeys(str(item).strip() for item in folders
+                                      if str(item).strip()))
+        with self.lock:
+            if self.scan_task.get("running"):
+                raise RuntimeError("邮件列表正在扫描中")
+            cache = self._read_cache()
+            cached_folders = cache.get("folders") or []
+            incremental = bool(cache.get("items")) and not force_full \
+                and cached_folders == requested
+            task_id = uuid.uuid4().hex
+            self.scan_task = {**self._scan_idle(), "running": True,
+                              "taskId": task_id, "status": "scanning",
+                              "incremental": incremental,
+                              "message": "正在增量读取邮件" if incremental
+                              else "正在全量读取邮件"}
+        threading.Thread(target=self._scan_worker,
+                         args=(requested, force_full, cache, incremental),
+                         daemon=True).start()
+        return self.scan_status()
+
+    def _scan_worker(self, folders, force_full, cache, incremental):
+        try:
+            cached_items = cache.get("items") or []
+            start_ms = 0
+            if incremental and cached_items:
+                newest = max(int(item.get("timestamp") or 0)
+                             for item in cached_items)
+                start_ms = max(0, newest - 1000)
+            def progress(scanned, total=0):
+                self._scan_set(scanned=scanned, total=max(total, scanned),
+                               message=("正在增量读取邮件" if incremental
+                                        else "正在全量读取邮件") +
+                                       f"：已读取 {scanned} 封")
+            # A background scan is genuinely full-range; the bounded legacy
+            # page endpoint remains separate for compatibility.
+            rows = self.outlook.list_messages(
+                folders, start_ms, 0, 0,
+                progress=progress)
+            if incremental:
+                merged = {str(item.get("id")): item for item in cached_items}
+                merged.update({str(item.get("id")): item for item in rows})
+                rows = list(merged.values())
+                rows.sort(key=lambda item: (int(item.get("timestamp") or 0),
+                                            str(item.get("id") or "")),
+                          reverse=True)
+            self._write_cache(folders, rows)
+            self._scan_set(status="done", running=False, scanned=len(rows),
+                           total=len(rows), items=rows,
+                           message=("增量读取完成" if incremental else "全量读取完成"))
+        except Exception as exc:
+            logger.exception("email scan failed")
+            self._scan_set(status="failed", running=False, error=str(exc),
+                           message="邮件扫描失败")
 
     def status(self) -> dict:
         with self.lock:
@@ -136,6 +227,20 @@ class EmailRuntime:
             max(target, 200 if filtered_search else target))
         paths = folders or self.store.get().folders
         config = self.store.get()
+
+        # Once the background scan has completed, serve the persisted summary
+        # cache instead of opening Outlook for every page click.
+        cached = self._read_cache()
+        if cached.get("items") and (cached.get("folders") or []) == paths:
+            rows = cached["items"]
+            filtered = self._filter_messages(
+                rows, paths, config, query, matched_only,
+                outlook_body_search=False)
+            page = filtered[offset:offset + limit]
+            return {"items": page, "total": len(filtered),
+                    "totalExact": True, "offset": offset, "limit": limit,
+                    "hasMore": offset + limit < len(filtered),
+                    "scanned": len(rows), "source": "cache"}
 
         while True:
             rows = self.outlook.list_messages(paths, start_ms, end_ms, scan_limit)

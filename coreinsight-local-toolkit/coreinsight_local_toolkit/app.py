@@ -20,6 +20,7 @@ from .outlook import OutlookClient
 from .processor import LocalExperienceProcessor
 from .models import (
     EmailConfig, EmailDetailRequest, EmailExtractRequest, EmailListRequest,
+    EmailScanRequest,
     EmailScheduleSetRequest,
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
     ExtractCancelRequest, ExtractRequest, MessageQuery, PreviewMessage,
@@ -259,6 +260,17 @@ def create_app(settings: Settings | None = None,
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"读取 Outlook 邮件失败：{exc}") from exc
+
+    @app.post("/email/message/scan")
+    def start_email_scan(payload: EmailScanRequest):
+        try:
+            return email.start_scan(payload.folders, payload.forceFull)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/email/message/scan/status")
+    def email_scan_status():
+        return email.scan_status(include_items=True)
 
     @app.post("/email/message/get")
     def get_email_message(payload: EmailDetailRequest):

@@ -173,30 +173,49 @@ class OutlookClient:
     def list_folders(self) -> list[dict]:
         with self.lock, outlook_session() as namespace:
             result = []
-            store = root = None
+            store = root = default_folder = None
             try:
+                try:
+                    default_folder = namespace.GetDefaultFolder(INBOX)
+                    default_path = str(
+                        getattr(default_folder, "FolderPath", "") or ""
+                    ).lstrip("\\")
+                except Exception:
+                    default_path = ""
                 for store in namespace.Stores:
                     try:
                         root = store.GetRootFolder()
                         _collect_folders(root, result)
                     except Exception:
                         continue
+                for item in result:
+                    item["isDefault"] = bool(
+                        default_path and item["path"] == default_path)
             finally:
+                default_folder = None
                 root = None
                 store = None
             return result
 
     def list_messages(self, paths: list[str], start_ms: int = 0,
-                      end_ms: int = 0, maximum: int = 10000) -> list[dict]:
+                      end_ms: int = 0, maximum: int = 10000,
+                      progress=None) -> list[dict]:
         with self.lock, outlook_session() as namespace:
             result = []
             folders = _folders(namespace, paths)
             folder = items = item = None
+            total_count = 0
             try:
                 for folder in folders:
                     folder_path = str(getattr(folder, "FolderPath", "") or "").lstrip("\\")
                     try:
                         items = folder.Items
+                        try:
+                            total_count += int(items.Count)
+                            if progress:
+                                progress(len(result), total_count)
+                        except Exception:
+                            pass
                         items.Sort("[ReceivedTime]", True)
                         item = items.GetFirst()
                         folder_count = 0
@@ -204,7 +223,8 @@ class OutlookClient:
                         # the first K rows from each folder is sufficient to calculate
                         # the global first K rows after merging, and avoids one large
                         # folder starving all folders that follow it.
-                        while item is not None and folder_count < maximum:
+                        while item is not None and (maximum <= 0
+                                                    or folder_count < maximum):
                             try:
                                 if int(getattr(item, "Class", 0)) == MAIL_ITEM_CLASS:
                                     row = _summary(item, folder_path)
@@ -216,6 +236,8 @@ class OutlookClient:
                                         break
                                     result.append(row)
                                     folder_count += 1
+                                    if progress:
+                                        progress(len(result), total_count)
                             except Exception:
                                 logger.debug("skip unreadable Outlook item", exc_info=True)
                             item = items.GetNext()
@@ -228,7 +250,7 @@ class OutlookClient:
                 folder = None
                 folders.clear()
             result.sort(key=lambda value: (value["timestamp"], value["id"]), reverse=True)
-            return result[:maximum]
+            return result if maximum <= 0 else result[:maximum]
 
     def get_message(self, item_id: str, process_attachments: bool = True) -> dict:
         item = None
