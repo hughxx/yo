@@ -161,7 +161,9 @@ data：
 
 字段：
 - logic：OR 或 AND。
-- extractMode：direct 或 draft。
+- extractMode=direct：提取结果由 LocalToolkit 直接写入经验中心。
+- extractMode=draft：提取结果由 LocalToolkit 内部调用草稿新建/更新接口，写入平台待确认经验。
+- 无论 direct 还是 draft，前端都只调用 LocalToolkit 的 /email/extract，不直接调用远端经验或草稿接口。
 - 新增规则保存后，响应会返回 LocalToolkit 生成的规则 ID。
 - 有效提取规则必须 enabled=true，并至少填写 subjectKeywords、bodyKeywords、senders 中的一类。
 - 删除或禁用最后一条有效提取规则时，已有邮件定时任务会被停止，但保留增量游标。
@@ -277,6 +279,7 @@ data 主要字段：
 - 当前前端固定使用 selection.mode=explicit，避免无意全量提取。
 - folders、时间、query、matchedOnly 应与生成当前选择集合时的筛选条件一致。
 - LocalToolkit 会重新读取邮件，将 HTML 转成 Markdown，处理附件、图片公开链接和 OCR，再运行 Skill。
+- extractMode=direct 时由 LocalToolkit 写入正式经验；extractMode=draft 时由 LocalToolkit 创建或更新待确认草稿，前端无需调用其他写入接口。
 
 data：
 {
