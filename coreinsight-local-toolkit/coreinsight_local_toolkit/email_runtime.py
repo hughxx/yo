@@ -95,7 +95,8 @@ class EmailRuntime:
     def _idle() -> dict:
         return {"running": False, "taskId": "", "status": "idle", "scanned": 0,
                 "selected": 0, "processed": 0, "message": "", "error": "",
-                "docId": "", "docIds": [], "title": "", "scheduled": False}
+                "docId": "", "docIds": [], "title": "", "scheduled": False,
+                "itemStatuses": {}}
 
     @staticmethod
     def _scan_idle() -> dict:
@@ -207,6 +208,15 @@ class EmailRuntime:
     def _set(self, **changes):
         with self.lock:
             self.task.update(changes)
+
+    def _set_item_status(self, item_id: str, status: str, error: str = ""):
+        with self.lock:
+            statuses = dict(self.task.get("itemStatuses") or {})
+            value = {"itemId": str(item_id), "status": status}
+            if error:
+                value["error"] = error
+            statuses[str(item_id)] = value
+            self.task["itemStatuses"] = statuses
 
     def list_messages(self, folders: list[str], start_ms: int, end_ms: int,
                       query: str = "", matched_only: bool = False,
@@ -368,6 +378,7 @@ class EmailRuntime:
     def _run(self, payload, start_ms, end_ms, scheduled, on_complete, upload_by):
         success = False
         result = {}
+        current_item_id = ""
         try:
             rows = None
             # Manual extraction is launched from the already displayed scan
@@ -399,6 +410,11 @@ class EmailRuntime:
             else:
                 selected = [row for row in rows if row["id"] in selected_ids]
             self._set(selected=len(selected), message=f"已选择 {len(selected)} 封邮件")
+            with self.lock:
+                self.task["itemStatuses"] = {
+                    str(row["id"]): {"itemId": str(row["id"]), "status": "queued"}
+                    for row in selected
+                }
             if not selected:
                 if scheduled:
                     success = True
@@ -409,6 +425,8 @@ class EmailRuntime:
             for index, row in enumerate(reversed(selected), 1):
                 if self.cancel_event.is_set():
                     raise ExtractionCancelled("任务已取消")
+                current_item_id = str(row["id"])
+                self._set_item_status(current_item_id, "processing")
                 self._set(status="workspace", processed=index - 1,
                           message=f"正在转换邮件与附件 {index}/{len(selected)}")
                 detail = self.outlook.get_message(row["id"], True)
@@ -430,6 +448,8 @@ class EmailRuntime:
                 progress, self.cancel_event, group_id="outlook-mailbox",
                 scheduled=scheduled, extract_mode=payload.extractMode,
                 source_type="email")
+            for row in selected:
+                self._set_item_status(str(row["id"]), "success")
             if self.notifier:
                 experiences = result.get("experiences") or []
                 try:
@@ -447,9 +467,16 @@ class EmailRuntime:
                        else "邮件经验已提取并入库")
             self._finish("done", message, result)
         except ExtractionCancelled:
+            with self.lock:
+                statuses = dict(self.task.get("itemStatuses") or {})
+            for item_id, item in statuses.items():
+                if item.get("status") in ("queued", "processing"):
+                    self._set_item_status(item_id, "cancelled")
             self._finish("cancelled", "邮件提取任务已取消", {})
         except Exception as exc:
             logger.exception("email extraction failed")
+            if current_item_id:
+                self._set_item_status(current_item_id, "failed", str(exc))
             self._finish("failed", "邮件提取任务失败", {"error": str(exc)})
         finally:
             if on_complete:

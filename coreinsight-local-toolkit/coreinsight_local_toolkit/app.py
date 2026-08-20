@@ -304,6 +304,16 @@ def create_app(settings: Settings | None = None,
     def email_extract_status():
         return email.status()
 
+    @app.get("/email/extract/item-status")
+    def email_extract_item_status():
+        task = email.status()
+        return {
+            "taskId": task.get("taskId", ""),
+            "running": bool(task.get("running")),
+            "scheduled": bool(task.get("scheduled")),
+            "items": list((task.get("itemStatuses") or {}).values()),
+        }
+
     @app.get("/email/extract/tasks")
     def email_extract_tasks():
         return email.tasks()

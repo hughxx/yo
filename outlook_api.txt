@@ -401,6 +401,22 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 
 15. POST /email/schedule/cancel
 
+16. GET /email/extract/item-status
+
+时机：用户开启邮件手动或定时提取后，与 GET /email/extract/status 一起轮询。
+
+响应：
+{
+  "taskId": "任务 ID",
+  "running": true,
+  "scheduled": true,
+  "items": [
+    {"itemId": "Outlook EntryID", "status": "queued", "error": ""}
+  ]
+}
+
+单邮件 status 值：queued（等待处理）、processing（正在读取/转换）、success（本轮处理成功）、failed（处理失败）、cancelled（任务取消）。定时任务运行时，前端应将 status 为 queued 或 processing 的邮件置为不可选；status=failed 可重新选择重试。不要把 matchedRule 当作处理状态，它只表示规则命中。
+
 时机：用户在定时配置弹窗点击“取消当前定时”时调用。
 
 请求体：{}，也可以不发送请求体。
@@ -456,3 +472,5 @@ PUT /email/config（保存弹窗配置）
 PUT /email/config（先保存文件夹、有效规则和弹窗配置）
 → POST /email/schedule/set
 → 使用 GET /email/config 刷新定时状态
+
+本次修改：新增 GET /email/extract/item-status，前端据此展示并禁用正在定时处理的单封邮件。
