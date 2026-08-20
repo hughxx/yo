@@ -88,6 +88,8 @@ class EmailRuntime:
         self.history: list[dict] = []
         self.scan_task = self._scan_idle()
         self.cache_path = self.store.path.with_name("email_cache.json")
+        self._thread = None
+        self._scan_thread = None
 
     @staticmethod
     def _idle() -> dict:
@@ -150,9 +152,10 @@ class EmailRuntime:
                     items=[], message="未选择文件夹")
                 self._write_cache([], [])
                 return self.scan_status()
-        threading.Thread(target=self._scan_worker,
-                         args=(requested, force_full, cache, incremental),
-                         daemon=True).start()
+        self._scan_thread = threading.Thread(
+            target=self._scan_worker,
+            args=(requested, force_full, cache, incremental), daemon=True)
+        self._scan_thread.start()
         return self.scan_status()
 
     def _scan_worker(self, folders, force_full, cache, incremental):
@@ -339,10 +342,11 @@ class EmailRuntime:
                          "status": "fetching", "scheduled": scheduled,
                          "message": "正在读取 Outlook 邮件"}
             self.cancel_event.clear()
-        threading.Thread(
+        self._thread = threading.Thread(
             target=self._run,
             args=(payload, start_ms, end_ms, scheduled, on_complete, upload_by),
-            daemon=True).start()
+            daemon=True)
+        self._thread.start()
         return self.status()
 
     def cancel(self) -> dict:
@@ -354,6 +358,12 @@ class EmailRuntime:
 
     def close(self):
         self.cancel_event.set()
+        thread = self._thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=5)
+        scan_thread = self._scan_thread
+        if scan_thread and scan_thread is not threading.current_thread():
+            scan_thread.join(timeout=5)
 
     def _run(self, payload, start_ms, end_ms, scheduled, on_complete, upload_by):
         success = False

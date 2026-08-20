@@ -134,6 +134,10 @@ class ExtractionRuntime:
             for cancel in self._cancels.values():
                 cancel.set()
             self._condition.notify_all()
+        # Give the active worker a short grace period to stop its Hermes run
+        # and execute normal workspace cleanup before the process exits.
+        if self._worker is not threading.current_thread():
+            self._worker.join(timeout=5)
 
     def _worker_loop(self) -> None:
         while True:
