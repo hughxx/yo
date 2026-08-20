@@ -354,7 +354,9 @@ class LocalExperienceProcessor:
             alt_text = alt_text.replace("[", "\\[").replace("]", "\\]")
             return f"![{alt_text}]({public_url})"
         except Exception as exc:
-            return f"[附件处理失败：{filename}，{type(exc).__name__}]"
+            logger.warning("attachment upload failed name=%s", filename,
+                           exc_info=True)
+            return f"> 经验提取时图片上传失败，请重新执行提取：{filename}"
 
     def _download(self, download_url: str, extraction_code: str) -> bytes:
         token_response = requests.post(

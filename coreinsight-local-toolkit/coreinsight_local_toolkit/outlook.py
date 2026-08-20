@@ -423,7 +423,8 @@ class OutlookClient:
                              "inline": inline})
             except Exception as exc:
                 logger.warning("email attachment failed name=%s", filename, exc_info=True)
-                markdown.append(f"[附件处理失败：{filename}（{type(exc).__name__}）]")
+                markdown.append(
+                    f"> 经验提取时图片上传失败，请重新执行提取：{filename}")
                 rows.append({"name": filename, "url": "", "ocr": "",
                              "inline": False, "error": str(exc)})
         return html_body, markdown, rows
