@@ -16,7 +16,9 @@ from . import config
 
 ROOT = Path(__file__).resolve().parent.parent
 PYQT = ROOT / "pyqt_client"
-if str(PYQT) not in sys.path:
+# In source mode the legacy modules live beside this package. In a frozen
+# build PyInstaller places them on its import path via --paths pyqt_client.
+if not getattr(sys, "frozen", False) and str(PYQT) not in sys.path:
     sys.path.insert(0, str(PYQT))
 
 from modules.email import outlook  # noqa: E402
