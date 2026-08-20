@@ -398,7 +398,15 @@ class OutlookClient:
                 if attachment.get("readError"):
                     raise RuntimeError(attachment["readError"])
                 url = self._upload(filename, content)
-                ocr = self._ocr(filename, content) if suffix in IMAGE_EXTENSIONS else ""
+                # Upload and OCR are independent. Keep the public URL even when
+                # the OCR service is unavailable or returns an invalid response.
+                ocr = ""
+                if suffix in IMAGE_EXTENSIONS:
+                    try:
+                        ocr = self._ocr(filename, content)
+                    except Exception:
+                        logger.warning("email attachment OCR failed name=%s", filename,
+                                       exc_info=True)
                 alt = ocr.strip().replace("\r", " ").replace("\n", " ")
                 alt = alt.replace("[", "\\[").replace("]", "\\]")
                 label = alt or filename

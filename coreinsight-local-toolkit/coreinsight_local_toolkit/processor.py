@@ -337,13 +337,19 @@ class LocalExperienceProcessor:
                 f"{file_id}/{quote(filename)}")
             ocr_text = ""
             if self.settings.ocr_url:
-                response = requests.post(
-                    self.settings.ocr_url, files={"file": (filename, content)},
-                    timeout=300, verify=False)
-                response.raise_for_status()
-                data = response.json()
-                ocr_text = str(data.get("result") or data.get("text") or "") \
-                    if isinstance(data, dict) else str(data)
+                try:
+                    response = requests.post(
+                        self.settings.ocr_url, files={"file": (filename, content)},
+                        timeout=300, verify=False)
+                    response.raise_for_status()
+                    data = response.json()
+                    ocr_text = str(data.get("result") or data.get("text") or "") \
+                        if isinstance(data, dict) else str(data)
+                except Exception:
+                    # The image has already been uploaded. Do not replace its
+                    # usable public URL just because OCR is temporarily down.
+                    logger.warning("attachment OCR failed name=%s", filename,
+                                   exc_info=True)
             alt_text = ocr_text.strip().replace("\r", " ").replace("\n", " ")
             alt_text = alt_text.replace("[", "\\[").replace("]", "\\]")
             return f"![{alt_text}]({public_url})"
