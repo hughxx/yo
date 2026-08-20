@@ -5,6 +5,7 @@ import re
 import sys
 import threading
 import uuid
+import hashlib
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -114,6 +115,8 @@ class MinerApi:
             title = _safe_name(selected[0].get("subject") or "邮件提取")
             if len(selected) > 1:
                 title += f"_等{len(selected)}封"
+            # Same-subject mails are common; keep the human title while avoiding overwrite.
+            title += "_" + hashlib.sha1("|".join(str(x.get("item_id")) for x in selected).encode()).hexdigest()[:8]
             path = config.OUTLOOK_DIR / f"{title}.md"
             path.write_text("\n\n---\n\n".join(parts), encoding="utf-8")
             self._write_meta(path, "outlook", {"item_ids": [x.get("item_id") for x in selected], "folders": folders or []})
