@@ -19,6 +19,12 @@ _PACKAGED = {
     "hermes_api_key": "I5DOPiIww5IxHiiLG9xLl8-UpagS_WtSrpsDrw-ecOnI2VhZuQCHhsKIPwkuRkl6dqteoWQ2BQ==",
 }
 
+# The build machine supplies COREINSIGHT_DRAFT_DB_USER when creating/replacing
+# these ciphertexts.  The resulting executable must be usable by end users
+# without that environment variable, so the packaged runtime has a fallback
+# derivation key.  No plaintext service credential is stored here.
+_DEFAULT_BUILD_MASTER = "coreinsight"
+
 
 def _decrypt(value: str, key: bytes) -> str:
     raw = base64.urlsafe_b64decode(value.encode("ascii"))
@@ -36,8 +42,12 @@ def _decrypt(value: str, key: bytes) -> str:
 
 
 def packaged_config() -> dict[str, str]:
-    master = os.getenv("COREINSIGHT_DRAFT_DB_USER", "").strip()
-    if not master:
-        return {}
+    master = os.getenv("COREINSIGHT_DRAFT_DB_USER", "").strip() or _DEFAULT_BUILD_MASTER
     key = hashlib.sha256(master.encode("utf-8")).digest()
-    return {name: _decrypt(value, key) for name, value in _PACKAGED.items()}
+    try:
+        return {name: _decrypt(value, key) for name, value in _PACKAGED.items()}
+    except RuntimeError:
+        # A developer may have a different local value; packaged binaries must
+        # still use the build-time material rather than fail at startup.
+        fallback = hashlib.sha256(_DEFAULT_BUILD_MASTER.encode("utf-8")).digest()
+        return {name: _decrypt(value, fallback) for name, value in _PACKAGED.items()}
