@@ -269,7 +269,10 @@ exit /b 2
 echo [%date% %time%] failed to replace executable>>"%LOG%"
 exit /b 3
 """
-    script_path.write_text(script, encoding="utf-8-sig", newline="\r\n")
+    # Path.write_text(newline=...) is only available in newer Python versions;
+    # use open() so the packaged Python 3.12/3.13 runtimes behave consistently.
+    with script_path.open("w", encoding="utf-8-sig", newline="\r\n") as script_file:
+        script_file.write(script)
     return script_path
 
 
