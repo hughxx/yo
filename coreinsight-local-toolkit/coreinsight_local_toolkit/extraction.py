@@ -207,9 +207,16 @@ class ExtractionRuntime:
                 progress, job.cancel, group_id=payload.groupId,
                 scheduled=job.scheduled, extract_mode=payload.extractMode)
             if self.notifier:
-                self.notifier.notify(
-                    job.upload_by, payload.extractMode,
-                    result.get('experiences') or [])
+                experiences = result.get('experiences') or []
+                try:
+                    self.notifier.notify(
+                        job.upload_by, payload.extractMode, experiences,
+                        source_type="welink")
+                except TypeError as exc:
+                    if "source_type" not in str(exc):
+                        raise
+                    self.notifier.notify(
+                        job.upload_by, payload.extractMode, experiences)
             message = ('草稿提取完成，已进入平台待审核列表'
                        if payload.extractMode == 'draft'
                        else '经验提取并入库完成')

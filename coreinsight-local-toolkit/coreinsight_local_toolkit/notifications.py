@@ -20,7 +20,7 @@ class MessageNotifier:
         self.environments = EnvironmentManager(settings.data_dir)
 
     def notify(self, user_id: str, extract_mode: str,
-               experiences: list[dict]) -> bool:
+               experiences: list[dict], source_type: str = "welink") -> bool:
         user_id = str(user_id or '').strip()
         rows = [row for row in experiences if row.get('docId')]
         if not user_id or not rows or not self.settings.notification_url:
@@ -28,9 +28,10 @@ class MessageNotifier:
         success = True
         for offset in range(0, len(rows), 10):
             batch = rows[offset:offset + 10]
-            text = self._draft_text(batch, len(rows), offset) \
+            source = "邮件" if source_type == "email" else "聊天记录"
+            text = self._draft_text(batch, len(rows), offset, source) \
                 if extract_mode == 'draft' \
-                else self._direct_text(batch, len(rows), offset)
+                else self._direct_text(batch, len(rows), offset, source)
             try:
                 response = self.session.post(
                     self.settings.notification_url,
@@ -51,8 +52,9 @@ class MessageNotifier:
                     user_id, extract_mode)
         return success
 
-    def _draft_text(self, rows: list[dict], total: int, offset: int) -> str:
-        lines = [f'CoreInsight 已生成 {total} 条待确认经验：']
+    def _draft_text(self, rows: list[dict], total: int, offset: int,
+                    source: str) -> str:
+        lines = [f'CoreInsight 已从{source}为您提取了 {total} 条待确认经验：']
         lines.extend(self._title_lines(rows, offset))
         lines.extend([
             '',
@@ -61,8 +63,9 @@ class MessageNotifier:
         ])
         return '\n'.join(lines)
 
-    def _direct_text(self, rows: list[dict], total: int, offset: int) -> str:
-        lines = [f'CoreInsight 已提取并入库 {total} 条经验：']
+    def _direct_text(self, rows: list[dict], total: int, offset: int,
+                     source: str) -> str:
+        lines = [f'CoreInsight 已从{source}为您提取并入库 {total} 条经验：']
         portal = self.environments.resolve_url(
             self.settings.portal_url).rstrip('/')
         for index, row in enumerate(rows, offset + 1):

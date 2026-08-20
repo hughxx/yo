@@ -421,8 +421,17 @@ class EmailRuntime:
                 scheduled=scheduled, extract_mode=payload.extractMode,
                 source_type="email")
             if self.notifier:
-                self.notifier.notify(upload_by, payload.extractMode,
-                                     result.get("experiences") or [])
+                experiences = result.get("experiences") or []
+                try:
+                    self.notifier.notify(upload_by, payload.extractMode,
+                                         experiences, source_type="email")
+                except TypeError as exc:
+                    # Keep compatibility with injected notifiers from older
+                    # integrations that still accept the three-argument API.
+                    if "source_type" not in str(exc):
+                        raise
+                    self.notifier.notify(upload_by, payload.extractMode,
+                                         experiences)
             success = True
             message = ("邮件经验草稿已生成，等待平台确认" if payload.extractMode == "draft"
                        else "邮件经验已提取并入库")
