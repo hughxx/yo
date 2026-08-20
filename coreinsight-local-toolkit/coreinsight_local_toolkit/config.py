@@ -4,6 +4,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .secure_config import packaged_config
+
+_PACKAGED = packaged_config()
+
 DEFAULT_ORIGINS = (
     "https://coreinsight-beta.rnd.huawei.com",
     "https://coreinsight.rnd.huawei.com",
@@ -40,9 +44,7 @@ class Settings:
     hermes_url: str = os.getenv(
         "COREINSIGHT_HERMES_URL", "http://7.183.107.92:31454"
     ).strip().rstrip("/")
-    hermes_api_key: str = os.getenv(
-        "COREINSIGHT_HERMES_API_KEY", "hermes-internal-dev-key"
-    ).strip()
+    hermes_api_key: str = _PACKAGED.get("hermes_api_key", "")
     workspace_file_server_url: str = os.getenv(
         "COREINSIGHT_WORKSPACE_FILE_SERVER_URL", "http://7.183.107.92:30864"
     ).strip().rstrip("/")
@@ -61,8 +63,8 @@ class Settings:
     rag_pic_public_base: str = os.getenv(
         "COREINSIGHT_RAG_PIC_PUBLIC_BASE", "https://fuyao-data-server.rnd.huawei.com"
     ).strip().rstrip("/")
-    clouddrive_account: str = os.getenv("COREINSIGHT_CLOUDDRIVE_ACCOUNT", "").strip()
-    clouddrive_password: str = os.getenv("COREINSIGHT_CLOUDDRIVE_PASSWORD", "").strip()
+    clouddrive_account: str = _PACKAGED.get("clouddrive_account", "")
+    clouddrive_password: str = _PACKAGED.get("clouddrive_password", "")
     hermes_timeout_seconds: int = 1800
     portal_url: str = os.getenv(
         "COREINSIGHT_PORTAL_URL", "https://coreinsight.rnd.huawei.com"
