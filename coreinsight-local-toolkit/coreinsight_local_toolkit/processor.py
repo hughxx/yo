@@ -356,7 +356,7 @@ class LocalExperienceProcessor:
         except Exception as exc:
             logger.warning("attachment upload failed name=%s", filename,
                            exc_info=True)
-            return f"> 经验提取时图片上传失败，请重新执行提取：{filename}"
+            return f"![OCR结果](无法显示图片：{filename})"
 
     def _download(self, download_url: str, extraction_code: str) -> bytes:
         token_response = requests.post(

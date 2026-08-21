@@ -424,7 +424,7 @@ class OutlookClient:
             except Exception as exc:
                 logger.warning("email attachment failed name=%s", filename, exc_info=True)
                 markdown.append(
-                    f"> 经验提取时图片上传失败，请重新执行提取：{filename}")
+                    f"![OCR结果](无法显示图片：{filename})")
                 rows.append({"name": filename, "url": "", "ocr": "",
                              "inline": False, "error": str(exc)})
         return html_body, markdown, rows
