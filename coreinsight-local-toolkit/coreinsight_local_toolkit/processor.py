@@ -33,6 +33,13 @@ class LocalExperienceProcessor:
         self.workspaces = WorkspaceClient(settings.workspace_file_server_url)
         self.hermes = HermesClient(
             settings.hermes_url, settings.hermes_api_key, settings.hermes_timeout_seconds)
+        logger.info(
+            "runtime credentials active hermes_url=%s hermes_key_present=%s hermes_key_len=%d hermes_key_sha256=%s workspace_file_server_url=%s",
+            settings.hermes_url, bool(settings.hermes_api_key),
+            len(settings.hermes_api_key or ""),
+            hashlib.sha256((settings.hermes_api_key or "").encode()).hexdigest()[:12],
+            settings.workspace_file_server_url,
+        )
         self.drafts = DraftClient(settings)
         self._state_path = settings.data_dir / "welink_workspace_state.json"
         self._state_lock = threading.RLock()
