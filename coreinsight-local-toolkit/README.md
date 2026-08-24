@@ -81,7 +81,7 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 | `COREINSIGHT_UPDATE_CONFIG_URL` | Fuyao `selectConfigByKey` | 配置中心查询接口 |
 | `COREINSIGHT_UPDATE_CONFIG_KEY` | `coreinsight_local_toolkit_release` | 版本配置 key；任一项为空时关闭检查 |
 | `COREINSIGHT_UPDATE_ENABLED` | `1` | 设为 `0` 时关闭自动更新，用于故障排查 |
-| `COREINSIGHT_RUNTIME_CONFIG_KEY` | `coreinsight_local_toolkit_runtime_v2` | 配置中心运行配置 key（旧 key 保留给旧版本） |
+| `COREINSIGHT_RUNTIME_CONFIG_KEY` | `coreinsight_local_toolkit_release` | 配置中心统一版本与运行配置 key |
 | `COREINSIGHT_RUNTIME_CONFIG_URL` | 配置中心默认地址 | 运行密钥配置接口地址 |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
 | `COREINSIGHT_DRAFT_API_URL` | `https://coreinsight.rnd.huawei.com/chat` | 平台草稿新建/更新接口前缀 |

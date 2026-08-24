@@ -22,7 +22,7 @@ CONFIG_URL = os.environ.get(
 ).strip()
 CONFIG_KEY = os.environ.get(
     "COREINSIGHT_RUNTIME_CONFIG_KEY",
-    "coreinsight_local_toolkit_runtime_v2",
+    "coreinsight_local_toolkit_release",
 ).strip()
 _CIPHER_KEY = hashlib.sha256(
     b"coreinsight-local-toolkit-runtime-v1"
