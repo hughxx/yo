@@ -86,10 +86,12 @@ def packaged_config() -> dict[str, str]:
                 if isinstance(item, dict):
                     encrypted = bool(item.get("encrypted", False))
                     item = item.get("val", item.get("value", ""))
-                    if encrypted:
+                    if encrypted or str(item).startswith("enc:v1:"):
                         return decrypt_secret(str(item))
                 if item is not None and str(item).strip():
-                    return str(item).strip()
+                    text = str(item).strip()
+                    # Accept the compact legacy form: "enc:v1:...".
+                    return decrypt_secret(text) if text.startswith("enc:v1:") else text
             return ""
 
         result = {
