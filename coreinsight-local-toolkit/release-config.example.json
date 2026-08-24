@@ -4,6 +4,7 @@
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://replace-with-direct-download/coreinsight-local-toolkit.exe",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "releaseNotes": [
     "新增 Outlook 邮件、文件夹、正文预览和规则/黑名单管理",
     "邮件附件转 Markdown，图片保留 OCR 结果和公开链接",

@@ -8,13 +8,6 @@ $env:PIP_CACHE_DIR = Join-Path $ProjectDir ".pip-cache"
 
 Push-Location $ProjectDir
 try {
-    $BuildMaster = [Environment]::GetEnvironmentVariable("COREINSIGHT_DRAFT_DB_USER", "Process")
-    if ([string]::IsNullOrWhiteSpace($BuildMaster)) {
-        $BuildMaster = [Environment]::GetEnvironmentVariable("COREINSIGHT_DRAFT_DB_USER", "User")
-    }
-    if ([string]::IsNullOrWhiteSpace($BuildMaster)) {
-        throw "打包前必须在开发/打包机器配置 COREINSIGHT_DRAFT_DB_USER"
-    }
     if (-not (Test-Path -LiteralPath $Python)) {
         python -m venv $BuildVenv
     }
