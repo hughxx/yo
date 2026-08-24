@@ -24,6 +24,8 @@ CONFIG_KEY = os.environ.get(
     "COREINSIGHT_RUNTIME_CONFIG_KEY",
     "coreinsight_local_toolkit_release",
 ).strip()
+# Compatibility with builds that used this key before the unified config.
+LEGACY_CONFIG_KEY = "coreinsight_local_toolkit_runtime"
 _CIPHER_KEY = hashlib.sha256(
     b"coreinsight-local-toolkit-runtime-v1"
 ).digest()
@@ -62,9 +64,10 @@ def packaged_config() -> dict[str, str]:
     """
     if not CONFIG_URL or not CONFIG_KEY:
         return {}
-    try:
+    for config_key in dict.fromkeys((CONFIG_KEY, LEGACY_CONFIG_KEY)):
+      try:
         response = requests.get(
-            CONFIG_URL, params={"key": CONFIG_KEY},
+            CONFIG_URL, params={"key": config_key},
             timeout=10, verify=False)
         response.raise_for_status()
         body = response.json()
@@ -89,7 +92,7 @@ def packaged_config() -> dict[str, str]:
                     return str(item).strip()
             return ""
 
-        return {
+        result = {
             "hermes_url": value(public, "hermes_url", "hermesUrl"),
             "workspace_file_server_url": value(public, "workspace_file_server_url", "workspaceFileServerUrl"),
             "experience_engine_url": value(public, "experience_engine_url", "experienceEngineUrl"),
@@ -102,8 +105,10 @@ def packaged_config() -> dict[str, str]:
             "clouddrive_password": value(secrets, "clouddrive_password", "clouddrivePassword"),
             "hermes_api_key": value(secrets, "hermes_api_key", "hermesApiKey"),
         }
-    except Exception:
+        if result.get("hermes_api_key"):
+            return result
+      except Exception:
         logging.getLogger(__name__).warning(
-            "runtime config center unavailable key=%s", CONFIG_KEY,
+            "runtime config center unavailable key=%s", config_key,
             exc_info=True)
-        return {}
+    return {}
