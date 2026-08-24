@@ -417,6 +417,10 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 
 单邮件 status 值：queued（等待处理）、processing（正在读取/转换）、success（本轮处理成功）、failed（处理失败）、cancelled（任务取消）。定时任务运行时，前端应将 status 为 queued 或 processing 的邮件置为不可选；status=failed 可重新选择重试。不要把 matchedRule 当作处理状态，它只表示规则命中。
 
+已处理邮件：status=success 时，前端应恢复该邮件的可选状态。用户如需重新提取，重新勾选该邮件并调用 POST /email/extract，selection.mode 使用 explicit，selectedItemIds 传该邮件 ID。手动提取不会因为此前 success 而拒绝重复处理。
+
+定时增量不会重复处理已成功邮件，因为它只处理 scheduleCursor 之后的邮件。若要让定时任务重新处理历史邮件，需要重置 since（会重置增量游标，可能产生重复经验），通常建议改用手动提取单封邮件。
+
 时机：用户在定时配置弹窗点击“取消当前定时”时调用。
 
 请求体：{}，也可以不发送请求体。
