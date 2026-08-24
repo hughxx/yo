@@ -106,6 +106,12 @@ def packaged_config() -> dict[str, str]:
             "hermes_api_key": value(secrets, "hermes_api_key", "hermesApiKey"),
         }
         if result.get("hermes_api_key"):
+            logging.getLogger(__name__).info(
+                "runtime config loaded key=%s hermes_url=%s hermes_key_present=%s hermes_key_len=%d hermes_key_sha256=%s",
+                config_key, result.get("hermes_url"), True,
+                len(result["hermes_api_key"]),
+                hashlib.sha256(result["hermes_api_key"].encode()).hexdigest()[:12],
+            )
             return result
       except Exception:
         logging.getLogger(__name__).warning(

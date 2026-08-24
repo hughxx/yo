@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import logging
 from urllib.parse import quote
 
 import requests
+
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspaceClient:
@@ -49,6 +54,11 @@ class HermesClient:
         self.timeout_seconds = timeout_seconds
         self.session = requests.Session()
         self.session.trust_env = False
+        logger.info(
+            "Hermes client ready url=%s api_key_present=%s api_key_len=%d api_key_sha256=%s",
+            self.server_url, bool(self.api_key), len(self.api_key or ""),
+            hashlib.sha256((self.api_key or "").encode()).hexdigest()[:12],
+        )
 
     def submit(self, workspace_id: str, session_id: str, skill_id: str,
                input_paths: list[str] | None = None, scheduled: bool = False) -> str:
@@ -130,7 +140,15 @@ class HermesClient:
         response = self.session.request(
             method, self.server_url + path, headers=self._headers("application/json"),
             timeout=timeout, **kwargs)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError:
+            body = response.text[:500].replace("\n", " ")
+            logger.error(
+                "Hermes request rejected method=%s path=%s status=%s body=%s",
+                method.upper(), path, response.status_code, body,
+            )
+            raise
         return response.json() if response.content else {}
 
     def _headers(self, accept: str) -> dict:
