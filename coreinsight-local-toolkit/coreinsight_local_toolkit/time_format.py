@@ -15,7 +15,13 @@ def parse_datetime(value: str) -> datetime:
 
 def format_datetime(value: datetime) -> str:
     if value.tzinfo is not None:
-        value = value.astimezone()
+        try:
+            value = value.astimezone()
+        except (OSError, ValueError):
+            # Windows can reject local-time conversion for dates around the
+            # Unix epoch (notably 1970-01-01). Keep the parsed wall-clock value
+            # instead of turning a valid `since` into a server error.
+            value = value.replace(tzinfo=None)
     return value.strftime(DATETIME_FORMAT)
 
 
