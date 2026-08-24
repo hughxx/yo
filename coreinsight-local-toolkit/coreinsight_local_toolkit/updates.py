@@ -154,11 +154,8 @@ def check_for_update(settings: Settings) -> UpdateStatus:
     below_minimum = _version_tuple(__version__) < _version_tuple(minimum)
     force_update = below_minimum or (
         bool(manifest.get("forceUpdate", False)) and available)
-    if available:
-        if urlparse(download_url).scheme != "https":
-            raise ValueError("更新包地址必须使用 HTTPS")
-        if not _SHA256_RE.fullmatch(sha256):
-            raise ValueError("更新清单缺少有效的 SHA-256")
+    if available and urlparse(download_url).scheme not in {"http", "https"}:
+        raise ValueError("更新包地址必须使用 HTTP/HTTPS")
     return UpdateStatus(
         currentVersion=__version__, latestVersion=latest,
         updateAvailable=available, downloadUrl=download_url if available else "",

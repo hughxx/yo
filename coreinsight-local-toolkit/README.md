@@ -178,23 +178,19 @@ Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://example.com/coreinsight-local-toolkit.exe",
-  "sha256": "64位十六进制SHA-256",
   "releaseNotes": ["更新说明第一条", "更新说明第二条"]
 }
 ```
 
 当前版本低于 `minimumSupportedVersion` 时强制更新；或者 `forceUpdate=true` 且当前版本低于
 `latestVersion` 时强制更新。其余版本差异仅提示普通更新。仅当发现新版本时才要求 HTTPS
-下载地址及合法 SHA-256。普通更新由用户在“检查更新”中确认；强制更新会暂停 WeLink 业务
-接口并自动下载。安装包下载到 `D:\CoreInsight\LocalToolkit\updates`，SHA-256 校验通过后由
-外部更新脚本等待旧进程退出、覆盖原 EXE 并自动重启。升级日志写入
+下载地址。由于下载页面可能需要用户浏览器 Cookie，Toolkit 只负责打开 `downloadUrl`，不在本地自动下载、校验或安装。普通更新由用户在“检查更新”中确认；强制更新会暂停 WeLink 业务
+接口并打开下载页面。用户下载后需手动替换 EXE 并重新启动。升级日志写入
 `D:\CoreInsight\LocalToolkit\logs\updater.log`。
 
-版本接口包括 `POST /update/check`、`GET /update/status` 和 `POST /update/install`。SHA-256
-可以防止下载损坏或被替换；正式发布仍建议再对 EXE 添加企业代码签名。
+版本接口包括 `POST /update/check`、`GET /update/status` 和 `POST /update/install`。正式发布仍建议对 EXE 添加企业代码签名。
 可直接复制 `release-config.example.json` 到配置中心，发布时只需替换其中的 HTTPS 直链。
-直链必须允许 Toolkit 不依赖浏览器 Cookie 直接下载。`0.3.0` 是首个具备自动替换能力的版本，
-从更旧版本迁入时仍需手动安装一次；之后的版本即可自动升级。
+`downloadUrl` 可以是需要登录/Cookie 的浏览器下载页面，不要求 Toolkit 进程直接访问。
 
 ## 打包
 

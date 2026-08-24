@@ -334,7 +334,7 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 - `GET /version`：当前版本和更新配置状态。
 - `POST /update/check`：立即检查配置中心版本。
 - `GET /update/status`：获取版本检查、下载和安装状态。
-- `POST /update/install`：下载并安装当前可用更新，成功受理返回 `202`。
+- `POST /update/install`：在浏览器打开当前版本下载页面，成功受理返回 `202`；不会自动下载、校验或替换 EXE。
 
 强制更新生效后，`/capabilities` 及所有 `/welink/*`、`/email/*` 业务接口返回 `426`，响应中包含更新状态。
 

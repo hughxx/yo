@@ -40,6 +40,19 @@ def _native_notice(message: str, title: str = "CoreInsight Local Toolkit") -> No
         logger.warning("desktop notice: %s", message)
 
 
+def open_update_page(status: UpdateStatus, update_manager: UpdateManager,
+                     tray=None) -> None:
+    """Open the cookie-protected download page; do not download/install locally."""
+    if not status.downloadUrl:
+        raise ValueError("更新配置缺少 downloadUrl")
+    webbrowser.open(status.downloadUrl)
+    update_manager.set_runtime("opened", 0)
+    if tray is not None:
+        tray.notify(
+            f"已打开版本 {status.latestVersion} 下载页面，请在浏览器中完成下载和替换",
+            "CoreInsight Local Toolkit")
+
+
 def _native_confirm(message: str, title: str = "CoreInsight Local Toolkit") -> bool:
     try:
         return ctypes.windll.user32.MessageBoxW(None, message, title, 0x24) == 6
@@ -216,14 +229,14 @@ def run_desktop(settings: Settings) -> None:
                 elif status.forceUpdate:
                     message = f"当前版本已停用，必须更新到 {status.latestVersion}"
                     tray.notify(message, "CoreInsight Local Toolkit")
-                    begin_install(status)
+                    open_update_page(status, update_manager, tray)
                     return
                 elif status.updateAvailable:
                     message = f"发现新版本 {status.latestVersion}"
                     if manual and _native_confirm(
                             f"发现新版本 {status.latestVersion}，是否立即下载并安装？\n\n"
                             + "\n".join(status.releaseNotes)):
-                        begin_install(status)
+                        open_update_page(status, update_manager, tray)
                         return
                 else:
                     message = f"当前已是最新版本 {status.currentVersion}"
@@ -248,7 +261,8 @@ def run_desktop(settings: Settings) -> None:
         server.should_exit = True
         server_thread.join(timeout=10)
         raise
-    update_manager.set_installer(begin_install)
+    update_manager.set_installer(
+        lambda status: open_update_page(status, update_manager, tray))
 
     def process_ui_actions() -> None:
         while not exiting.is_set():
