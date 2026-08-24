@@ -1,5 +1,6 @@
 # PyInstaller spec for the standalone Miner.
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules
 
 HERE = Path(SPEC).resolve().parent
 ROOT = HERE.parent
@@ -12,7 +13,8 @@ a = Analysis(
         (str(HERE / "web"), "miner/web"),
         (str(ROOT / "pyqt_client" / "assets"), "pyqt_client/assets"),
     ],
-    hiddenimports=[
+    hiddenimports=collect_submodules("modules") + [
+        "modules",
         "modules.email.outlook",
         "modules.email.html2md",
         "modules.welink.history",
