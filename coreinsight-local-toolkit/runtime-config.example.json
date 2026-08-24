@@ -1,5 +1,17 @@
 {
-  "clouddrive_account": "p_coreinsight",
-  "clouddrive_password": "请填写 CloudDrive 密码",
-  "hermes_api_key": "请填写 Hermes API Key"
+  "public": {
+    "hermes_url": "http://7.183.107.92:31454",
+    "workspace_file_server_url": "http://7.183.107.92:30864",
+    "experience_engine_url": "https://fuyao.rnd.huawei.com",
+    "draft_api_url": "https://coreinsight.rnd.huawei.com/chat",
+    "ocr_url": "http://10.90.113.228:5678/ocr",
+    "image_file_server_url": "http://7.224.100.105:32169",
+    "rag_pic_public_base": "https://fuyao-data-server.rnd.huawei.com",
+    "notification_url": "http://fuyao.rnd.huawei.com/coreinsight-bot/im/message/coreinsight-local-toolkit"
+  },
+  "secrets": {
+    "clouddrive_account": "p_coreinsight",
+    "clouddrive_password": "enc:v1:请使用配置加密脚本生成",
+    "hermes_api_key": "enc:v1:请使用配置加密脚本生成"
+  }
 }

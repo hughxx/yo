@@ -42,26 +42,26 @@ class Settings:
     welink_cli: str = os.getenv("COREINSIGHT_WELINK_CLI", "welink-cli").strip() or "welink-cli"
     upload_by: str = os.getenv("COREINSIGHT_UPLOAD_BY", "").strip()
     hermes_url: str = os.getenv(
-        "COREINSIGHT_HERMES_URL", "http://7.183.107.92:31454"
+        "COREINSIGHT_HERMES_URL", _PACKAGED.get("hermes_url", "http://7.183.107.92:31454")
     ).strip().rstrip("/")
     hermes_api_key: str = _PACKAGED.get("hermes_api_key", "")
     workspace_file_server_url: str = os.getenv(
-        "COREINSIGHT_WORKSPACE_FILE_SERVER_URL", "http://7.183.107.92:30864"
+        "COREINSIGHT_WORKSPACE_FILE_SERVER_URL", _PACKAGED.get("workspace_file_server_url", "http://7.183.107.92:30864")
     ).strip().rstrip("/")
     experience_engine_url: str = os.getenv(
-        "COREINSIGHT_EXPERIENCE_ENGINE_URL", "https://fuyao.rnd.huawei.com"
+        "COREINSIGHT_EXPERIENCE_ENGINE_URL", _PACKAGED.get("experience_engine_url", "https://fuyao.rnd.huawei.com")
     ).strip().rstrip("/")
     draft_api_url: str = os.getenv(
-        'COREINSIGHT_DRAFT_API_URL', 'https://coreinsight.rnd.huawei.com/chat'
+        'COREINSIGHT_DRAFT_API_URL', _PACKAGED.get("draft_api_url", 'https://coreinsight.rnd.huawei.com/chat')
     ).strip().rstrip('/')
     ocr_url: str = os.getenv(
-        "COREINSIGHT_OCR_URL", "http://10.90.113.228:5678/ocr"
+        "COREINSIGHT_OCR_URL", _PACKAGED.get("ocr_url", "http://10.90.113.228:5678/ocr")
     ).strip()
     image_file_server_url: str = os.getenv(
-        "COREINSIGHT_FILE_SERVER_URL", "http://7.224.100.105:32169"
+        "COREINSIGHT_FILE_SERVER_URL", _PACKAGED.get("image_file_server_url", "http://7.224.100.105:32169")
     ).strip().rstrip("/")
     rag_pic_public_base: str = os.getenv(
-        "COREINSIGHT_RAG_PIC_PUBLIC_BASE", "https://fuyao-data-server.rnd.huawei.com"
+        "COREINSIGHT_RAG_PIC_PUBLIC_BASE", _PACKAGED.get("rag_pic_public_base", "https://fuyao-data-server.rnd.huawei.com")
     ).strip().rstrip("/")
     clouddrive_account: str = _PACKAGED.get("clouddrive_account", "")
     clouddrive_password: str = _PACKAGED.get("clouddrive_password", "")
@@ -74,8 +74,10 @@ class Settings:
         "https://coreinsight.rnd.huawei.com/experience/create",
     ).strip()
     notification_url: str = os.getenv(
-        "COREINSIGHT_IM_NOTIFICATION_URL",
-        "http://fuyao.rnd.huawei.com/coreinsight-bot/im/message/coreinsight-local-toolkit",
+        "COREINSIGHT_IM_NOTIFICATION_URL", _PACKAGED.get(
+            "notification_url",
+            "http://fuyao.rnd.huawei.com/coreinsight-bot/im/message/coreinsight-local-toolkit",
+        ),
     ).strip()
     update_config_url: str = os.getenv(
         "COREINSIGHT_UPDATE_CONFIG_URL",
