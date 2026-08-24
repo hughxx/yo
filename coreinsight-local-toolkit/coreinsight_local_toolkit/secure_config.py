@@ -80,6 +80,11 @@ def packaged_config() -> dict[str, str]:
         def value(source: dict, *names: str) -> str:
             for name in names:
                 item = source.get(name)
+                if isinstance(item, dict):
+                    encrypted = bool(item.get("encrypted", False))
+                    item = item.get("val", item.get("value", ""))
+                    if encrypted:
+                        return decrypt_secret(str(item))
                 if item is not None and str(item).strip():
                     return str(item).strip()
             return ""
@@ -94,8 +99,8 @@ def packaged_config() -> dict[str, str]:
             "rag_pic_public_base": value(public, "rag_pic_public_base", "ragPicPublicBase"),
             "notification_url": value(public, "notification_url", "notificationUrl"),
             "clouddrive_account": value(secrets, "clouddrive_account", "clouddriveAccount"),
-            "clouddrive_password": decrypt_secret(value(secrets, "clouddrive_password", "clouddrivePassword")),
-            "hermes_api_key": decrypt_secret(value(secrets, "hermes_api_key", "hermesApiKey")),
+            "clouddrive_password": value(secrets, "clouddrive_password", "clouddrivePassword"),
+            "hermes_api_key": value(secrets, "hermes_api_key", "hermesApiKey"),
         }
     except Exception:
         logging.getLogger(__name__).warning(

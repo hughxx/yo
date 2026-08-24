@@ -1,5 +1,4 @@
 {
-  "encrypted": true,
   "hermes_url": "http://7.183.107.92:31454",
   "workspace_file_server_url": "http://7.183.107.92:30864",
   "experience_engine_url": "https://fuyao.rnd.huawei.com",
@@ -9,6 +8,12 @@
   "rag_pic_public_base": "https://fuyao-data-server.rnd.huawei.com",
   "notification_url": "http://fuyao.rnd.huawei.com/coreinsight-bot/im/message/coreinsight-local-toolkit",
   "clouddrive_account": "p_coreinsight",
-  "clouddrive_password": "enc:v1:请使用配置加密脚本生成",
-  "hermes_api_key": "enc:v1:请使用配置加密脚本生成"
+  "clouddrive_password": {
+    "encrypted": true,
+    "val": "enc:v1:请使用配置加密脚本生成"
+  },
+  "hermes_api_key": {
+    "encrypted": true,
+    "val": "enc:v1:请使用配置加密脚本生成"
+  }
 }
