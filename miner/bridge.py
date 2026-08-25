@@ -271,8 +271,17 @@ class MinerApi:
 
     def open_results_dir(self):
         import os
-        os.startfile(str(config.ROOT)) if hasattr(os, "startfile") else webbrowser.open(config.ROOT.as_uri())
-        return {"ok": True, "path": str(config.ROOT)}
+        try:
+            config.ROOT.mkdir(parents=True, exist_ok=True)
+            if hasattr(os, "startfile"):
+                os.startfile(str(config.ROOT))
+            else:
+                webbrowser.open(config.ROOT.as_uri())
+            logging.info("miner results directory opened path=%s", config.ROOT)
+            return {"ok": True, "path": str(config.ROOT)}
+        except Exception as exc:
+            logging.exception("miner results directory open failed path=%s", config.ROOT)
+            return {"ok": False, "error": f"无法打开结果目录：{exc}"}
 
     def open_file(self, path):
         import os
