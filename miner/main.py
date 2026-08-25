@@ -61,7 +61,7 @@ def _start_tray(api, window):
         except Exception:
             pass
 
-    icon = pystray.Icon("CoreInsight Miner", _tray_image(), "CoreInsight Miner", pystray.Menu(
+    icon = pystray.Icon("Miner", _tray_image(), "Miner", pystray.Menu(
         TrayItem("打开 Miner", lambda icon, item: None, default=True),
         TrayItem("检查更新", check),
         TrayItem("退出", quit_app),
