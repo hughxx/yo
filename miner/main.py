@@ -12,8 +12,10 @@ from pystray import MenuItem as TrayItem
 
 try:
     from .bridge import MinerApi
+    from . import config
 except ImportError:  # PyInstaller entry point is a file, not a package module.
     from miner.bridge import MinerApi
+    from miner import config
 
 
 def main():
@@ -65,6 +67,8 @@ def _start_tray(api, window):
         TrayItem("退出", quit_app),
     ))
     threading.Thread(target=icon.run, daemon=True).start()
+    if config.FORCE_UPDATE and config.DOWNLOAD_URL:
+        threading.Timer(2.0, lambda: webbrowser.open(config.DOWNLOAD_URL)).start()
     return icon
 
 
