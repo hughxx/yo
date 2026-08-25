@@ -14,6 +14,7 @@ a = Analysis(
         (str(ROOT / "pyqt_client" / "assets"), "pyqt_client/assets"),
     ],
     hiddenimports=collect_submodules("modules") + [
+        "pystray",
         "modules",
         "modules.email.outlook",
         "modules.email.html2md",

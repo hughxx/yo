@@ -47,6 +47,14 @@ class MinerApi:
     def bind_window(self, window):
         self._window = window
 
+    def check_update(self):
+        return {"ok": True, "currentVersion": config.VERSION,
+                "latestVersion": config.LATEST_VERSION,
+                "minimumSupportedVersion": config.MINIMUM_SUPPORTED_VERSION,
+                "forceUpdate": config.FORCE_UPDATE,
+                "downloadUrl": config.DOWNLOAD_URL,
+                "releaseNotes": config.RELEASE_NOTES}
+
     def _event(self, message, **data):
         with self._lock:
             self._events.append({"time": datetime.now().strftime("%H:%M:%S"), "message": message, **data})

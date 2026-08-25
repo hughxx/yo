@@ -36,6 +36,7 @@ def _config_value(*names, default=""):
     return default
 
 ROOT = Path(os.environ.get("COREINSIGHT_MINER_DIR", r"D:\CoreInsight\miner"))
+VERSION = "0.1.0"
 ROOT.mkdir(parents=True, exist_ok=True)
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -64,6 +65,11 @@ def _runtime_config():
 
 
 _RUNTIME = _runtime_config()
+LATEST_VERSION = str(_RUNTIME.get("latestVersion") or VERSION)
+MINIMUM_SUPPORTED_VERSION = str(_RUNTIME.get("minimumSupportedVersion") or VERSION)
+FORCE_UPDATE = bool(_RUNTIME.get("forceUpdate", False))
+DOWNLOAD_URL = str(_RUNTIME.get("downloadUrl") or "")
+RELEASE_NOTES = _RUNTIME.get("releaseNotes") or []
 LLM_BASE_URL = os.environ.get("COREINSIGHT_LLM_BASE_URL", _config_value("llm_base_url", "model_gateway_url", default="https://fuyao.rnd.huawei.com/model_gateway/v1"))
 LLM_API_KEY = os.environ.get("COREINSIGHT_LLM_API_KEY", _config_value("llm_api_key", "model_gateway_api_key"))
 LLM_MODEL_ID = os.environ.get("COREINSIGHT_LLM_MODEL_ID", _config_value("llm_model_id", "model_id", default="a9dc5db2-e625-487c-95a6-69c2be0831ca"))
