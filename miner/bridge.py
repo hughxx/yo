@@ -193,6 +193,49 @@ class MinerApi:
             logging.exception("miner local experience extraction failed")
             return {"ok": False, "error": str(exc)}
 
+    def test_model(self, resource="public", user_input=""):
+        try:
+            text = str(user_input or "").strip()
+            if not text:
+                raise ValueError("请输入测试内容")
+            if resource == "local":
+                prompt = f"请直接回答下面的测试内容，不要调用工具：\n{text}"
+                cmd = ["codeagent", "--print", "--output-format", "stream-json",
+                       "--permission-mode", "bypassPermissions", prompt]
+                process = subprocess.Popen(cmd, shell=True, cwd=str(config.ROOT),
+                                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                           stderr=subprocess.STDOUT, text=True,
+                                           encoding="utf-8", errors="replace")
+                outputs = []
+                with config.LOG_FILE.open("a", encoding="utf-8") as log:
+                    log.write(f"\n=== Model test local {datetime.now().isoformat()} ===\n")
+                    for line in process.stdout or []:
+                        log.write(line)
+                        try:
+                            item = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if isinstance(item.get("result"), str):
+                            outputs.append(item["result"])
+                code = process.wait()
+                if code != 0:
+                    raise RuntimeError(f"CodeAgent 执行失败，退出码 {code}")
+                return {"ok": True, "resource": resource, "output": (outputs[-1] if outputs else "").strip()}
+            if not config.LLM_API_KEY:
+                raise ValueError("公共模型配置未就绪，请检查配置中心")
+            payload = {"model": config.LLM_MODEL_ID,
+                       "messages": [{"role": "user", "content": text}],
+                       "temperature": 0.2, "stream": False}
+            response = requests.post(config.LLM_BASE_URL.rstrip("/") + "/chat/completions",
+                                     headers={"Authorization": f"Bearer {config.LLM_API_KEY}", "Content-Type": "application/json"},
+                                     json=payload, timeout=120, verify=False)
+            response.raise_for_status()
+            output = response.json()["choices"][0]["message"]["content"]
+            return {"ok": True, "resource": resource, "output": str(output).strip()}
+        except Exception as exc:
+            logging.exception("miner model test failed")
+            return {"ok": False, "error": str(exc)}
+
     def list_results(self):
         result = []
         for kind, directory in (("welink", config.WELINK_DIR), ("outlook", config.OUTLOOK_DIR)):
