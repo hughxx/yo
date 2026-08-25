@@ -87,7 +87,7 @@ description: 从 Outlook 邮件 Markdown、附件链接和图片 OCR 中提取�
   "experience": "结构化 Markdown 剧本，包含必要的邮件证据和图片",
   "rag_search_text": "空格分隔的检索关键词",
   "scene_id": "251",
-  "scene": "邮件技术经验"
+  "scene": "问题定位数据飞轮"
 }
 
 新建时 title、summary、experience、rag_search_text 必须为非空字符串。更新时必须沿用已有 doc_id，并输出合并后的完整版本。

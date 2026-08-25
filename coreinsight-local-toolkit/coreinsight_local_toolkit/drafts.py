@@ -47,7 +47,7 @@ class DraftClient:
         payload = {
             'doc_id': doc_id,
             'user_id': user_id,
-            'scene': str(result.get('scene') or 'WeLink问题定位经验'),
+            'scene': str(result.get('scene') or '问题定位数据飞轮'),
             'scene_id': str(result.get('scene_id') or '251'),
             'title': result['title'],
             'summary': result['summary'],

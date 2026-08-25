@@ -131,7 +131,7 @@ class LocalExperienceProcessor:
                 operation = record["operation"]
                 if operation == "create" and source_type == "email":
                     record.setdefault("scene_id", "251")
-                    record.setdefault("scene", "邮件技术经验")
+                    record.setdefault("scene", "问题定位数据飞轮")
                 doc_id = self._push_experience(record, upload_by, extract_mode)
                 record["doc_id"] = doc_id
                 record["operation"] = "update"
@@ -568,7 +568,7 @@ class LocalExperienceProcessor:
                 timeout=60, verify=False)
         else:
             payload.setdefault("scene_id", "251")
-            payload.setdefault("scene", "WeLink问题定位经验")
+            payload.setdefault("scene", "问题定位数据飞轮")
             response = requests.post(
                 create_url, json=payload, timeout=60, verify=False)
         response.raise_for_status()
