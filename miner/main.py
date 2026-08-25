@@ -36,10 +36,12 @@ def main():
     if not (web_root / "index.html").exists():
         web_root = root / "web"
     logging.info("Miner web root=%s exists=%s", web_root, (web_root / "index.html").exists())
-    window = webview.create_window("Miner", (web_root / "index.html").as_uri(), js_api=api, width=1180, height=760, min_size=(960, 620), background_color="#f7f8fb")
+    page = _inline_web_assets(web_root)
+    window = webview.create_window("Miner", html=page, js_api=api, width=1180, height=760, min_size=(960, 620), background_color="#f7f8fb")
     api.bind_window(window)
     window.events.loaded += lambda: logging.info("Miner web page loaded")
     window.events.closed += lambda: logging.info("Miner web window closed")
+    threading.Timer(5.0, lambda: _probe_webview(window)).start()
     tray = _start_tray(api, window)
     try:
         webview.start(gui="edgechromium", debug=not getattr(sys, "frozen", False))
@@ -87,6 +89,24 @@ def _start_tray(api, window):
     if config.FORCE_UPDATE and config.DOWNLOAD_URL:
         threading.Timer(2.0, lambda: webbrowser.open(config.DOWNLOAD_URL)).start()
     return icon
+
+
+def _inline_web_assets(web_root: Path) -> str:
+    """将静态资源内嵌后交给 pywebview，避免 file:// 页面影响 API 注入。"""
+    html = (web_root / "index.html").read_text(encoding="utf-8")
+    css = (web_root / "styles.css").read_text(encoding="utf-8")
+    js = (web_root / "app.js").read_text(encoding="utf-8")
+    html = html.replace('<link rel="stylesheet" href="styles.css">', f"<style>\n{css}\n</style>")
+    html = html.replace('<script src="app.js"></script>', f"<script>\n{js}\n</script>")
+    return html
+
+
+def _probe_webview(window) -> None:
+    try:
+        value = window.evaluate_js("JSON.stringify({pywebview:typeof window.pywebview,api:typeof (window.pywebview&&window.pywebview.api),folders:typeof (window.pywebview&&window.pywebview.api&&window.pywebview.api.list_folders)})")
+        logging.info("Miner webview API probe=%s", value)
+    except Exception:
+        logging.exception("Miner webview API probe failed")
 
 
 if __name__ == "__main__":
