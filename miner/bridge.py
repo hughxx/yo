@@ -152,7 +152,7 @@ class MinerApi:
             path = Path(markdown_path).resolve()
             if path.suffix.lower() != ".md" or not path.is_file():
                 raise ValueError("Markdown file not found")
-            self._event("正在调用个人 CodeAgent 提取经验")
+            self._event("正在使用个人资源提取经验")
             prompt = (f"请读取文件 {path}，提取可复用的工程经验。"
                       "输出纯 Markdown，包含标题、背景、问题、方案、结果与注意事项。"
                       "只依据文件事实，不要编造，不要输出解释或代码围栏。")
@@ -164,9 +164,13 @@ class MinerApi:
                                        stderr=subprocess.STDOUT, text=True,
                                        encoding="utf-8", errors="replace", bufsize=1)
             outputs = []
+            config.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with config.LOG_FILE.open("a", encoding="utf-8") as log:
+                log.write(f"\n=== CodeAgent started {datetime.now().isoformat()} ===\n")
             for line in process.stdout or []:
                 line = line.rstrip("\r\n")
-                self._event("CodeAgent: " + line[:240])
+                with config.LOG_FILE.open("a", encoding="utf-8") as log:
+                    log.write(line + "\n")
                 try:
                     item = json.loads(line)
                 except json.JSONDecodeError:

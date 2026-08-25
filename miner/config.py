@@ -37,6 +37,9 @@ def _config_value(*names, default=""):
 
 ROOT = Path(os.environ.get("COREINSIGHT_MINER_DIR", r"D:\CoreInsight\miner"))
 ROOT.mkdir(parents=True, exist_ok=True)
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "miner.log"
 WELINK_DIR = ROOT / "聊天记录"
 OUTLOOK_DIR = ROOT / "邮件"
 WELINK_DIR.mkdir(parents=True, exist_ok=True)
@@ -45,8 +48,8 @@ OUTLOOK_DIR.mkdir(parents=True, exist_ok=True)
 # These are the same packaged defaults used by the existing client.
 def _runtime_config():
     url = os.environ.get("COREINSIGHT_RUNTIME_CONFIG_URL", "https://fuyao.rnd.huawei.com/dataengineering/rag-knowledge-config/selectConfigByKey")
-    key = os.environ.get("COREINSIGHT_RUNTIME_CONFIG_KEY", "coreinsight_local_toolkit_release")
-    for config_key in dict.fromkeys((key, "coreinsight_local_toolkit_runtime")):
+    key = os.environ.get("COREINSIGHT_MINER_CONFIG_KEY", "coreinsight_miner_release")
+    for config_key in (key,):
       try:
         response = requests.get(url, params={"key": config_key}, timeout=10, verify=False)
         response.raise_for_status()
