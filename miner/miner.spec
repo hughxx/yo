@@ -27,5 +27,5 @@ exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
     name="miner", debug=False, bootloader_ignore_signals=False,
     strip=False, upx=True, console=False,
-    icon=str(ROOT / "pyqt_client" / "assets" / "icon.ico"),
+    icon=str(HERE / "web" / "icon.ico"),
 )
