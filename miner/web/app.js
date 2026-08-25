@@ -35,7 +35,7 @@ function finish(result) {
   else if (result) toast(result.error || "处理失败");
   return result;
 }
-function hideTestPanel() { testToken++; $("model-test-panel").classList.add("hidden"); $("model-test-send").disabled = false; }
+function hideTestPanel() { testToken++; $("model-test-send").disabled = false; }
 
 async function loadFolders() {
   status(true);
@@ -102,7 +102,6 @@ document.addEventListener("DOMContentLoaded", () => {
     $(button.dataset.page).classList.remove("hidden");
     $("page-title").textContent = pages[button.dataset.page][0];
     $("page-desc").textContent = pages[button.dataset.page][1];
-    if (button.dataset.page !== "model") hideTestPanel();
     if (button.dataset.page === "results") loadResults();
   });
   $("folders").onclick = loadFolders;
@@ -115,9 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("mail-ai").onclick = async () => { const ids = checked("[data-mail]", "mail"); if (!ids.length) return toast("请先选择邮件"); const r = await call("export_outlook", ids, selectedFolder ? [selectedFolder] : []); finish(r.ok ? await call("extract_experience_resource", r.path, $("resource-mail").value) : r); };
   $("welink-md").onclick = async () => finish(await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")));
   $("welink-ai").onclick = async () => { const r = await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")); finish(r.ok ? await call("extract_experience_resource", r.path, $("resource-mail").value) : r); };
-  $("model-test").onclick = () => { $("model-test-panel").classList.remove("hidden"); $("model-test-input").focus(); };
-  $("model-panel-close").onclick = hideTestPanel;
-  $("model-test-cancel").onclick = async () => { testToken++; const r = await call("cancel_model_test"); $("model-test-send").disabled = false; $("model-test-output").textContent = r.ok ? "已取消测试" : "已停止等待，可关闭此面板"; };
+  $("model-test")?.remove(); $("model-test-cancel")?.remove(); $("model-panel-close")?.remove(); $("model-test-panel").classList.remove("hidden");
   $("model-test-send").onclick = async () => { const text = $("model-test-input").value.trim(); if (!text) return toast("请输入测试内容"); const token = ++testToken; $("model-test-send").disabled = true; $("model-test-output").textContent = "测试中..."; const r = await call("test_model", $("resource-mail").value, text); if (token === testToken) { $("model-test-output").textContent = r.ok ? (r.output || "模型已返回空结果") : (r.error || "测试失败"); $("model-test-send").disabled = false; } };
   $("open-dir").onclick = openResultsDir;
   $("refresh-results").onclick = loadResults;
