@@ -38,6 +38,8 @@ def main():
     logging.info("Miner web root=%s exists=%s", web_root, (web_root / "index.html").exists())
     window = webview.create_window("Miner", (web_root / "index.html").as_uri(), js_api=api, width=1180, height=760, min_size=(960, 620), background_color="#f7f8fb")
     api.bind_window(window)
+    window.events.loaded += lambda: logging.info("Miner web page loaded")
+    window.events.closed += lambda: logging.info("Miner web window closed")
     tray = _start_tray(api, window)
     try:
         webview.start(gui="edgechromium", debug=not getattr(sys, "frozen", False))

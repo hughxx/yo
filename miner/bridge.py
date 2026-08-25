@@ -68,12 +68,14 @@ class MinerApi:
         return {"items": items}
 
     def list_folders(self):
+        logging.info("MinerApi.list_folders called")
         try:
             return {"ok": True, "items": outlook.folder_list()}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
     def list_emails(self, folders=None, search=""):
+        logging.info("MinerApi.list_emails called folders=%s search=%s", folders, bool(search))
         try:
             items = outlook.mail_list(folders or None)
             q = str(search or "").strip().lower()
@@ -84,6 +86,7 @@ class MinerApi:
             return {"ok": False, "error": str(exc)}
 
     def fetch_welink(self, group_id, group_name, start_time="", end_time=""):
+        logging.info("MinerApi.fetch_welink called group_id=%s", group_id)
         try:
             start = int(datetime.fromisoformat(start_time).timestamp() * 1000) if start_time else 0
             end = int(datetime.fromisoformat(end_time).timestamp() * 1000) if end_time else 0
