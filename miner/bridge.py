@@ -213,8 +213,9 @@ class MinerApi:
                 raise ValueError("请输入测试内容")
             if resource == "local":
                 prompt = f"请直接回答下面的测试内容，不要调用工具：\n{text}"
-                cmd = ["codeagent", "--print", "--output-format", "stream-json",
-                       "--permission-mode", "bypassPermissions", prompt]
+                cmd = ["codeagent", "--print", "--verbose", "--skip-safe-check",
+                       "--output-format", "stream-json", "--permission-mode",
+                       "bypassPermissions", prompt]
                 process = subprocess.Popen(cmd, shell=True, cwd=str(config.ROOT),
                                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                            stderr=subprocess.STDOUT, text=True,
