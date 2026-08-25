@@ -46,16 +46,18 @@ OUTLOOK_DIR.mkdir(parents=True, exist_ok=True)
 def _runtime_config():
     url = os.environ.get("COREINSIGHT_RUNTIME_CONFIG_URL", "https://fuyao.rnd.huawei.com/dataengineering/rag-knowledge-config/selectConfigByKey")
     key = os.environ.get("COREINSIGHT_RUNTIME_CONFIG_KEY", "coreinsight_local_toolkit_release")
-    try:
-        response = requests.get(url, params={"key": key}, timeout=10, verify=False)
+    for config_key in dict.fromkeys((key, "coreinsight_local_toolkit_runtime")):
+      try:
+        response = requests.get(url, params={"key": config_key}, timeout=10, verify=False)
         response.raise_for_status()
         value = (response.json().get("data") or {}).get("configVal")
         if isinstance(value, str):
             value = json.loads(value)
-        return value if isinstance(value, dict) else {}
-    except Exception:
-        logging.getLogger(__name__).warning("miner runtime config unavailable", exc_info=True)
-        return {}
+        if isinstance(value, dict) and (value.get("llm_api_key") or value.get("model_gateway_api_key")):
+            return value
+      except Exception:
+        logging.getLogger(__name__).warning("miner runtime config unavailable key=%s", config_key, exc_info=True)
+    return {}
 
 
 _RUNTIME = _runtime_config()
