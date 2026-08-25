@@ -1,5 +1,6 @@
 # PyInstaller spec for the standalone Miner.
 from pathlib import Path
+import webview
 from PyInstaller.utils.hooks import collect_submodules
 
 HERE = Path(SPEC).resolve().parent
@@ -12,6 +13,8 @@ a = Analysis(
     datas=[
         (str(HERE / "web"), "miner/web"),
         (str(ROOT / "pyqt_client" / "assets"), "pyqt_client/assets"),
+        # pywebview injects its bridge from these runtime JavaScript files.
+        (str(Path(webview.__file__).resolve().parent / "js"), "webview/js"),
     ],
     hiddenimports=collect_submodules("modules") + [
         "pystray",
