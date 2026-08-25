@@ -3,6 +3,37 @@ import os
 import json
 import logging
 import requests
+import base64
+import hashlib
+import hmac
+
+_CIPHER_KEY = hashlib.sha256(b"coreinsight-local-toolkit-runtime-v1").digest()
+
+
+def _decrypt(value):
+    value = str(value or "")
+    if not value.startswith("enc:v1:"):
+        return value
+    raw = base64.urlsafe_b64decode(value[7:].encode("ascii"))
+    nonce, ciphertext, tag = raw[:16], raw[16:-16], raw[-16:]
+    expected = hmac.new(_CIPHER_KEY, nonce + ciphertext, hashlib.sha256).digest()[:16]
+    if not hmac.compare_digest(tag, expected):
+        raise ValueError("配置中心密钥校验失败")
+    stream = bytearray(); counter = 0
+    while len(stream) < len(ciphertext):
+        stream.extend(hmac.new(_CIPHER_KEY, nonce + counter.to_bytes(4, "big"), hashlib.sha256).digest())
+        counter += 1
+    return bytes(a ^ b for a, b in zip(ciphertext, stream)).decode("utf-8")
+
+
+def _config_value(*names, default=""):
+    for name in names:
+        value = _RUNTIME.get(name)
+        if isinstance(value, dict):
+            value = value.get("val", value.get("value", ""))
+        if value:
+            return _decrypt(value)
+    return default
 
 ROOT = Path(os.environ.get("COREINSIGHT_MINER_DIR", r"D:\CoreInsight\miner"))
 ROOT.mkdir(parents=True, exist_ok=True)
@@ -28,9 +59,9 @@ def _runtime_config():
 
 
 _RUNTIME = _runtime_config()
-LLM_BASE_URL = os.environ.get("COREINSIGHT_LLM_BASE_URL", _RUNTIME.get("llm_base_url", "https://fuyao.rnd.huawei.com/model_gateway/v1"))
-LLM_API_KEY = os.environ.get("COREINSIGHT_LLM_API_KEY", _RUNTIME.get("llm_api_key", ""))
-LLM_MODEL_ID = os.environ.get("COREINSIGHT_LLM_MODEL_ID", _RUNTIME.get("llm_model_id", "a9dc5db2-e625-487c-95a6-69c2be0831ca"))
+LLM_BASE_URL = os.environ.get("COREINSIGHT_LLM_BASE_URL", _config_value("llm_base_url", "model_gateway_url", default="https://fuyao.rnd.huawei.com/model_gateway/v1"))
+LLM_API_KEY = os.environ.get("COREINSIGHT_LLM_API_KEY", _config_value("llm_api_key", "model_gateway_api_key"))
+LLM_MODEL_ID = os.environ.get("COREINSIGHT_LLM_MODEL_ID", _config_value("llm_model_id", "model_id", default="a9dc5db2-e625-487c-95a6-69c2be0831ca"))
 # WeLink image/file messages need the existing proxy to obtain a readable URL
 # and OCR result.  The text/experience result itself is still local-only.
 IMAGE_PROXY_URL = os.environ.get("COREINSIGHT_IMAGE_PROXY_URL", "https://coreinsight-beta.rnd.huawei.com/collection")
