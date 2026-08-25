@@ -43,6 +43,8 @@ class MinerApi:
         self._lock = threading.Lock()
         self._welink_cache = {}
         self._mail_cache = {}
+        self._test_process = None
+        self._test_process_lock = threading.Lock()
 
     def bind_window(self, window):
         self._window = window
@@ -214,6 +216,8 @@ class MinerApi:
                                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                            stderr=subprocess.STDOUT, text=True,
                                            encoding="utf-8", errors="replace")
+                with self._test_process_lock:
+                    self._test_process = process
                 outputs = []
                 with config.LOG_FILE.open("a", encoding="utf-8") as log:
                     log.write(f"\n=== Model test local {datetime.now().isoformat()} ===\n")
@@ -226,6 +230,8 @@ class MinerApi:
                         if isinstance(item.get("result"), str):
                             outputs.append(item["result"])
                 code = process.wait()
+                with self._test_process_lock:
+                    self._test_process = None
                 if code != 0:
                     raise RuntimeError(f"CodeAgent 执行失败，退出码 {code}")
                 return {"ok": True, "resource": resource, "output": (outputs[-1] if outputs else "").strip()}
@@ -243,6 +249,15 @@ class MinerApi:
         except Exception as exc:
             logging.exception("miner model test failed")
             return {"ok": False, "error": str(exc)}
+
+    def cancel_model_test(self):
+        with self._test_process_lock:
+            process = self._test_process
+            self._test_process = None
+        if process and process.poll() is None:
+            process.kill()
+            return {"ok": True}
+        return {"ok": False, "error": "当前没有正在运行的模型测试"}
 
     def list_results(self):
         result = []
