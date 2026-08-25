@@ -7,6 +7,7 @@ import threading
 import uuid
 import hashlib
 import webbrowser
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -142,6 +143,50 @@ class MinerApi:
             return {"ok": True, "path": str(out), "source": str(path)}
         except Exception as exc:
             logging.exception("miner experience extraction failed")
+            return {"ok": False, "error": str(exc)}
+
+    def extract_experience_resource(self, markdown_path, resource="public"):
+        if resource != "local":
+            return self.extract_experience(markdown_path)
+        try:
+            path = Path(markdown_path).resolve()
+            if path.suffix.lower() != ".md" or not path.is_file():
+                raise ValueError("Markdown file not found")
+            self._event("正在调用个人 CodeAgent 提取经验")
+            prompt = (f"请读取文件 {path}，提取可复用的工程经验。"
+                      "输出纯 Markdown，包含标题、背景、问题、方案、结果与注意事项。"
+                      "只依据文件事实，不要编造，不要输出解释或代码围栏。")
+            cmd = ["codeagent", "--print", "--verbose", "--skip-safe-check",
+                   "--output-format", "stream-json", "--permission-mode",
+                   "bypassPermissions", prompt]
+            process = subprocess.Popen(cmd, shell=True, cwd=str(path.parent),
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT, text=True,
+                                       encoding="utf-8", errors="replace", bufsize=1)
+            outputs = []
+            for line in process.stdout or []:
+                line = line.rstrip("\r\n")
+                self._event("CodeAgent: " + line[:240])
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(item.get("result"), str):
+                    outputs.append(item["result"])
+                message = item.get("message")
+                for content in message.get("content", []) if isinstance(message, dict) else []:
+                    if isinstance(content, dict) and isinstance(content.get("text"), str):
+                        outputs.append(content["text"])
+            code = process.wait()
+            if code != 0:
+                raise RuntimeError(f"CodeAgent 执行失败，退出码 {code}")
+            if not outputs:
+                raise RuntimeError("CodeAgent 未输出经验内容")
+            out = path.with_suffix(".experience.md")
+            out.write_text(outputs[-1].strip(), encoding="utf-8")
+            return {"ok": True, "path": str(out), "source": str(path), "resource": "local"}
+        except Exception as exc:
+            logging.exception("miner local experience extraction failed")
             return {"ok": False, "error": str(exc)}
 
     def list_results(self):
