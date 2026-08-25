@@ -3,6 +3,7 @@ let selectedFolder = "";
 let folders = [];
 let messages = [];
 let testToken = 0;
+let bridgeBootstrapped = false;
 
 async function call(name, ...args) {
   if (!window.pywebview || !window.pywebview.api || !window.pywebview.api[name]) {
@@ -121,4 +122,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("open-dir").onclick = openResultsDir;
   $("refresh-results").onclick = loadResults;
 });
-window.addEventListener("pywebviewready", () => { loadFolders(); loadResults(); });
+function bootstrapBridge() {
+  if (bridgeBootstrapped) return;
+  if (!window.pywebview || !window.pywebview.api) { setTimeout(bootstrapBridge, 500); return; }
+  bridgeBootstrapped = true;
+  loadFolders(); loadResults();
+}
+window.addEventListener("pywebviewready", bootstrapBridge);
+setTimeout(bootstrapBridge, 100);

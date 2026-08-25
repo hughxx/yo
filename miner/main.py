@@ -1,5 +1,6 @@
 from __future__ import annotations
 import ctypes
+import logging
 import sys
 import threading
 import webbrowser
@@ -19,6 +20,14 @@ except ImportError:  # PyInstaller entry point is a file, not a package module.
 
 
 def main():
+    config.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        filename=str(config.LOG_FILE),
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        encoding="utf-8",
+    )
+    logging.info("Miner starting frozen=%s exe=%s", getattr(sys, "frozen", False), sys.executable)
     api = MinerApi()
     # In a PyInstaller one-file build, bundled data is unpacked under
     # sys._MEIPASS rather than next to the executable.
@@ -26,10 +35,16 @@ def main():
     web_root = root / "miner" / "web"
     if not (web_root / "index.html").exists():
         web_root = root / "web"
+    logging.info("Miner web root=%s exists=%s", web_root, (web_root / "index.html").exists())
     window = webview.create_window("Miner", (web_root / "index.html").as_uri(), js_api=api, width=1180, height=760, min_size=(960, 620), background_color="#f7f8fb")
     api.bind_window(window)
     tray = _start_tray(api, window)
-    webview.start(gui="edgechromium", debug=not getattr(sys, "frozen", False))
+    try:
+        webview.start(gui="edgechromium", debug=not getattr(sys, "frozen", False))
+    except Exception:
+        logging.exception("Miner webview failed to start")
+        raise
+    logging.info("Miner webview stopped")
     tray.stop()
 
 
