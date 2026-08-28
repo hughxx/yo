@@ -4,6 +4,7 @@ let folders = [];
 let messages = [];
 let testToken = 0;
 let bridgeBootstrapped = false;
+let resultItems = [];
 
 async function call(name, ...args) {
   if (!window.pywebview || !window.pywebview.api || !window.pywebview.api[name]) {
@@ -79,9 +80,9 @@ async function loadMessages() {
 async function loadResults() {
   const result = await call("list_results");
   if (!result.ok) { toast(result.error); return; }
-  const items = result.items || [];
-  $("result-list").innerHTML = items.length ? items.map((x) =>
-    `<div class="result"><div class="result-head"><div><h3>${esc(x.title)}</h3><small>${x.kind === "outlook" ? "邮件" : "聊天记录"} · ${esc(x.updatedAt)}</small></div><span>${x.hasExperience ? "已提取经验" : "仅 Markdown"}</span></div><div class="result-actions"><button onclick="openFile('${esc(x.markdown)}')">打开 Markdown</button>${x.hasExperience ? `<button onclick="openFile('${esc(x.experience)}')">打开经验</button>` : `<button class="primary" onclick="extractResult('${esc(x.markdown)}')">提取经验</button>`}</div></div>`
+  resultItems = result.items || [];
+  $("result-list").innerHTML = resultItems.length ? resultItems.map((x, index) =>
+    `<div class="result"><div class="result-head"><div><h3>${esc(x.title)}</h3><small>${x.kind === "outlook" ? "邮件" : "聊天记录"} · ${esc(x.updatedAt)}</small></div><span>${x.hasExperience ? "已提取经验" : "仅 Markdown"}</span></div><div class="result-actions"><button data-result-action="open-markdown" data-result-index="${index}">打开 Markdown</button>${x.hasExperience ? `<button data-result-action="open-experience" data-result-index="${index}">打开经验</button>` : `<button class="primary" data-result-action="extract" data-result-index="${index}">提取经验</button>`}</div></div>`
   ).join("") : '<div class="empty">还没有导出结果</div>';
 }
 async function openResultsDir() {
@@ -90,8 +91,6 @@ async function openResultsDir() {
 }
 async function extractResult(path) { finish(await call("extract_experience_resource", path, $("resource-mail").value)); await loadResults(); }
 function openFile(path) { call("open_file", path).then((r) => { if (!r.ok) toast(r.error); }); }
-window.openFile = openFile;
-window.extractResult = extractResult;
 
 document.addEventListener("DOMContentLoaded", () => {
   const pages = { outlook: ["邮件萃取", "选择邮件，导出 Markdown 或提取经验"], welink: ["聊天记录萃取", "选择群聊消息，导出 Markdown 或提取经验"], results: ["萃取结果", "查看已保存的 Markdown 和经验文件"], model: ["模型资源管理", "选择公共资源或个人资源，测试模型是否可用"] };
@@ -118,6 +117,16 @@ document.addEventListener("DOMContentLoaded", () => {
   $("model-test-send").onclick = async () => { const text = $("model-test-input").value.trim(); if (!text) return toast("请输入测试内容"); const token = ++testToken; $("model-test-send").disabled = true; $("model-test-output").textContent = "测试中..."; const r = await call("test_model", $("resource-mail").value, text); if (token === testToken) { $("model-test-output").textContent = r.ok ? (r.output || "模型已返回空结果") : (r.error || "测试失败"); $("model-test-send").disabled = false; } };
   $("open-dir").onclick = openResultsDir;
   $("refresh-results").onclick = loadResults;
+  $("result-list").onclick = (event) => {
+    const button = event.target.closest("[data-result-action]");
+    if (!button) return;
+    const item = resultItems[Number(button.dataset.resultIndex)];
+    if (!item) return;
+    const action = button.dataset.resultAction;
+    if (action === "open-markdown") openFile(item.markdown);
+    else if (action === "open-experience") openFile(item.experience);
+    else if (action === "extract") extractResult(item.markdown);
+  };
 });
 function bootstrapBridge() {
   if (bridgeBootstrapped) return;
