@@ -54,6 +54,7 @@ async function saveMinerConfig(prompt) {
 
 async function loadFolders() {
   status(true);
+  $("folder-tree").innerHTML = '<div class="loading">正在读取 Outlook 文件夹…</div>';
   const result = await call("list_folders");
   status(false);
   if (!result.ok) { $("folder-tree").innerHTML = ""; toast(result.error); return; }
@@ -65,11 +66,12 @@ async function loadFolders() {
     document.querySelectorAll(".folder").forEach((x) => x.classList.remove("selected"));
     el.classList.add("selected"); selectedFolder = el.dataset.path;
   });
-  const inbox = [...document.querySelectorAll(".folder")].find((el) => /\\Inbox$/i.test(el.dataset.path));
+  const inbox = [...document.querySelectorAll(".folder")].find((el) => /[\\/]Inbox$/i.test(el.dataset.path));
   if (inbox) { inbox.classList.add("selected"); selectedFolder = inbox.dataset.path; await loadMails(); }
 }
 async function loadMails() {
   status(true);
+  $("mail-list").innerHTML = '<div class="loading">正在加载邮件列表…</div>';
   const result = await call("list_emails", selectedFolder ? [selectedFolder] : [], $("mail-search").value);
   status(false);
   if (!result.ok) { $("mail-list").innerHTML = ""; toast(result.error); return; }
@@ -82,8 +84,12 @@ async function loadMessages() {
   const id = $("group-id").value.trim();
   if (!id) { toast("请输入群组 ID"); return; }
   status(true);
+  const loadButton = $("welink-load");
+  loadButton.disabled = true;
+  $("message-list").innerHTML = '<div class="loading loading-large"><span class="spinner"></span><b>正在加载聊天记录</b><small>正在分页读取历史消息，请稍候…</small></div>';
   const result = await call("fetch_welink", id, $("group-name").value, $("start-time").value, $("end-time").value);
   status(false);
+  loadButton.disabled = false;
   if (!result.ok) { $("message-list").innerHTML = ""; toast(result.error); return; }
   messages = result.items || [];
   $("message-list").innerHTML = messages.length ? messages.map((x) =>
