@@ -37,7 +37,7 @@ def main():
         web_root = root / "web"
     logging.info("Miner web root=%s exists=%s", web_root, (web_root / "index.html").exists())
     page = _inline_web_assets(web_root)
-    window = webview.create_window("经验提取工具", html=page, js_api=api, width=1180, height=760, min_size=(960, 620), background_color="#f7f8fb")
+    window = webview.create_window("本地邮件/聊天记录提取工具", html=page, js_api=api, width=1180, height=760, min_size=(960, 620), background_color="#f7f8fb")
     api.bind_window(window)
     window.events.loaded += lambda: logging.info("Miner web page loaded")
     window.events.closed += lambda: logging.info("Miner web window closed")
@@ -80,8 +80,8 @@ def _start_tray(api, window):
         except Exception:
             pass
 
-    icon = pystray.Icon("Miner", _tray_image(), "经验提取工具", pystray.Menu(
-        TrayItem("打开经验提取工具", lambda icon, item: None, default=True),
+    icon = pystray.Icon("Miner", _tray_image(), "本地邮件/聊天记录提取工具", pystray.Menu(
+        TrayItem("打开本地邮件/聊天记录提取工具", lambda icon, item: None, default=True),
         TrayItem("检查更新", check),
         TrayItem("退出", quit_app),
     ))
