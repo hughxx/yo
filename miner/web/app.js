@@ -161,7 +161,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const r = await call("test_model", selectedResource(), $("model-test-input").value.trim() || "你好");
     if (token === testToken) {
       output.className = r.ok ? "success" : "failure";
-      output.textContent = r.ok ? "连接成功" : (r.error || "连接失败");
+      output.textContent = r.ok
+        ? `连接成功\n\n模型返回：\n${r.output || "（模型未返回文本）"}`
+        : `连接失败\n\n${r.error || "未知错误"}`;
       button.disabled = false;
     }
   };
