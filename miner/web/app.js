@@ -5,6 +5,7 @@ let messages = [];
 let testToken = 0;
 let bridgeBootstrapped = false;
 let resultItems = [];
+const selectedResource = () => document.querySelector('input[name="resource"]:checked')?.value || "public";
 
 async function call(name, ...args) {
   if (!window.pywebview || !window.pywebview.api || !window.pywebview.api[name]) {
@@ -36,15 +37,17 @@ function finish(result) {
   else if (result) toast(result.error || "处理失败");
   return result;
 }
-function hideTestPanel() { testToken++; $("model-test-send").disabled = false; }
+function hideTestPanel() { testToken++; }
 async function loadMinerConfig() {
   const result = await call("get_miner_config");
   if (!result.ok) return toast(result.error || "配置读取失败");
-  $("resource-mail").value = result.resource || "public";
+  const resource = result.resource || "public";
+  const radio = document.querySelector(`input[name="resource"][value="${resource}"]`);
+  if (radio) radio.checked = true;
   $("prompt-editor").value = result.prompt || "";
 }
 async function saveMinerConfig(prompt) {
-  const result = await call("save_miner_config", prompt, $("resource-mail").value);
+  const result = await call("save_miner_config", prompt, selectedResource());
   if (result.ok) toast("配置已保存"); else toast(result.error || "配置保存失败");
   return result;
 }
@@ -105,8 +108,7 @@ async function extractResult(path, button) {
   status(true);
   if (button) button.disabled = true;
   try {
-    const resource = $("resource-mail") ? $("resource-mail").value : "public";
-    finish(await call("extract_experience_resource", path, resource));
+    finish(await call("extract_experience_resource", path, selectedResource()));
     await loadResults();
   } finally {
     status(false);
@@ -134,16 +136,16 @@ document.addEventListener("DOMContentLoaded", () => {
   $("msg-all").onclick = () => document.querySelectorAll("[data-msg]").forEach((x) => x.checked = true);
   $("msg-reverse").onclick = () => document.querySelectorAll("[data-msg]").forEach((x) => x.checked = !x.checked);
   $("mail-md").onclick = async () => { const ids = checked("[data-mail]", "mail"); if (!ids.length) return toast("请先选择邮件"); finish(await call("export_outlook", ids, selectedFolder ? [selectedFolder] : [])); };
-  $("mail-ai").onclick = async () => { const ids = checked("[data-mail]", "mail"); if (!ids.length) return toast("请先选择邮件"); const r = await call("export_outlook", ids, selectedFolder ? [selectedFolder] : []); finish(r.ok ? await call("extract_experience_resource", r.path, $("resource-mail").value) : r); };
+  $("mail-ai").onclick = async () => { const ids = checked("[data-mail]", "mail"); if (!ids.length) return toast("请先选择邮件"); const r = await call("export_outlook", ids, selectedFolder ? [selectedFolder] : []); finish(r.ok ? await call("extract_experience_resource", r.path, selectedResource()) : r); };
   $("welink-md").onclick = async () => finish(await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")));
-  $("welink-ai").onclick = async () => { const r = await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")); finish(r.ok ? await call("extract_experience_resource", r.path, $("resource-mail").value) : r); };
+  $("welink-ai").onclick = async () => { const r = await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")); finish(r.ok ? await call("extract_experience_resource", r.path, selectedResource()) : r); };
   document.querySelectorAll(".config-tab").forEach((tab) => tab.onclick = () => {
     document.querySelectorAll(".config-tab").forEach((x) => x.classList.remove("active"));
     tab.classList.add("active");
     document.querySelectorAll(".config-tab-panel").forEach((x) => x.classList.add("hidden"));
     $(tab.dataset.tab).classList.remove("hidden");
   });
-  $("resource-mail").onchange = () => saveMinerConfig($("prompt-editor").value);
+  document.querySelectorAll('input[name="resource"]').forEach((radio) => radio.onchange = () => saveMinerConfig($("prompt-editor").value));
   $("prompt-save").onclick = () => saveMinerConfig($("prompt-editor").value);
   $("prompt-reset").onclick = async () => {
     const result = await call("get_miner_config");
@@ -156,7 +158,7 @@ document.addEventListener("DOMContentLoaded", () => {
     button.disabled = true;
     output.className = "testing";
     output.textContent = "正在测试连接…";
-    const r = await call("test_model", $("resource-mail").value, "请仅回复：连接成功");
+    const r = await call("test_model", selectedResource(), $("model-test-input").value.trim() || "你好");
     if (token === testToken) {
       output.className = r.ok ? "success" : "failure";
       output.textContent = r.ok ? "连接成功" : (r.error || "连接失败");
