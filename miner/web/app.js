@@ -54,20 +54,16 @@ async function saveMinerConfig(prompt) {
 
 async function loadFolders() {
   status(true);
-  $("folder-tree").innerHTML = '<div class="loading">正在读取 Outlook 文件夹…</div>';
+  $("folder-select").innerHTML = '<option value="">正在读取文件夹…</option>';
   const result = await call("list_folders");
   status(false);
-  if (!result.ok) { $("folder-tree").innerHTML = ""; toast(result.error); return; }
+  if (!result.ok) { $("folder-select").innerHTML = '<option value="">文件夹读取失败</option>'; toast(result.error); return; }
   folders = result.items || [];
-  $("folder-tree").innerHTML = folders.length
-    ? folders.map((x) => `<div class="folder" data-path="${esc(x)}">${esc(x)}</div>`).join("")
-    : '<div class="empty">没有找到 Outlook 文件夹</div>';
-  document.querySelectorAll(".folder").forEach((el) => el.onclick = () => {
-    document.querySelectorAll(".folder").forEach((x) => x.classList.remove("selected"));
-    el.classList.add("selected"); selectedFolder = el.dataset.path;
-  });
-  const inbox = [...document.querySelectorAll(".folder")].find((el) => /[\\/]Inbox$/i.test(el.dataset.path));
-  if (inbox) { inbox.classList.add("selected"); selectedFolder = inbox.dataset.path; await loadMails(); }
+  const select = $("folder-select");
+  select.innerHTML = folders.length ? folders.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join("") : '<option value="">没有找到 Outlook 文件夹</option>';
+  selectedFolder = folders.find((x) => /[\\/]Inbox$/i.test(x)) || folders[0] || "";
+  if (selectedFolder) select.value = selectedFolder;
+  if (selectedFolder) await loadMails();
 }
 async function loadMails() {
   status(true);
@@ -79,7 +75,9 @@ async function loadMails() {
   $("mail-list").innerHTML = items.length ? items.map((x) =>
     `<label class="mail"><input type="checkbox" data-mail="${esc(x.item_id)}"><span><b>${esc(x.subject || "（无主题）")}</b><small>${esc(x.sender_name || x.sender_email || "")} · ${esc(x.received_time || "")}</small></span></label>`
   ).join("") : '<div class="empty">没有匹配的邮件</div>';
+  updateMailCount();
 }
+function updateMailCount() { $("mail-selected-count").textContent = `已选择 ${document.querySelectorAll("[data-mail]:checked").length} 封邮件`; }
 async function loadMessages() {
   const id = $("group-id").value.trim();
   if (!id) { toast("请输入群组 ID"); return; }
@@ -95,7 +93,7 @@ async function loadMessages() {
   $("message-list").innerHTML = messages.length ? messages.map((x) =>
     `<label class="message"><input type="checkbox" data-msg="${esc(x.id)}" checked><span class="content"><small>${esc(x.time || "")} · ${esc(x.sender || "")}</small><br>${esc(x.displayContent || x.content || "")}</span></label>`
   ).join("") : '<div class="empty">没有消息</div>';
-  $("msg-count").textContent = `共 ${messages.length} 条`;
+  $("msg-count").textContent = `消息列表 · 共 ${messages.length} 条`;
 }
 async function loadResults() {
   const result = await call("list_results");
@@ -136,8 +134,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (button.dataset.page === "model") loadMinerConfig();
   });
   $("folders").onclick = loadFolders;
+  $("folder-select").onchange = async () => { selectedFolder = $("folder-select").value; await loadMails(); };
   $("mails").onclick = loadMails;
   $("mail-search").onkeydown = (e) => { if (e.key === "Enter") loadMails(); };
+  $("mail-list").onchange = updateMailCount;
+  $("mail-all").onclick = () => { document.querySelectorAll("[data-mail]").forEach((x) => x.checked = true); updateMailCount(); };
+  $("mail-reverse").onclick = () => { document.querySelectorAll("[data-mail]").forEach((x) => x.checked = !x.checked); updateMailCount(); };
   $("welink-load").onclick = loadMessages;
   $("msg-all").onclick = () => document.querySelectorAll("[data-msg]").forEach((x) => x.checked = true);
   $("msg-reverse").onclick = () => document.querySelectorAll("[data-msg]").forEach((x) => x.checked = !x.checked);
