@@ -241,6 +241,7 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
                         rt = getattr(m, 'ReceivedTime', None)
                         result.append({
                             'item_id':            m.EntryID,
+                            'store_id':            getattr(folder, 'StoreID', '') or '',
                             'subject':            getattr(m, 'Subject', '') or '',
                             'sender_name':        getattr(m, 'SenderName', '') or '',
                             'sender_email':       getattr(m, 'SenderEmailAddress', '') or '',
@@ -274,12 +275,14 @@ def mail_list(scan_folders: list = None, count: int = 9999) -> list:
 
 # ── 邮件详情 ──────────────────────────────────────────────
 
-def mail_get(entry_id: str, img_api: str = '') -> dict:
+def mail_get(entry_id: str, img_api: str = '', store_id: str = '') -> dict:
     """获取单封邮件详情，含 HTML 正文，可选处理内联图片"""
     import re
     with _session() as ns:
-        m = ns.GetItemFromID(entry_id)
-        html = m.HTMLBody or ''
+        m = ns.GetItemFromID(entry_id, store_id) if store_id else ns.GetItemFromID(entry_id)
+        # Some Outlook item types do not expose HTMLBody. Keep export usable
+        # by falling back to the plain-text Body property.
+        html = getattr(m, 'HTMLBody', None) or getattr(m, 'Body', '') or ''
         html = html.replace('<head>', '<head><meta charset="utf-8">', 1)
 
         if img_api:

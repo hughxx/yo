@@ -136,7 +136,7 @@ class MinerApi:
                 raise ValueError("未选择邮件")
             parts = []
             for source in selected:
-                item = outlook.mail_get(source["item_id"], config.IMAGE_PROXY_URL)
+                item = outlook.mail_get(source["item_id"], config.IMAGE_PROXY_URL, source.get("store_id", ""))
                 parts.append(f"# {item.get('subject') or '无主题'}\n\n- 发件人：{item.get('sender_name','')} {item.get('sender_email','')}\n- 时间：{item.get('received_time','')}\n\n{item.get('markdown_body') or html2md(item.get('html_body',''))}")
             title = _safe_name(selected[0].get("subject") or "邮件提取")
             if len(selected) > 1:
