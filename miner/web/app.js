@@ -5,6 +5,10 @@ let messages = [];
 let testToken = 0;
 let bridgeBootstrapped = false;
 let resultItems = [];
+let mailItems = [];
+let mailPage = 1;
+const selectedMailIds = new Set();
+const MAIL_PAGE_SIZE = 20;
 const selectedResource = () => document.querySelector('input[name="resource"]:checked')?.value || "public";
 
 async function call(name, ...args) {
@@ -71,13 +75,23 @@ async function loadMails() {
   const result = await call("list_emails", selectedFolder ? [selectedFolder] : [], $("mail-search").value);
   status(false);
   if (!result.ok) { $("mail-list").innerHTML = ""; toast(result.error); return; }
-  const items = result.items || [];
+  mailItems = result.items || [];
+  selectedMailIds.clear();
+  mailPage = 1;
+  renderMailPage();
+}
+function renderMailPage() {
+  const items = mailItems.slice((mailPage - 1) * MAIL_PAGE_SIZE, mailPage * MAIL_PAGE_SIZE);
   $("mail-list").innerHTML = items.length ? items.map((x) =>
-    `<label class="mail"><input type="checkbox" data-mail="${esc(x.item_id)}"><span><b>${esc(x.subject || "（无主题）")}</b><small>${esc(x.sender_name || x.sender_email || "")} · ${esc(x.received_time || "")}</small></span></label>`
+    `<label class="mail"><input type="checkbox" data-mail="${esc(x.item_id)}" ${selectedMailIds.has(String(x.item_id)) ? "checked" : ""}><span><b>${esc(x.subject || "（无主题）")}</b><small>${esc(x.sender_name || x.sender_email || "")} · ${esc(x.received_time || "")}</small></span></label>`
   ).join("") : '<div class="empty">没有匹配的邮件</div>';
+  const pages = Math.max(1, Math.ceil(mailItems.length / MAIL_PAGE_SIZE));
+  $("mail-page-info").textContent = `${mailPage} / ${pages}`;
+  $("mail-page-prev").disabled = mailPage <= 1;
+  $("mail-page-next").disabled = mailPage >= pages;
   updateMailCount();
 }
-function updateMailCount() { $("mail-selected-count").textContent = `已选择 ${document.querySelectorAll("[data-mail]:checked").length} 封邮件`; }
+function updateMailCount() { $("mail-selected-count").textContent = `已选择 ${selectedMailIds.size} 封邮件`; }
 async function loadMessages() {
   const id = $("group-id").value.trim();
   if (!id) { toast("请输入群组 ID"); return; }
@@ -137,14 +151,16 @@ document.addEventListener("DOMContentLoaded", () => {
   $("folder-select").onchange = async () => { selectedFolder = $("folder-select").value; await loadMails(); };
   $("mails").onclick = loadMails;
   $("mail-search").onkeydown = (e) => { if (e.key === "Enter") loadMails(); };
-  $("mail-list").onchange = updateMailCount;
-  $("mail-all").onclick = () => { document.querySelectorAll("[data-mail]").forEach((x) => x.checked = true); updateMailCount(); };
-  $("mail-reverse").onclick = () => { document.querySelectorAll("[data-mail]").forEach((x) => x.checked = !x.checked); updateMailCount(); };
+  $("mail-list").onchange = (event) => { const box = event.target.closest("[data-mail]"); if (box) { const id = String(box.dataset.mail); box.checked ? selectedMailIds.add(id) : selectedMailIds.delete(id); updateMailCount(); } };
+  $("mail-page-prev").onclick = () => { if (mailPage > 1) { mailPage--; renderMailPage(); } };
+  $("mail-page-next").onclick = () => { if (mailPage < Math.ceil(mailItems.length / MAIL_PAGE_SIZE)) { mailPage++; renderMailPage(); } };
+  $("mail-all").onclick = () => { mailItems.forEach((x) => selectedMailIds.add(String(x.item_id))); renderMailPage(); };
+  $("mail-reverse").onclick = () => { mailItems.forEach((x) => { const id = String(x.item_id); selectedMailIds.has(id) ? selectedMailIds.delete(id) : selectedMailIds.add(id); }); renderMailPage(); };
   $("welink-load").onclick = loadMessages;
   $("msg-all").onclick = () => document.querySelectorAll("[data-msg]").forEach((x) => x.checked = true);
   $("msg-reverse").onclick = () => document.querySelectorAll("[data-msg]").forEach((x) => x.checked = !x.checked);
-  $("mail-md").onclick = async () => { const ids = checked("[data-mail]", "mail"); if (!ids.length) return toast("请先选择邮件"); finish(await call("export_outlook", ids, selectedFolder ? [selectedFolder] : [])); };
-  $("mail-ai").onclick = async () => { const ids = checked("[data-mail]", "mail"); if (!ids.length) return toast("请先选择邮件"); const r = await call("export_outlook", ids, selectedFolder ? [selectedFolder] : []); finish(r.ok ? await call("extract_experience_resource", r.path, selectedResource()) : r); };
+  $("mail-md").onclick = async () => { const ids = [...selectedMailIds]; if (!ids.length) return toast("请先选择邮件"); finish(await call("export_outlook", ids, selectedFolder ? [selectedFolder] : [])); };
+  $("mail-ai").onclick = async () => { const ids = [...selectedMailIds]; if (!ids.length) return toast("请先选择邮件"); const r = await call("export_outlook", ids, selectedFolder ? [selectedFolder] : []); finish(r.ok ? await call("extract_experience_resource", r.path, selectedResource()) : r); };
   $("welink-md").onclick = async () => finish(await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")));
   $("welink-ai").onclick = async () => { const r = await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")); finish(r.ok ? await call("extract_experience_resource", r.path, selectedResource()) : r); };
   document.querySelectorAll(".config-tab").forEach((tab) => tab.onclick = () => {

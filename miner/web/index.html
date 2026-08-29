@@ -17,7 +17,6 @@
     <header><div><h1 id="page-title">邮件萃取</h1><p id="page-desc">选择内容，导出 Markdown 或提取经验</p></div><span id="status"></span></header>
 
     <section id="outlook" class="page">
-      <div class="panel-heading"><h2>邮件萃取</h2><p>从 Outlook 邮箱选择邮件并导出或提取经验</p></div>
       <div class="mail-controls">
         <div class="control-title">邮箱文件夹</div>
         <div class="folder-select-row"><select id="folder-select"><option value="">正在读取文件夹…</option></select><button id="folders">刷新文件夹</button></div>
@@ -25,11 +24,11 @@
       </div>
       <div class="selection-bar"><span id="mail-selected-count">已选择 0 封邮件</span><span class="bar-spacer"></span><button id="mail-all">全选</button><button id="mail-reverse">反选</button></div>
       <div class="list mail-list" id="mail-list"><div class="loading">正在加载邮件列表…</div></div>
+      <div class="pagination"><button id="mail-page-prev">上一页</button><span id="mail-page-info">1 / 1</span><button id="mail-page-next">下一页</button></div>
       <div class="page-actions"><button class="primary" id="mail-md">导出 Markdown</button><button class="primary" id="mail-ai">提取经验</button></div>
     </section>
 
     <section id="welink" class="page hidden">
-      <div class="panel-heading"><h2>聊天记录萃取</h2><p>选择群组、时间范围和消息后进行处理</p></div>
       <div class="welink-controls">
         <div class="control-title">群组</div>
         <div class="group-row"><input id="group-id" placeholder="群组 ID"><input id="group-name" placeholder="群组名称（可选）"></div>
