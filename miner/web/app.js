@@ -60,6 +60,24 @@ async function saveMinerConfig(prompt) {
   if (result.ok) toast("配置已保存"); else toast(result.error || "配置保存失败");
   return result;
 }
+async function showAbout() {
+  const result = await call("check_update");
+  if (result.ok) toast(`Miner 当前版本：${result.currentVersion || "未知"}`);
+  else toast("无法读取版本信息");
+}
+async function checkUpdate() {
+  const button = $("check-update-btn");
+  button.disabled = true;
+  const result = await call("check_update");
+  button.disabled = false;
+  if (!result.ok) return toast("检查更新失败");
+  const current = result.currentVersion || "";
+  const latest = result.latestVersion || current;
+  if (result.downloadUrl && (result.forceUpdate || latest !== current)) {
+    toast(`发现新版本 ${latest}，即将打开下载页面`);
+    setTimeout(() => window.open(result.downloadUrl), 500);
+  } else toast(`当前已是最新版本（${current}）`);
+}
 
 async function loadFolders() {
   status(true);
@@ -174,6 +192,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (button.dataset.page === "model") loadMinerConfig();
   });
   $("folders").onclick = loadFolders;
+  $("about-btn").onclick = showAbout;
+  $("check-update-btn").onclick = checkUpdate;
   $("folder-select").onchange = async () => { selectedFolder = $("folder-select").value; await loadMails(); };
   $("mails").onclick = loadMails;
   $("mail-search").onkeydown = (e) => { if (e.key === "Enter") loadMails(); };
