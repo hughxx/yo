@@ -68,7 +68,8 @@ async function loadFolders() {
   folders = result.items || [];
   const select = $("folder-select");
   select.innerHTML = folders.length ? folders.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join("") : '<option value="">没有找到 Outlook 文件夹</option>';
-  selectedFolder = folders.find((x) => /[\\/]Inbox$/i.test(x)) || folders[0] || "";
+  // Outlook folder names are localized; the default inbox may be Inbox or 收件箱.
+  selectedFolder = folders.find((x) => /[\\/](Inbox|收件箱)$/i.test(x)) || folders[0] || "";
   if (selectedFolder) select.value = selectedFolder;
   if (selectedFolder) await loadMails();
 }
