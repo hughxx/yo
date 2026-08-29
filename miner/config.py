@@ -38,6 +38,7 @@ def _config_value(*names, default=""):
 ROOT = Path(os.environ.get("COREINSIGHT_MINER_DIR", r"D:\CoreInsight\miner"))
 VERSION = "0.1.0"
 ROOT.mkdir(parents=True, exist_ok=True)
+USER_CONFIG_FILE = ROOT / "miner_config.json"
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "miner.log"
@@ -77,4 +78,20 @@ LLM_MODEL_ID = os.environ.get("COREINSIGHT_LLM_MODEL_ID", _config_value("llm_mod
 # and OCR result.  The text/experience result itself is still local-only.
 IMAGE_PROXY_URL = os.environ.get("COREINSIGHT_IMAGE_PROXY_URL", "https://coreinsight-beta.rnd.huawei.com/collection")
 
-PROMPT = """你是经验整理助手。请从下面的 Markdown 中提取可复用的工程经验，输出 Markdown，包含：\n# 标题\n## 背景\n## 问题\n## 方案\n## 结果与注意事项\n只保留有事实依据的内容，不要编造。\n\n原始材料：\n"""
+DEFAULT_PROMPT = """你是经验整理助手。请从下面的 Markdown 中提取可复用的工程经验，输出 Markdown，包含：\n# 标题\n## 背景\n## 问题\n## 方案\n## 结果与注意事项\n只保留有事实依据的内容，不要编造。\n\n原始材料：\n"""
+try:
+    _user_config = json.loads(USER_CONFIG_FILE.read_text(encoding="utf-8")) if USER_CONFIG_FILE.exists() else {}
+except Exception:
+    _user_config = {}
+PROMPT = str(_user_config.get("prompt") or DEFAULT_PROMPT)
+RESOURCE = str(_user_config.get("resource") or "public")
+
+
+def save_user_config(prompt=None, resource=None):
+    global PROMPT, RESOURCE
+    if prompt is not None and str(prompt).strip():
+        PROMPT = str(prompt)
+    if resource in ("public", "local"):
+        RESOURCE = resource
+    USER_CONFIG_FILE.write_text(json.dumps({"prompt": PROMPT, "resource": RESOURCE}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"prompt": PROMPT, "resource": RESOURCE, "path": str(USER_CONFIG_FILE)}

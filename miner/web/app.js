@@ -37,6 +37,17 @@ function finish(result) {
   return result;
 }
 function hideTestPanel() { testToken++; $("model-test-send").disabled = false; }
+async function loadMinerConfig() {
+  const result = await call("get_miner_config");
+  if (!result.ok) return toast(result.error || "配置读取失败");
+  $("resource-mail").value = result.resource || "public";
+  $("prompt-editor").value = result.prompt || "";
+}
+async function saveMinerConfig(prompt) {
+  const result = await call("save_miner_config", prompt, $("resource-mail").value);
+  if (result.ok) toast("配置已保存"); else toast(result.error || "配置保存失败");
+  return result;
+}
 
 async function loadFolders() {
   status(true);
@@ -114,6 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("page-title").textContent = pages[button.dataset.page][0];
     $("page-desc").textContent = pages[button.dataset.page][1];
     if (button.dataset.page === "results") loadResults();
+    if (button.dataset.page === "model") loadMinerConfig();
   });
   $("folders").onclick = loadFolders;
   $("mails").onclick = loadMails;
@@ -125,7 +137,18 @@ document.addEventListener("DOMContentLoaded", () => {
   $("mail-ai").onclick = async () => { const ids = checked("[data-mail]", "mail"); if (!ids.length) return toast("请先选择邮件"); const r = await call("export_outlook", ids, selectedFolder ? [selectedFolder] : []); finish(r.ok ? await call("extract_experience_resource", r.path, $("resource-mail").value) : r); };
   $("welink-md").onclick = async () => finish(await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")));
   $("welink-ai").onclick = async () => { const r = await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")); finish(r.ok ? await call("extract_experience_resource", r.path, $("resource-mail").value) : r); };
-  $("model-test")?.remove(); $("model-test-cancel")?.remove(); $("model-panel-close")?.remove(); $("model-test-panel").classList.remove("hidden");
+  document.querySelectorAll(".config-tab").forEach((tab) => tab.onclick = () => {
+    document.querySelectorAll(".config-tab").forEach((x) => x.classList.remove("active"));
+    tab.classList.add("active");
+    document.querySelectorAll(".config-tab-panel").forEach((x) => x.classList.add("hidden"));
+    $(tab.dataset.tab).classList.remove("hidden");
+  });
+  $("resource-mail").onchange = () => saveMinerConfig($("prompt-editor").value);
+  $("prompt-save").onclick = () => saveMinerConfig($("prompt-editor").value);
+  $("prompt-reset").onclick = async () => {
+    const result = await call("get_miner_config");
+    if (result.ok) $("prompt-editor").value = result.default_prompt || result.prompt || "";
+  };
   $("model-test-send").onclick = async () => { const text = $("model-test-input").value.trim(); if (!text) return toast("请输入测试内容"); const token = ++testToken; $("model-test-send").disabled = true; $("model-test-output").textContent = "测试中..."; const r = await call("test_model", $("resource-mail").value, text); if (token === testToken) { $("model-test-output").textContent = r.ok ? (r.output || "模型已返回空结果") : (r.error || "测试失败"); $("model-test-send").disabled = false; } };
   $("open-dir").onclick = openResultsDir;
   $("refresh-results").onclick = loadResults;
@@ -144,7 +167,7 @@ function bootstrapBridge() {
   if (bridgeBootstrapped) return;
   if (!window.pywebview || !window.pywebview.api) { setTimeout(bootstrapBridge, 500); return; }
   bridgeBootstrapped = true;
-  loadFolders(); loadResults();
+  loadFolders(); loadResults(); loadMinerConfig();
 }
 window.addEventListener("pywebviewready", bootstrapBridge);
 setTimeout(bootstrapBridge, 100);

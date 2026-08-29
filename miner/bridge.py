@@ -43,6 +43,16 @@ class MinerApi:
         self._lock = threading.Lock()
         self._welink_cache = {}
         self._mail_cache = {}
+
+    def get_miner_config(self):
+        return {"ok": True, "prompt": config.PROMPT, "default_prompt": config.DEFAULT_PROMPT, "resource": config.RESOURCE}
+
+    def save_miner_config(self, prompt=None, resource=None):
+        try:
+            return {"ok": True, **config.save_user_config(prompt, resource)}
+        except Exception as exc:
+            logging.exception("miner config save failed")
+            return {"ok": False, "error": str(exc)}
         self._test_process = None
         self._test_process_lock = threading.Lock()
 
@@ -167,9 +177,7 @@ class MinerApi:
             if path.suffix.lower() != ".md" or not path.is_file():
                 raise ValueError("Markdown file not found")
             self._event("正在使用个人资源提取经验")
-            prompt = (f"请读取文件 {path}，提取可复用的工程经验。"
-                      "输出纯 Markdown，包含标题、背景、问题、方案、结果与注意事项。"
-                      "只依据文件事实，不要编造，不要输出解释或代码围栏。")
+            prompt = f"{config.PROMPT}\n\n请读取文件：{path}\n只依据文件事实，不要编造，不要输出解释或代码围栏。"
             cmd = ["codeagent", "--print", "--verbose", "--skip-safe-check",
                    "--output-format", "stream-json", "--permission-mode",
                    "bypassPermissions", prompt]
