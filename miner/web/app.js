@@ -60,22 +60,29 @@ async function saveMinerConfig(prompt) {
   if (result.ok) toast("配置已保存"); else toast(result.error || "配置保存失败");
   return result;
 }
+let updateInfo = null;
 async function showAbout() {
   const result = await call("check_update");
-  if (result.ok) toast(`Miner 当前版本：${result.currentVersion || "未知"}`);
-  else toast("无法读取版本信息");
+  if (!result.ok) return toast("无法读取版本信息");
+  updateInfo = result;
+  $("about-version").innerHTML = `<div>当前版本：${esc(result.currentVersion || "未知")}</div><div>最新版本：${esc(result.latestVersion || "未知")}</div>`;
+  const link = $("about-download");
+  if (result.downloadUrl) { link.href = result.downloadUrl; link.textContent = `下载链接：${result.downloadUrl}`; link.classList.remove("hidden"); } else link.classList.add("hidden");
+  $("about-modal").classList.remove("hidden");
+  $("update-dot").classList.add("hidden");
 }
-async function checkUpdate() {
+async function checkUpdate(openLink = true) {
   const button = $("check-update-btn");
-  button.disabled = true;
+  if (button) button.disabled = true;
   const result = await call("check_update");
-  button.disabled = false;
+  if (button) button.disabled = false;
   if (!result.ok) return toast("检查更新失败");
+  updateInfo = result;
   const current = result.currentVersion || "";
   const latest = result.latestVersion || current;
   if (result.downloadUrl && (result.forceUpdate || latest !== current)) {
     toast(`发现新版本 ${latest}，即将打开下载页面`);
-    setTimeout(() => window.open(result.downloadUrl), 500);
+    if (openLink) setTimeout(() => window.open(result.downloadUrl), 500);
   } else toast(`当前已是最新版本（${current}）`);
 }
 
@@ -193,7 +200,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("folders").onclick = loadFolders;
   $("about-btn").onclick = showAbout;
-  $("check-update-btn").onclick = checkUpdate;
+  $("about-close").onclick = () => $("about-modal").classList.add("hidden");
   $("folder-select").onchange = async () => { selectedFolder = $("folder-select").value; await loadMails(); };
   $("mails").onclick = loadMails;
   $("mail-search").onkeydown = (e) => { if (e.key === "Enter") loadMails(); };
@@ -259,7 +266,7 @@ function bootstrapBridge() {
   if (bridgeBootstrapped) return;
   if (!window.pywebview || !window.pywebview.api) { setTimeout(bootstrapBridge, 500); return; }
   bridgeBootstrapped = true;
-  loadFolders(); loadResults(); loadMinerConfig();
+  loadFolders(); loadResults(); loadMinerConfig(); checkUpdate(false).then(() => { if (updateInfo && updateInfo.downloadUrl && (updateInfo.forceUpdate || updateInfo.latestVersion !== updateInfo.currentVersion)) $("update-dot").classList.remove("hidden"); });
 }
 window.addEventListener("pywebviewready", bootstrapBridge);
 setTimeout(bootstrapBridge, 100);
