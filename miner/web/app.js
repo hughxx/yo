@@ -2,6 +2,9 @@ const $ = (id) => document.getElementById(id);
 let selectedFolder = "";
 let folders = [];
 let messages = [];
+let messagePage = 1;
+const selectedMessageIds = new Set();
+const MESSAGE_PAGE_SIZE = 30;
 let testToken = 0;
 let bridgeBootstrapped = false;
 let resultItems = [];
@@ -104,10 +107,21 @@ async function loadMessages() {
   loadButton.disabled = false;
   if (!result.ok) { $("message-list").innerHTML = ""; toast(result.error); return; }
   messages = result.items || [];
-  $("message-list").innerHTML = messages.length ? messages.map((x) =>
-    `<label class="message"><input type="checkbox" data-msg="${esc(x.id)}" checked><span class="content"><small>${esc(x.time || "")} · ${esc(x.sender || "")}</small><br>${esc(x.displayContent || x.content || "")}</span></label>`
+  selectedMessageIds.clear();
+  messages.forEach((x) => selectedMessageIds.add(String(x.id)));
+  messagePage = 1;
+  renderMessagePage();
+}
+function renderMessagePage() {
+  const pageItems = messages.slice((messagePage - 1) * MESSAGE_PAGE_SIZE, messagePage * MESSAGE_PAGE_SIZE);
+  $("message-list").innerHTML = pageItems.length ? pageItems.map((x) =>
+    `<label class="message"><input type="checkbox" data-msg="${esc(x.id)}" ${selectedMessageIds.has(String(x.id)) ? "checked" : ""}><span class="content"><small>${esc(x.time || "")} · ${esc(x.sender || "")}</small><br>${esc(x.displayContent || x.content || "")}</span></label>`
   ).join("") : '<div class="empty">没有消息</div>';
-  $("msg-count").textContent = `消息列表 · 共 ${messages.length} 条`;
+  const pages = Math.max(1, Math.ceil(messages.length / MESSAGE_PAGE_SIZE));
+  $("msg-count").textContent = `消息列表 · 已选择 ${selectedMessageIds.size} / 共 ${messages.length} 条`;
+  $("msg-page-info").textContent = `${messagePage} / ${pages}`;
+  $("msg-page-prev").disabled = messagePage <= 1;
+  $("msg-page-next").disabled = messagePage >= pages;
 }
 async function loadResults() {
   const result = await call("list_results");
@@ -157,12 +171,15 @@ document.addEventListener("DOMContentLoaded", () => {
   $("mail-all").onclick = () => { mailItems.forEach((x) => selectedMailIds.add(String(x.item_id))); renderMailPage(); };
   $("mail-reverse").onclick = () => { mailItems.forEach((x) => { const id = String(x.item_id); selectedMailIds.has(id) ? selectedMailIds.delete(id) : selectedMailIds.add(id); }); renderMailPage(); };
   $("welink-load").onclick = loadMessages;
-  $("msg-all").onclick = () => document.querySelectorAll("[data-msg]").forEach((x) => x.checked = true);
-  $("msg-reverse").onclick = () => document.querySelectorAll("[data-msg]").forEach((x) => x.checked = !x.checked);
+  $("message-list").onchange = (event) => { const box = event.target.closest("[data-msg]"); if (box) { const id = String(box.dataset.msg); box.checked ? selectedMessageIds.add(id) : selectedMessageIds.delete(id); renderMessagePage(); } };
+  $("msg-page-prev").onclick = () => { if (messagePage > 1) { messagePage--; renderMessagePage(); } };
+  $("msg-page-next").onclick = () => { if (messagePage < Math.ceil(messages.length / MESSAGE_PAGE_SIZE)) { messagePage++; renderMessagePage(); } };
+  $("msg-all").onclick = () => { messages.forEach((x) => selectedMessageIds.add(String(x.id))); renderMessagePage(); };
+  $("msg-reverse").onclick = () => { messages.forEach((x) => { const id = String(x.id); selectedMessageIds.has(id) ? selectedMessageIds.delete(id) : selectedMessageIds.add(id); }); renderMessagePage(); };
   $("mail-md").onclick = async () => { const ids = [...selectedMailIds]; if (!ids.length) return toast("请先选择邮件"); finish(await call("export_outlook", ids, selectedFolder ? [selectedFolder] : [])); };
   $("mail-ai").onclick = async () => { const ids = [...selectedMailIds]; if (!ids.length) return toast("请先选择邮件"); const r = await call("export_outlook", ids, selectedFolder ? [selectedFolder] : []); finish(r.ok ? await call("extract_experience_resource", r.path, selectedResource()) : r); };
-  $("welink-md").onclick = async () => finish(await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")));
-  $("welink-ai").onclick = async () => { const r = await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, checked("[data-msg]", "msg")); finish(r.ok ? await call("extract_experience_resource", r.path, selectedResource()) : r); };
+  $("welink-md").onclick = async () => finish(await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, [...selectedMessageIds]));
+  $("welink-ai").onclick = async () => { const r = await call("export_welink", $("group-id").value, $("group-name").value, $("start-time").value, $("end-time").value, [...selectedMessageIds]); finish(r.ok ? await call("extract_experience_resource", r.path, selectedResource()) : r); };
   document.querySelectorAll(".config-tab").forEach((tab) => tab.onclick = () => {
     document.querySelectorAll(".config-tab").forEach((x) => x.classList.remove("active"));
     tab.classList.add("active");

@@ -22,10 +22,10 @@
         <div class="folder-select-row"><select id="folder-select"><option value="">正在读取文件夹…</option></select><button id="folders">刷新文件夹</button></div>
         <div class="mail-search-row"><input id="mail-search" placeholder="搜索主题、发件人……"><button id="mails">刷新邮件</button></div>
       </div>
+      <div class="page-actions page-actions-top"><button class="primary" id="mail-md">导出 Markdown</button><button class="primary" id="mail-ai">提取经验</button></div>
       <div class="selection-bar"><span id="mail-selected-count">已选择 0 封邮件</span><span class="bar-spacer"></span><button id="mail-all">全选</button><button id="mail-reverse">反选</button></div>
       <div class="list mail-list" id="mail-list"><div class="loading">正在加载邮件列表…</div></div>
       <div class="pagination"><button id="mail-page-prev">上一页</button><span id="mail-page-info">1 / 1</span><button id="mail-page-next">下一页</button></div>
-      <div class="page-actions"><button class="primary" id="mail-md">导出 Markdown</button><button class="primary" id="mail-ai">提取经验</button></div>
     </section>
 
     <section id="welink" class="page hidden">
@@ -35,9 +35,10 @@
         <div class="control-title time-title">时间范围</div>
         <div class="time-row"><label>开始<input id="start-time" type="datetime-local"></label><label>结束<input id="end-time" type="datetime-local"></label><button id="welink-load" class="primary">加载消息</button></div>
       </div>
+      <div class="page-actions page-actions-top"><button class="primary" id="welink-md">导出 Markdown</button><button class="primary" id="welink-ai">提取经验</button></div>
       <div class="selection-bar"><span id="msg-count">消息列表 · 共 0 条</span><span class="bar-spacer"></span><button id="msg-all">全选</button><button id="msg-reverse">反选</button></div>
       <div id="message-list" class="message-list"><div class="empty">请输入群组 ID</div></div>
-      <div class="page-actions"><button class="primary" id="welink-md">导出 Markdown</button><button class="primary" id="welink-ai">提取经验</button></div>
+      <div class="pagination"><button id="msg-page-prev">上一页</button><span id="msg-page-info">1 / 1</span><button id="msg-page-next">下一页</button></div>
     </section>
 
     <section id="model" class="page hidden"><div class="model-card"><div class="tabs"><button class="config-tab active" data-tab="model-config">模型配置</button><button class="config-tab" data-tab="prompt-config">提示词配置</button></div><div id="model-config" class="config-tab-panel"><h2>模型配置</h2><p>选择用于经验提取的模型资源，并发送一句话确认是否可用。</p><div class="resource-radios"><label><input type="radio" name="resource" value="public" checked> 云见（每日Token有限）</label><label><input type="radio" name="resource" value="local"> 本地 CodeAgent</label></div><div class="connection-test"><input id="model-test-input" value="你好" placeholder="输入测试内容"><button id="model-test" class="primary">发送</button></div><pre id="model-test-output" class="model-test-output">尚未发送测试</pre></div><div id="prompt-config" class="config-tab-panel hidden"><h2>提示词配置</h2><p>自定义经验提取规则。保存后，邮件和聊天记录提取都会使用该提示词。</p><textarea id="prompt-editor" class="prompt-editor" placeholder="请输入经验提取提示词"></textarea><div class="config-actions"><button id="prompt-reset">恢复默认</button><button id="prompt-save" class="primary">保存提示词</button></div></div></div></section>
