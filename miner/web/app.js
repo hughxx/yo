@@ -89,7 +89,19 @@ async function openResultsDir() {
   const result = await call("open_results_dir");
   if (!result.ok) toast(result.error || "无法打开结果目录");
 }
-async function extractResult(path) { finish(await call("extract_experience_resource", path, $("resource-mail").value)); await loadResults(); }
+async function extractResult(path, button) {
+  if (!path) return toast("没有找到 Markdown 文件");
+  status(true);
+  if (button) button.disabled = true;
+  try {
+    const resource = $("resource-mail") ? $("resource-mail").value : "public";
+    finish(await call("extract_experience_resource", path, resource));
+    await loadResults();
+  } finally {
+    status(false);
+    if (button) button.disabled = false;
+  }
+}
 function openFile(path) { call("open_file", path).then((r) => { if (!r.ok) toast(r.error); }); }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -125,7 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const action = button.dataset.resultAction;
     if (action === "open-markdown") openFile(item.markdown);
     else if (action === "open-experience") openFile(item.experience);
-    else if (action === "extract") extractResult(item.markdown);
+    else if (action === "extract") void extractResult(item.markdown, button);
   };
 });
 function bootstrapBridge() {

@@ -159,6 +159,7 @@ class MinerApi:
             return {"ok": False, "error": str(exc)}
 
     def extract_experience_resource(self, markdown_path, resource="public"):
+        logging.info("MinerApi.extract_experience_resource called path=%s resource=%s", markdown_path, resource)
         if resource != "local":
             return self.extract_experience(markdown_path)
         try:
