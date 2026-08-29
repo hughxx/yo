@@ -67,7 +67,7 @@ async function showAbout() {
   updateInfo = result;
   $("about-version").innerHTML = `<div>当前版本：${esc(result.currentVersion || "未知")}</div><div>最新版本：${esc(result.latestVersion || "未知")}</div>`;
   const link = $("about-download");
-  if (result.downloadUrl) { link.href = result.downloadUrl; link.textContent = `下载链接：${result.downloadUrl}`; link.classList.remove("hidden"); } else link.classList.add("hidden");
+  if (result.downloadUrl) { link.href = result.downloadUrl; link.textContent = result.downloadUrl; link.classList.remove("hidden"); } else link.classList.add("hidden");
   $("about-modal").classList.remove("hidden");
   $("update-dot").classList.add("hidden");
 }
