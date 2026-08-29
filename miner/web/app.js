@@ -188,8 +188,8 @@ function openFile(path) { call("open_file", path).then((r) => { if (!r.ok) toast
 
 document.addEventListener("DOMContentLoaded", () => {
   const pages = { outlook: ["邮件提取", "选择邮件，导出 Markdown 或提取经验"], welink: ["聊天记录提取", "选择群聊消息，导出 Markdown 或提取经验"], results: ["提取结果", "查看已保存的 Markdown 和经验文件"], model: ["模型配置", "模型配置和提示词配置"] };
-  document.querySelectorAll(".nav").forEach((button) => button.onclick = () => {
-    document.querySelectorAll(".nav").forEach((x) => x.classList.remove("active"));
+  document.querySelectorAll(".nav:not(.about-nav)").forEach((button) => button.onclick = () => {
+    document.querySelectorAll(".nav:not(.about-nav)").forEach((x) => x.classList.remove("active"));
     button.classList.add("active");
     document.querySelectorAll(".page").forEach((x) => x.classList.add("hidden"));
     $(button.dataset.page).classList.remove("hidden");
