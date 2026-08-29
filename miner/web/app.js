@@ -8,6 +8,8 @@ const MESSAGE_PAGE_SIZE = 30;
 let testToken = 0;
 let bridgeBootstrapped = false;
 let resultItems = [];
+let resultPage = 1;
+const RESULT_PAGE_SIZE = 20;
 let mailItems = [];
 let mailPage = 1;
 const selectedMailIds = new Set();
@@ -128,9 +130,18 @@ async function loadResults() {
   const result = await call("list_results");
   if (!result.ok) { toast(result.error); return; }
   resultItems = result.items || [];
-  $("result-list").innerHTML = resultItems.length ? resultItems.map((x, index) =>
-    `<div class="result"><div class="result-head"><div><h3>${esc(x.title)}</h3><small>${x.kind === "outlook" ? "邮件" : "聊天记录"} · ${esc(x.updatedAt)}</small></div><span>${x.hasExperience ? "已提取经验" : "仅 Markdown"}</span></div><div class="result-actions"><button data-result-action="open-markdown" data-result-index="${index}">打开 Markdown</button>${x.hasExperience ? `<button data-result-action="open-experience" data-result-index="${index}">打开经验</button>` : `<button class="primary" data-result-action="extract" data-result-index="${index}">提取经验</button>`}</div></div>`
-  ).join("") : '<div class="empty">还没有导出结果</div>';
+  resultPage = 1;
+  renderResultPage();
+}
+function renderResultPage() {
+  const items = resultItems.slice((resultPage - 1) * RESULT_PAGE_SIZE, resultPage * RESULT_PAGE_SIZE);
+  $("result-list").innerHTML = items.length ? items.map((x, index) => {
+    const actualIndex = (resultPage - 1) * RESULT_PAGE_SIZE + index;
+    return `<div class="result"><div class="result-head"><div><h3>${esc(x.title)}</h3><small>${x.kind === "outlook" ? "邮件" : "聊天记录"} · ${esc(x.updatedAt)}</small></div><span>${x.hasExperience ? "已提取经验" : "仅 Markdown"}</span></div><div class="result-actions"><button data-result-action="open-markdown" data-result-index="${actualIndex}">打开 Markdown</button>${x.hasExperience ? `<button data-result-action="open-experience" data-result-index="${actualIndex}">打开经验</button>` : `<button class="primary" data-result-action="extract" data-result-index="${actualIndex}">提取经验</button>`}</div></div>`;
+  }).join("") : '<div class="empty">还没有导出结果</div>';
+  $("result-page-info").textContent = `${resultPage} / ${Math.max(1, Math.ceil(resultItems.length / RESULT_PAGE_SIZE))}`;
+  $("result-page-prev").disabled = resultPage <= 1;
+  $("result-page-next").disabled = resultPage >= Math.max(1, Math.ceil(resultItems.length / RESULT_PAGE_SIZE));
 }
 async function openResultsDir() {
   const result = await call("open_results_dir");
@@ -211,6 +222,8 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   $("open-dir").onclick = openResultsDir;
   $("refresh-results").onclick = loadResults;
+  $("result-page-prev").onclick = () => { if (resultPage > 1) { resultPage--; renderResultPage(); } };
+  $("result-page-next").onclick = () => { if (resultPage < Math.ceil(resultItems.length / RESULT_PAGE_SIZE)) { resultPage++; renderResultPage(); } };
   $("result-list").onclick = (event) => {
     const button = event.target.closest("[data-result-action]");
     if (!button) return;
