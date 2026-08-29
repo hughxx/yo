@@ -149,7 +149,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const result = await call("get_miner_config");
     if (result.ok) $("prompt-editor").value = result.default_prompt || result.prompt || "";
   };
-  $("model-test-send").onclick = async () => { const text = $("model-test-input").value.trim(); if (!text) return toast("请输入测试内容"); const token = ++testToken; $("model-test-send").disabled = true; $("model-test-output").textContent = "测试中..."; const r = await call("test_model", $("resource-mail").value, text); if (token === testToken) { $("model-test-output").textContent = r.ok ? (r.output || "模型已返回空结果") : (r.error || "测试失败"); $("model-test-send").disabled = false; } };
+  $("model-test").onclick = async () => {
+    const button = $("model-test");
+    const output = $("model-test-output");
+    const token = ++testToken;
+    button.disabled = true;
+    output.className = "testing";
+    output.textContent = "正在测试连接…";
+    const r = await call("test_model", $("resource-mail").value, "请仅回复：连接成功");
+    if (token === testToken) {
+      output.className = r.ok ? "success" : "failure";
+      output.textContent = r.ok ? "连接成功" : (r.error || "连接失败");
+      button.disabled = false;
+    }
+  };
   $("open-dir").onclick = openResultsDir;
   $("refresh-results").onclick = loadResults;
   $("result-list").onclick = (event) => {
