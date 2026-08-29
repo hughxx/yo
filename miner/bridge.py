@@ -43,6 +43,8 @@ class MinerApi:
         self._lock = threading.Lock()
         self._welink_cache = {}
         self._mail_cache = {}
+        self._test_process = None
+        self._test_process_lock = threading.Lock()
 
     def get_miner_config(self):
         return {"ok": True, "prompt": config.PROMPT, "default_prompt": config.DEFAULT_PROMPT, "resource": config.RESOURCE}
@@ -53,8 +55,6 @@ class MinerApi:
         except Exception as exc:
             logging.exception("miner config save failed")
             return {"ok": False, "error": str(exc)}
-        self._test_process = None
-        self._test_process_lock = threading.Lock()
 
     def bind_window(self, window):
         self._window = window
