@@ -118,7 +118,7 @@ async function extractResult(path, button) {
 function openFile(path) { call("open_file", path).then((r) => { if (!r.ok) toast(r.error); }); }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const pages = { outlook: ["邮件萃取", "选择邮件，导出 Markdown 或提取经验"], welink: ["聊天记录萃取", "选择群聊消息，导出 Markdown 或提取经验"], results: ["萃取结果", "查看已保存的 Markdown 和经验文件"], model: ["模型资源管理", "选择公共资源或个人资源，测试模型是否可用"] };
+  const pages = { outlook: ["邮件萃取", "选择邮件，导出 Markdown 或提取经验"], welink: ["聊天记录萃取", "选择群聊消息，导出 Markdown 或提取经验"], results: ["萃取结果", "查看已保存的 Markdown 和经验文件"], model: ["配置", "模型配置和提示词配置"] };
   document.querySelectorAll(".nav").forEach((button) => button.onclick = () => {
     document.querySelectorAll(".nav").forEach((x) => x.classList.remove("active"));
     button.classList.add("active");

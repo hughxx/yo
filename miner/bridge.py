@@ -221,11 +221,9 @@ class MinerApi:
             if not text:
                 raise ValueError("请输入测试内容")
             if resource == "local":
-                prompt = (
-                    "这是模型连通性测试。请直接回答‘用户输入’的内容，"
-                    "不要复述任务、不要解释测试过程、不要调用工具，只输出给用户的最终答复。\n\n"
-                    f"用户输入：\n{text}"
-                )
+                # Pass the user's test text as-is; wrapper instructions are
+                # otherwise echoed by CodeAgent as part of its answer.
+                prompt = text
                 cmd = ["codeagent", "--print", "--verbose", "--skip-safe-check",
                        "--output-format", "stream-json", "--permission-mode",
                        "bypassPermissions", prompt]
