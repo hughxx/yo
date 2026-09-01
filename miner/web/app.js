@@ -56,6 +56,15 @@ async function loadMinerConfig() {
   $("prompt-editor").value = result.prompt || "";
 }
 async function loadPreparation() {
+  const card = $("preparation")?.querySelector(".preparation-card");
+  if (card) {
+    const heading = card.querySelector("h2");
+    if (heading) heading.outerHTML = '<div class="preparation-head"><h3>welink-cli安装</h3></div>';
+    const intro = card.querySelector(".preparation-head + p");
+    if (intro) intro.remove();
+    const link = card.querySelector(".guide-link");
+    if (link) link.textContent = "打开welink-cli安装指南";
+  }
   const target = $("preparation-notes");
   target.innerHTML = '<div class="loading">正在读取注意事项…</div>';
   const result = await call("get_preparation");
