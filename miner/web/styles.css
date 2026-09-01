@@ -21,3 +21,4 @@
 .preparation-card{max-width:760px;background:#fff;border:1px solid #e6eaf0;border-radius:14px;padding:24px}.preparation-card h2{margin:0 0 8px}.preparation-card>p{color:#8490a2;margin:0 0 18px}.guide-link{color:#2563eb}.preparation-head{display:flex;align-items:center;justify-content:space-between;margin-top:28px;border-bottom:1px solid #edf0f4;padding-bottom:10px}.preparation-head h3{margin:0;font-size:15px}.preparation-notes{min-height:100px}.preparation-notes ul{margin:14px 0;padding-left:22px;line-height:1.9;color:#4b5563}
 .preparation-card>.guide-link{display:inline-block;margin-top:14px}.muted-hint{font-size:12px;font-weight:400;color:#8490a2}
 .preparation-head button{padding:3px 8px;min-height:0;height:26px;font-size:12px;line-height:1.2}
+.model-test-output{overflow-wrap:anywhere;word-break:break-word;max-width:100%}
