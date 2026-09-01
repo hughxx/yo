@@ -55,6 +55,14 @@ async function loadMinerConfig() {
   if (radio) radio.checked = true;
   $("prompt-editor").value = result.prompt || "";
 }
+async function loadPreparation() {
+  const target = $("preparation-notes");
+  target.innerHTML = '<div class="loading">正在读取注意事项…</div>';
+  const result = await call("get_preparation");
+  if (!result.ok) { target.innerHTML = '<div class="empty">注意事项读取失败</div>'; return toast(result.error || "注意事项读取失败"); }
+  const notes = result.notes || [];
+  target.innerHTML = notes.length ? `<ul>${notes.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : '<div class="empty">暂无注意事项</div>';
+}
 async function saveMinerConfig(prompt) {
   const result = await call("save_miner_config", prompt, selectedResource());
   if (result.ok) toast("配置已保存"); else toast(result.error || "配置保存失败");
@@ -187,7 +195,7 @@ async function extractResult(path, button) {
 function openFile(path) { call("open_file", path).then((r) => { if (!r.ok) toast(r.error); }); }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const pages = { outlook: ["邮件提取", "选择邮件，导出 Markdown 或提取经验"], welink: ["聊天记录提取", "选择群聊消息，导出 Markdown 或提取经验"], results: ["提取结果", "查看已保存的 Markdown 和经验文件"], model: ["模型配置", "模型配置和提示词配置"] };
+  const pages = { preparation: ["使用前准备", "WeLink CLI 安装指南和常见注意事项"], outlook: ["邮件提取", "选择邮件，导出 Markdown 或提取经验"], welink: ["聊天记录提取", "选择群聊消息，导出 Markdown 或提取经验"], results: ["提取结果", "查看已保存的 Markdown 和经验文件"], model: ["模型配置", "模型配置和提示词配置"] };
   document.querySelectorAll(".nav:not(.about-nav)").forEach((button) => button.onclick = () => {
     document.querySelectorAll(".nav:not(.about-nav)").forEach((x) => x.classList.remove("active"));
     button.classList.add("active");
@@ -197,6 +205,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("page-desc").textContent = pages[button.dataset.page][1];
     if (button.dataset.page === "results") loadResults();
     if (button.dataset.page === "model") loadMinerConfig();
+    if (button.dataset.page === "preparation") loadPreparation();
   });
   $("folders").onclick = loadFolders;
   $("about-btn").onclick = showAbout;
@@ -249,6 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   $("open-dir").onclick = openResultsDir;
   $("refresh-results").onclick = loadResults;
+  $("refresh-preparation").onclick = loadPreparation;
   $("result-page-prev").onclick = () => { if (resultPage > 1) { resultPage--; renderResultPage(); } };
   $("result-page-next").onclick = () => { if (resultPage < Math.ceil(resultItems.length / RESULT_PAGE_SIZE)) { resultPage++; renderResultPage(); } };
   $("result-list").onclick = (event) => {

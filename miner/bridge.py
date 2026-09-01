@@ -49,6 +49,25 @@ class MinerApi:
     def get_miner_config(self):
         return {"ok": True, "prompt": config.PROMPT, "default_prompt": config.DEFAULT_PROMPT, "resource": config.RESOURCE}
 
+    def get_preparation(self):
+        try:
+            runtime = config.refresh_runtime_config()
+            preparation = runtime.get("preparation") or runtime.get("preparation_config") or {}
+            notes = (runtime.get("commonNotes") or runtime.get("common_notes")
+                     or runtime.get("preparationNotes") or runtime.get("preparation_notes")
+                     or runtime.get("notes") or runtime.get("notices")
+                     or (preparation.get("notes") if isinstance(preparation, dict) else [])
+                     or [])
+            if isinstance(notes, str):
+                notes = [notes]
+            if isinstance(notes, dict):
+                notes = [str(v) for v in notes.values()]
+            notes = [str(item) for item in notes if str(item).strip()]
+            return {"ok": True, "guideUrl": "https://3ms.huawei.com/km/groups/3956545/blogs/details/22348120", "notes": notes or []}
+        except Exception as exc:
+            logging.exception("miner preparation config refresh failed")
+            return {"ok": False, "error": str(exc)}
+
     def save_miner_config(self, prompt=None, resource=None):
         try:
             return {"ok": True, **config.save_user_config(prompt, resource)}

@@ -48,21 +48,33 @@ WELINK_DIR.mkdir(parents=True, exist_ok=True)
 OUTLOOK_DIR.mkdir(parents=True, exist_ok=True)
 
 # These are the same packaged defaults used by the existing client.
-def _runtime_config():
+def _fetch_runtime_config():
+    """Fetch the complete release object from config center.
+
+    The object may contain only UI notices in some deployments, so this
+    helper deliberately does not require model credentials to be present.
+    """
     url = os.environ.get("COREINSIGHT_RUNTIME_CONFIG_URL", "https://fuyao.rnd.huawei.com/dataengineering/rag-knowledge-config/selectConfigByKey")
     key = os.environ.get("COREINSIGHT_MINER_CONFIG_KEY", "coreinsight_miner_release")
-    for config_key in (key,):
-      try:
-        response = requests.get(url, params={"key": config_key}, timeout=10, verify=False)
+    try:
+        response = requests.get(url, params={"key": key}, timeout=10, verify=False)
         response.raise_for_status()
         value = (response.json().get("data") or {}).get("configVal")
         if isinstance(value, str):
             value = json.loads(value)
-        if isinstance(value, dict) and (value.get("llm_api_key") or value.get("model_gateway_api_key")):
-            return value
-      except Exception:
-        logging.getLogger(__name__).warning("miner runtime config unavailable key=%s", config_key, exc_info=True)
-    return {}
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        logging.getLogger(__name__).warning("miner runtime config unavailable key=%s", key, exc_info=True)
+        return {}
+
+
+def _runtime_config():
+    return _fetch_runtime_config()
+
+
+def refresh_runtime_config():
+    """Refresh the public runtime configuration on demand (for UI notices)."""
+    return _fetch_runtime_config()
 
 
 _RUNTIME = _runtime_config()
