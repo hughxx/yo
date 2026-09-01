@@ -59,11 +59,11 @@ async function loadPreparation() {
   const card = $("preparation")?.querySelector(".preparation-card");
   if (card) {
     const heading = card.querySelector("h2");
-    if (heading) heading.outerHTML = '<div class="preparation-head"><h3>welink-cli安装</h3></div>';
+    if (heading) heading.outerHTML = '<div class="preparation-head"><h3>welink-cli安装 <span class="muted-hint">（只使用邮件提取功能可忽略）</span></h3></div>';
     const intro = card.querySelector(".preparation-head + p");
     if (intro) intro.remove();
     const link = card.querySelector(".guide-link");
-    if (link) link.textContent = "打开welink-cli安装指南";
+    if (link) link.textContent = "welink-cli官方安装指南";
   }
   const target = $("preparation-notes");
   target.innerHTML = '<div class="loading">正在读取注意事项…</div>';
@@ -204,6 +204,11 @@ async function extractResult(path, button) {
 function openFile(path) { call("open_file", path).then((r) => { if (!r.ok) toast(r.error); }); }
 
 document.addEventListener("DOMContentLoaded", () => {
+  const preparationNav = document.querySelector('.nav[data-page="preparation"]');
+  const outlookNav = document.querySelector('.nav[data-page="outlook"]');
+  if (preparationNav && outlookNav && !preparationNav.nextElementSibling?.classList.contains("nav-divider")) {
+    preparationNav.insertAdjacentHTML("afterend", '<div class="nav-divider"></div>');
+  }
   const pages = { preparation: ["使用前准备", "WeLink CLI 安装指南和常见注意事项"], outlook: ["邮件提取", "选择邮件，导出 Markdown 或提取经验"], welink: ["聊天记录提取", "选择群聊消息，导出 Markdown 或提取经验"], results: ["提取结果", "查看已保存的 Markdown 和经验文件"], model: ["模型配置", "模型配置和提示词配置"] };
   document.querySelectorAll(".nav:not(.about-nav)").forEach((button) => button.onclick = () => {
     document.querySelectorAll(".nav:not(.about-nav)").forEach((x) => x.classList.remove("active"));
