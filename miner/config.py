@@ -78,6 +78,7 @@ def refresh_runtime_config():
 
 
 _RUNTIME = _runtime_config()
+APP_NAME = str(_RUNTIME.get("appName") or _RUNTIME.get("app_name") or "邮件聊天记录提取工具")
 LATEST_VERSION = str(_RUNTIME.get("latestVersion") or VERSION)
 MINIMUM_SUPPORTED_VERSION = str(_RUNTIME.get("minimumSupportedVersion") or VERSION)
 FORCE_UPDATE = bool(_RUNTIME.get("forceUpdate", False))
