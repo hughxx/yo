@@ -352,7 +352,8 @@ class EmailRuntime:
                 documents, payload.skillId, upload_by, self.task["taskId"],
                 progress, self.cancel_event, group_id="outlook-mailbox",
                 scheduled=scheduled, extract_mode=payload.extractMode,
-                source_type="email")
+                source_type="email", scene=payload.scene,
+                scene_id=payload.scene_id)
             for row in selected:
                 self._set_item_status(str(row["id"]), "success")
             if self.notifier:
@@ -447,6 +448,10 @@ class EmailScheduleRuntime:
         config.uploadBy = payload.uploadBy.strip()
         config.skillId = payload.skillId
         config.extractMode = payload.extractMode
+        if payload.scene:
+            config.scene = payload.scene
+        if payload.scene_id:
+            config.scene_id = payload.scene_id
         config.scheduleFreq = payload.scheduleFreq
         config.scheduleTime = payload.scheduleTime
         config.scheduleCron = payload.scheduleCron.strip()
@@ -485,6 +490,7 @@ class EmailScheduleRuntime:
         payload = EmailExtractRequest(
             folders=config.folders, uploadBy=config.uploadBy,
             skillId=config.skillId, extractMode=config.extractMode,
+            scene=config.scene, scene_id=config.scene_id,
             matchedOnly=True,
             selection={"mode": "all"})
         try:

@@ -236,6 +236,8 @@ data 主要字段：
   "skillId": "email-experience-extractor",
   "extractMode": "direct",
   "uploadBy": "w00899061",
+  "scene": "邮件问题定位经验",
+  "scene_id": "251",
   "selection": {
     "mode": "explicit",
     "selectedItemIds": ["Outlook EntryID-1", "Outlook EntryID-2"],
@@ -247,6 +249,7 @@ data 主要字段：
 - 前端只传 Outlook EntryID，不传邮件正文或附件。
 - 当前前端固定使用 selection.mode=explicit，避免无意全量提取。
 - folders、时间、query、matchedOnly 应与生成当前选择集合时的筛选条件一致。
+- scene、scene_id 由前端传入；传入后优先覆盖 Skill 输出的场景值，并用于本次所有经验的新建或更新。
 - LocalToolkit 会重新读取邮件，将 HTML 转成 Markdown，处理附件、图片公开链接和 OCR，再运行 Skill。
 - extractMode=direct 时由 LocalToolkit 写入正式经验；extractMode=draft 时由 LocalToolkit 创建或更新待确认草稿，前端无需调用其他写入接口。
 
@@ -307,6 +310,8 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
   "uploadBy": "w00899061",
   "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "scene": "邮件问题定位经验",
+  "scene_id": "251",
   "scheduleFreq": "daily",
   "scheduleTime": "09:00:00",
   "scheduleCron": "",
@@ -320,6 +325,7 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 - 仅修改执行频率、执行时间、Skill 或入库方式时省略 since，保留现有 scheduleCursor。
 - 用户选择“从最早记录开始”时，since 传 1970-01-01 00:00:00。
 - 必须先通过 PUT /email/config 保存至少一条有效且启用的提取规则，否则返回 422。
+- scene、scene_id 会持久化到定时配置，触发提取时优先覆盖 Skill 输出。
 - 定时任务只处理提取规则命中且未被黑名单排除的邮件，不允许无规则全量增量扫描。
 - 每次窗口为 (scheduleCursor, 本次触发时间]；全部处理成功才推进 scheduleCursor。
 

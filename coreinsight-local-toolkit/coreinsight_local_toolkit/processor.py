@@ -67,7 +67,8 @@ class LocalExperienceProcessor:
     def process(self, messages: list[dict], skill_id: str, upload_by: str,
                 task_id: str, progress=None, cancel_event=None,
                 group_id: str = "", scheduled: bool = False,
-                extract_mode: str = "direct", source_type: str = "welink") -> dict:
+                extract_mode: str = "direct", source_type: str = "welink",
+                scene: str = "", scene_id: str = "") -> dict:
         self._check_cancel(cancel_event)
         self.validate(upload_by, skill_id, extract_mode)
         skill = get_skill(skill_id)
@@ -129,9 +130,15 @@ class LocalExperienceProcessor:
                 self._check_cancel(cancel_event)
                 record = records[index]
                 operation = record["operation"]
-                if operation == "create" and source_type == "email":
-                    record.setdefault("scene_id", "251")
-                    record.setdefault("scene", "问题定位数据飞轮")
+                if source_type == "email" or scene or scene_id:
+                    if scene_id:
+                        record["scene_id"] = scene_id
+                    elif operation == "create" and source_type == "email":
+                        record.setdefault("scene_id", "251")
+                    if scene:
+                        record["scene"] = scene
+                    elif operation == "create" and source_type == "email":
+                        record.setdefault("scene", "问题定位数据飞轮")
                 doc_id = self._push_experience(record, upload_by, extract_mode)
                 record["doc_id"] = doc_id
                 record["operation"] = "update"

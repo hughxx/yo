@@ -210,6 +210,8 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
   "skillId": "welink-experience-extractor",
   "extractMode": "direct",
   "uploadBy": "w00899061",
+  "scene": "WeLink问题定位经验",
+  "scene_id": "251",
   "selection": {
     "mode": "all",
     "excludedMessageIds": [],
@@ -221,6 +223,7 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 - `uploadBy` 必须由正式前端传入当前登录用户账号；Demo 暂时固定为 `w00899061`。
 - `extractMode=direct`：经验直接写入经验中心。
 - `extractMode=draft`：写入待审核草稿。
+- `scene`/`scene_id`：由前端传入，传入后优先覆盖 Skill 输出的场景值。
 - 已启用定时提取的同一群组，开始手动提取前必须先取消定时任务。
 
 成功返回 HTTP `200`，任务对象位于信封的 `data` 中。前端必须保存其中的 `taskId`。
@@ -347,11 +350,12 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 - `POST /email/message/list`：为一个或多个文件夹启动异步摘要列表任务；Outlook 使用 Table API 分批读取并合并结果。
 - `GET /email/message/list/status`：查询列表读取进度，完成后一次返回全部摘要，由前端本地分页。
 - `POST /email/message/get`：读取单封正文用于预览，不上传附件。
-- `POST /email/extract`：只提交 Outlook EntryID 选择条件，启动本地邮件 Skill 提取。
+- `POST /email/extract`：提交 Outlook EntryID 选择条件以及前端场景 `scene`/`scene_id`，启动本地邮件 Skill 提取；前端场景值优先于 Skill 输出。
 - `GET /email/extract/status`：轮询手动或定时邮件任务。
 - `GET /email/extract/tasks`：获取近期邮件任务。
 - `POST /email/extract/cancel`：取消当前邮件任务。
 - `POST /email/schedule/set`：设置邮件定时增量任务，首次或重置时传 `since`。必须先配置并启用至少一条包含主题、正文或发件人条件的有效提取规则，否则返回 `422`，不会扫描全部增量邮件。
+- 邮件和 WeLink 的 `schedule/set` 均支持 `scene`/`scene_id`，并在后续每次定时提取时优先使用已保存的前端场景值。
 - `POST /email/schedule/cancel`：取消邮件定时任务并保留游标。
 
 邮件正式提取由 EXE 重新读取正文和附件。图片执行 OCR 并写成

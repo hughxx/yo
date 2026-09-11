@@ -5,6 +5,7 @@ import logging
 import json
 import queue
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -26,6 +27,128 @@ from .updates import (
 
 
 logger = logging.getLogger(__name__)
+SINGLE_INSTANCE_MUTEX = "Global\\CoreInsight.LocalToolkit.Singleton"
+AUTOSTART_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+AUTOSTART_SETTINGS_KEY = r"Software\CoreInsight\LocalToolkit"
+AUTOSTART_VALUE_NAME = "CoreInsightLocalToolkit"
+AUTOSTART_INITIALIZED_VALUE = "AutoStartInitialized"
+ERROR_ALREADY_EXISTS = 183
+ERROR_ACCESS_DENIED = 5
+
+
+class _SingleInstanceMutex:
+    def __init__(self, name: str = SINGLE_INSTANCE_MUTEX):
+        self.name = name
+        self.handle = None
+
+    def acquire(self) -> bool:
+        if sys.platform != "win32":
+            return True
+        kernel32 = ctypes.windll.kernel32
+        create_mutex = kernel32.CreateMutexW
+        create_mutex.argtypes = [ctypes.c_void_p, ctypes.c_bool,
+                                 ctypes.c_wchar_p]
+        create_mutex.restype = ctypes.c_void_p
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = [ctypes.c_void_p]
+        close_handle.restype = ctypes.c_bool
+        handle = create_mutex(None, False, self.name)
+        if not handle:
+            error = kernel32.GetLastError()
+            if error == ERROR_ACCESS_DENIED:
+                return False
+            raise ctypes.WinError(error)
+        if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            close_handle(handle)
+            return False
+        self.handle = handle
+        return True
+
+    def close(self) -> None:
+        if self.handle and sys.platform == "win32":
+            close_handle = ctypes.windll.kernel32.CloseHandle
+            close_handle.argtypes = [ctypes.c_void_p]
+            close_handle.restype = ctypes.c_bool
+            close_handle(self.handle)
+        self.handle = None
+
+
+def _startup_command() -> str:
+    if getattr(sys, "frozen", False):
+        arguments = [str(Path(sys.executable).resolve()), "--startup"]
+    else:
+        arguments = [str(Path(sys.executable).resolve()), "-m",
+                     "coreinsight_local_toolkit", "--startup"]
+    return subprocess.list2cmdline(arguments)
+
+
+def _read_autostart_command() -> str:
+    if sys.platform != "win32":
+        return ""
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_RUN_KEY) as key:
+            value, _kind = winreg.QueryValueEx(key, AUTOSTART_VALUE_NAME)
+            return str(value or "")
+    except FileNotFoundError:
+        return ""
+
+
+def _autostart_initialized() -> bool:
+    if sys.platform != "win32":
+        return False
+    import winreg
+    try:
+        with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER, AUTOSTART_SETTINGS_KEY) as key:
+            value, _kind = winreg.QueryValueEx(
+                key, AUTOSTART_INITIALIZED_VALUE)
+            return bool(value)
+    except FileNotFoundError:
+        return False
+
+
+def _mark_autostart_initialized() -> None:
+    import winreg
+    with winreg.CreateKeyEx(
+            winreg.HKEY_CURRENT_USER, AUTOSTART_SETTINGS_KEY, 0,
+            winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, AUTOSTART_INITIALIZED_VALUE, 0,
+                          winreg.REG_DWORD, 1)
+
+
+def _set_autostart(enabled: bool) -> None:
+    if sys.platform != "win32":
+        raise RuntimeError("开机自启仅支持 Windows")
+    import winreg
+    if enabled:
+        with winreg.CreateKeyEx(
+                winreg.HKEY_CURRENT_USER, AUTOSTART_RUN_KEY, 0,
+                winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, AUTOSTART_VALUE_NAME, 0, winreg.REG_SZ,
+                              _startup_command())
+    else:
+        try:
+            with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER, AUTOSTART_RUN_KEY, 0,
+                    winreg.KEY_SET_VALUE) as key:
+                winreg.DeleteValue(key, AUTOSTART_VALUE_NAME)
+        except FileNotFoundError:
+            pass
+    _mark_autostart_initialized()
+
+
+def _ensure_default_autostart() -> None:
+    """Enable once by default and keep an enabled entry on the active EXE."""
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return
+    current = _read_autostart_command()
+    if not _autostart_initialized():
+        _set_autostart(True)
+    elif current and current != _startup_command():
+        # If another packaged copy becomes the chosen primary instance, make
+        # the next login start that copy instead of a stale path.
+        _set_autostart(True)
 
 
 def asset_path(name: str) -> Path:
@@ -100,6 +223,30 @@ def _activate_existing(port: int) -> bool:
 
 
 def run_desktop(settings: Settings) -> None:
+    instance = _SingleInstanceMutex()
+    try:
+        acquired = instance.acquire()
+    except Exception as exc:
+        logger.exception("single-instance mutex creation failed")
+        _native_notice(f"无法建立单实例锁，Toolkit 未启动：\n{exc}")
+        return
+    if not acquired:
+        # The primary process may still be starting its HTTP listener.
+        for _attempt in range(40):
+            if _activate_existing(settings.port):
+                logger.info("existing toolkit instance activated")
+                return
+            time.sleep(0.25)
+        logger.info("another toolkit instance is already running")
+        _native_notice("CoreInsight Local Toolkit 已在运行。")
+        return
+    try:
+        _run_desktop_primary(settings)
+    finally:
+        instance.close()
+
+
+def _run_desktop_primary(settings: Settings) -> None:
     import pystray
     from PIL import Image
     from .win32_floating import (
@@ -139,6 +286,11 @@ def run_desktop(settings: Settings) -> None:
         _native_notice(f"本地服务启动失败，请查看日志：{settings.data_dir / 'logs'}")
         return
 
+    try:
+        _ensure_default_autostart()
+    except Exception:
+        logger.exception("default autostart registration failed")
+
     environments = EnvironmentManager(settings.data_dir)
     source_image = Image.open(asset_path("icon.png")).convert("RGBA")
 
@@ -169,6 +321,18 @@ def run_desktop(settings: Settings) -> None:
         except Exception as exc:
             logger.exception("open log directory failed path=%s", log_dir)
             _native_notice(f"无法打开日志目录：\n{log_dir}\n\n{exc}")
+
+    def toggle_autostart(*_args) -> None:
+        enabled = not bool(_read_autostart_command())
+        try:
+            _set_autostart(enabled)
+            tray.update_menu()
+            tray.notify(
+                "已开启开机自启" if enabled else "已关闭开机自启",
+                "CoreInsight Local Toolkit")
+        except Exception as exc:
+            logger.exception("toggle autostart failed enabled=%s", enabled)
+            _native_notice(f"修改开机自启失败：\n{exc}")
 
     exiting = threading.Event()
     install_lock = threading.Lock()
@@ -254,6 +418,8 @@ def run_desktop(settings: Settings) -> None:
             "environment_production": lambda: switch_environment(PRODUCTION),
             "environment_testing": lambda: switch_environment(TESTING),
             "logs": open_logs,
+            "autostart_enabled": lambda: bool(_read_autostart_command()),
+            "autostart_toggle": toggle_autostart,
             "update": lambda: check_update(True),
             "about": show_about,
         })
@@ -294,6 +460,9 @@ def run_desktop(settings: Settings) -> None:
                 radio=True),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("打开日志目录", open_logs),
+            pystray.MenuItem(
+                "开机自启", toggle_autostart,
+                checked=lambda _item: bool(_read_autostart_command())),
             pystray.MenuItem("检查更新", lambda *_: check_update(True)),
             pystray.MenuItem("关于", lambda *_: floating.post(WM_APP_ABOUT)),
             pystray.Menu.SEPARATOR,

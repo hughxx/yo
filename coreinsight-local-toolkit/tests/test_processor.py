@@ -86,6 +86,24 @@ class ProcessorTests(unittest.TestCase):
         push.assert_called_once()
         self.assertEqual(1, len(processor.workspaces.deleted))
 
+    def test_email_request_scene_overrides_skill_scene(self):
+        processor = self.processor()
+        processor.hermes.wait = Mock(return_value=json.dumps({
+            **RESULT, "scene": "Skill 场景", "scene_id": "999",
+        }, ensure_ascii=False))
+        with patch.object(processor, "validate"), patch.object(
+                processor, "_push_experience", return_value="doc-1") as push:
+            processor.process(
+                [{"id": "1", "sender": "u", "timestamp": 1,
+                  "content": "hello"}],
+                "email-experience-extractor", "u1", "task-1",
+                source_type="email", scene="邮件问题定位经验",
+                scene_id="251")
+
+        record = push.call_args.args[0]
+        self.assertEqual("邮件问题定位经验", record["scene"])
+        self.assertEqual("251", record["scene_id"])
+
     def test_chunks_split_only_between_messages(self):
         processor = self.processor()
         messages = [

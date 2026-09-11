@@ -255,6 +255,7 @@ class FloatingWindow:
     def _show_menu(self) -> None:
         menu = self.user32.CreatePopupMenu()
         environment = self.actions["environment_current"]()
+        autostart = self.actions["autostart_enabled"]()
         entries = [
             (101, "云见主页", "portal"),
             (102, "经验提取", "experience_create"), (0, "", ""),
@@ -262,7 +263,10 @@ class FloatingWindow:
              "environment_production"),
             (110, ("✓ " if environment == "testing" else "") + "测试环境",
              "environment_testing"), (0, "", ""),
-            (104, "打开日志目录", "logs"), (105, "检查更新", "update"),
+            (104, "打开日志目录", "logs"),
+            (111, ("✓ " if autostart else "") + "开机自启",
+             "autostart_toggle"),
+            (105, "检查更新", "update"),
             (106, "关于", "about"), (0, "", ""),
             (107, "隐藏悬浮图标", "hide"), (108, "退出", "exit"),
         ]

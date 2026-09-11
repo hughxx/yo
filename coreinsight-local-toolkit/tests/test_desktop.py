@@ -1,8 +1,12 @@
 import socket
 import unittest
+import uuid
 from unittest.mock import MagicMock, patch
 
-from coreinsight_local_toolkit.desktop import _activate_existing, _port_is_open
+from coreinsight_local_toolkit.desktop import (
+    _activate_existing, _ensure_default_autostart, _port_is_open,
+    _SingleInstanceMutex, _startup_command,
+)
 
 
 class DesktopTests(unittest.TestCase):
@@ -14,6 +18,21 @@ class DesktopTests(unittest.TestCase):
             self.assertTrue(_port_is_open(listener.getsockname()[1]))
         finally:
             listener.close()
+
+    def test_named_mutex_allows_only_one_process_instance(self):
+        name = f"Global\\CoreInsight.LocalToolkit.Test.{uuid.uuid4().hex}"
+        first = _SingleInstanceMutex(name)
+        second = _SingleInstanceMutex(name)
+        replacement = _SingleInstanceMutex(name)
+        try:
+            self.assertTrue(first.acquire())
+            self.assertFalse(second.acquire())
+            first.close()
+            self.assertTrue(replacement.acquire())
+        finally:
+            first.close()
+            second.close()
+            replacement.close()
 
     @patch("coreinsight_local_toolkit.desktop.urllib.request.urlopen")
     def test_existing_instance_can_be_activated(self, urlopen):
@@ -38,6 +57,38 @@ class DesktopTests(unittest.TestCase):
         urlopen.return_value.__enter__.return_value = health
         self.assertFalse(_activate_existing(17831))
         self.assertEqual(1, urlopen.call_count)
+
+    @patch("coreinsight_local_toolkit.desktop.sys.frozen", True, create=True)
+    @patch("coreinsight_local_toolkit.desktop.sys.executable",
+           r"C:\\Program Files\\CoreInsight\\toolkit.exe")
+    def test_packaged_startup_command_contains_startup_flag(self):
+        command = _startup_command()
+        self.assertIn("toolkit.exe", command)
+        self.assertIn("--startup", command)
+
+    @patch("coreinsight_local_toolkit.desktop.sys.platform", "win32")
+    @patch("coreinsight_local_toolkit.desktop.sys.frozen", True, create=True)
+    @patch("coreinsight_local_toolkit.desktop._set_autostart")
+    @patch("coreinsight_local_toolkit.desktop._autostart_initialized",
+           return_value=False)
+    @patch("coreinsight_local_toolkit.desktop._read_autostart_command",
+           return_value="")
+    def test_autostart_is_enabled_by_default(
+            self, _read, _initialized, set_autostart):
+        _ensure_default_autostart()
+        set_autostart.assert_called_once_with(True)
+
+    @patch("coreinsight_local_toolkit.desktop.sys.platform", "win32")
+    @patch("coreinsight_local_toolkit.desktop.sys.frozen", True, create=True)
+    @patch("coreinsight_local_toolkit.desktop._set_autostart")
+    @patch("coreinsight_local_toolkit.desktop._autostart_initialized",
+           return_value=True)
+    @patch("coreinsight_local_toolkit.desktop._read_autostart_command",
+           return_value="")
+    def test_explicitly_disabled_autostart_stays_disabled(
+            self, _read, _initialized, set_autostart):
+        _ensure_default_autostart()
+        set_autostart.assert_not_called()
 
 
 if __name__ == "__main__":

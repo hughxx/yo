@@ -1,0 +1,157 @@
+CoreInsight Local Toolkit 0.6.0 邮件接口变更说明
+日期：2026-09-11
+
+一、需要删除的前端调用
+
+1. POST /email/message/scan
+2. GET /email/message/scan/status
+
+上述两个接口已删除，不再兼容。邮件列表统一使用
+POST /email/message/list 和 GET /email/message/list/status。
+
+
+二、POST /email/message/list 变更
+
+用途：启动异步 Outlook 邮件列表读取任务。
+
+请求：
+{
+  "folders": ["邮箱 - 用户\\收件箱", "邮箱 - 用户\\项目"],
+  "startTime": "2026-09-01 00:00:00",
+  "endTime": "2026-09-11 23:59:59",
+  "query": "GaussDB",
+  "matchedOnly": false
+}
+
+字段说明：
+- folders：必传，非空数组，支持一个或多个 Outlook 文件夹路径。
+- startTime/endTime：可选，邮件接收时间范围。
+- query：可选，搜索文本。
+- matchedOnly：false 返回所有符合基础条件的邮件；true 只返回命中已启用提取规则且未被黑名单排除的邮件。
+
+注意：不再传 offset、limit，接口也不再同步返回某一页邮件。
+
+成功响应 data 示例：
+{
+  "running": true,
+  "taskId": "列表任务ID",
+  "status": "loading",
+  "folders": ["邮箱 - 用户\\收件箱", "邮箱 - 用户\\项目"],
+  "scanned": 0,
+  "total": 0,
+  "items": [],
+  "message": "正在读取 Outlook 邮件",
+  "error": ""
+}
+
+如果列表任务尚未完成时又发起新的 list 请求，新任务会取代旧任务。
+前端应保存最新 taskId，并停止轮询旧 taskId。
+
+
+三、新增 GET /email/message/list/status
+
+请求：
+GET /email/message/list/status?taskId=列表任务ID
+
+前端在 POST /email/message/list 成功后开始轮询，建议间隔 500ms。
+
+进行中：
+- running=true
+- status=loading 或 filtering
+- scanned/total 用于显示读取进度
+
+完成：
+{
+  "running": false,
+  "taskId": "列表任务ID",
+  "status": "done",
+  "folders": ["邮箱 - 用户\\收件箱", "邮箱 - 用户\\项目"],
+  "scanned": 320,
+  "total": 320,
+  "items": [
+    {
+      "id": "Outlook EntryID",
+      "subject": "邮件主题",
+      "senderName": "张三",
+      "senderEmail": "zhangsan@example.com",
+      "receivedTime": "2026-09-11 10:30:00",
+      "timestamp": 1789093800000,
+      "conversationTopic": "会话主题",
+      "folder": "邮箱 - 用户\\收件箱",
+      "hasAttachments": false,
+      "matchedRule": "规则名称",
+      "blockedRule": ""
+    }
+  ],
+  "message": "已读取 320 封邮件",
+  "error": ""
+}
+
+失败：
+- running=false
+- status=failed
+- error 为错误信息
+
+传入的 taskId 不是当前列表任务时返回 HTTP 404。
+
+
+四、前端分页调整
+
+status=done 后，前端保存 data.items 全量摘要列表，在浏览器内分页：
+- 上一页/下一页只对 items 进行 slice。
+- 翻页时不调用 list、list/status 或 Outlook。
+- 修改文件夹、时间、query、matchedOnly 或点击刷新时，重新启动 list 任务。
+
+
+五、文件夹选择调整
+
+- GET /email/folder/list 接口不变。
+- 前端文件夹为多选。
+- 无已保存配置时，默认勾选 isDefault=true 的收件箱。
+- 所有勾选的 path 同时传给 list、extract 和 schedule/set 的 folders。
+- 多文件夹邮件由 Toolkit 合并并按接收时间倒序返回。
+
+
+六、按规则匹配
+
+规则仍通过 PUT /email/config 保存，不需要把 rules 重复传给 list。
+
+用户打开规则面板：不调用 list。
+用户保存规则：先 PUT /email/config，成功后重新调用 list。
+用户开启“只看规则命中”：调用 list 时传 matchedOnly=true。
+用户关闭“只看规则命中”：调用 list 时传 matchedOnly=false。
+
+matchedOnly=false 时，items 仍会返回 matchedRule/blockedRule，前端可用于显示规则标记。
+
+
+七、提取接口场景参数变更
+
+前端点击“提取选中”时，请求体新增：
+{
+  "scene": "邮件问题定位经验",
+  "scene_id": "251"
+}
+
+这两个字段会应用到本次提取产生的所有经验。前端传值后，
+LocalToolkit 优先使用前端的值，覆盖 Skill 输出中的 scene/scene_id。
+
+POST /welink/extract 同样新增 scene、scene_id。例如：
+{
+  "scene": "WeLink问题定位经验",
+  "scene_id": "251"
+}
+
+WeLink 也是前端传入值优先，并应用到本次提取产生的所有经验。
+
+
+八、不变的相关接口
+
+- GET /email/folder/list
+- GET /email/config
+- PUT /email/config
+- POST /email/message/get
+- GET /email/extract/status
+- POST /email/schedule/set
+- POST /email/schedule/cancel
+
+其中 extract 和 schedule/set 继续使用 folders 数组。

@@ -97,13 +97,15 @@ Base URL: http://127.0.0.1:17831
   "skillId": "welink-experience-extractor",
   "extractMode": "direct",
   "uploadBy": "当前登录用户账号",
+  "scene": "WeLink问题定位经验",
+  "scene_id": "251",
   "selection": {
     "mode": "all",
     "excludedMessageIds": [],
     "selectedMessageIds": []
   }
 }
-使用：保存响应中的 data.taskId，并立即开始查询该任务状态。
+使用：保存响应中的 data.taskId，并立即开始查询该任务状态。scene/scene_id 会优先覆盖 Skill 输出的场景值。
 规则：同群组已有未结束任务时返回 409；其他群组的任务会正常进入 queued 队列。
 规则：该群组已启用定时提取时，应先调用 /welink/schedule/cancel。
 
@@ -146,6 +148,8 @@ selection 用法：
   "uploadBy": "当前登录用户账号",
   "skillId": "welink-experience-extractor",
   "extractMode": "direct",
+  "scene": "WeLink问题定位经验",
+  "scene_id": "251",
   "scheduleFreq": "daily",
   "scheduleTime": "09:00:00",
   "scheduleCron": "",
@@ -155,6 +159,7 @@ selection 用法：
 使用：首次设置定时必须传 since，表示首次增量起点；运行窗口为 (since, 本次触发时间]。
 使用：修改频率但不重置进度时省略 since；重新传 since 会重置增量游标，可能重复提取。
 使用：定时模式固定处理增量窗口内全部消息，不使用手动预览的 selection。
+使用：scene/scene_id 会保存到群组定时配置，每次定时提取都优先使用该值。
 使用：同群组存在未结束任务时返回 409。
 响应：返回完整群组对象；保存其中的 scheduleSince、scheduleCursor、scheduleNextRun。
 
@@ -243,13 +248,15 @@ items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名�
   "skillId": "email-experience-extractor",
   "extractMode": "direct",
   "uploadBy": "当前登录用户账号",
+  "scene": "邮件问题定位经验",
+  "scene_id": "251",
   "selection": {
     "mode": "explicit",
     "selectedItemIds": ["Outlook EntryID"],
     "excludedItemIds": []
   }
 }
-使用：前端只传 EntryID，不传邮件正文和附件。LocalToolkit 重新从 Outlook 读取，生成 Markdown、图片 OCR 和公开链接，再运行 Skill。
+使用：前端只传 EntryID，不传邮件正文和附件。scene/scene_id 会优先覆盖 Skill 输出中的场景值并写入经验。LocalToolkit 重新从 Outlook 读取，生成 Markdown、图片 OCR 和公开链接，再运行 Skill。
 全部条件结果可用 mode=all，并将取消勾选项放入 excludedItemIds。
 
 25. GET /email/extract/status
@@ -270,6 +277,8 @@ items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名�
   "uploadBy": "当前登录用户账号",
   "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "scene": "邮件问题定位经验",
+  "scene_id": "251",
   "scheduleFreq": "daily",
   "scheduleTime": "09:00:00",
   "scheduleCron": "",
@@ -277,6 +286,7 @@ items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名�
 }
 使用：首次设置或重置游标时传 since；只修改频率时省略 since。
 运行窗口为 (scheduleCursor, 本次触发时间]。成功才推进 scheduleCursor，失败或取消不推进。
+定时配置会保存 scene/scene_id，每次定时提取均优先使用前端设置的场景值。
 定时任务只处理提取规则命中且未被黑名单排除的邮件。必须至少配置并启用一条包含主题、正文或发件人条件的有效提取规则；否则接口返回 422，不会创建全量增量任务。
 
 29. POST /email/schedule/cancel

@@ -15,6 +15,7 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 - workspace file-server 只传递转换好的 Markdown 和 `SKILL.md`；
 - Hermes Remote Agent 通过 Skill 处理超长 Markdown，并保留图片超链接；
 - 提供健康检查和能力声明。
+- Windows 托盘菜单支持开机自启（默认开启），多份 EXE 共用系统级单实例锁，同一时间只运行一份。
 
 邮件能力直接访问用户当前登录的桌面 Outlook，列表按一个或多个文件夹和时间范围读取，支持主题、
 正文、发件人规则以及黑名单。定时增量必须配置至少一条有效提取规则，不允许无规则扫描

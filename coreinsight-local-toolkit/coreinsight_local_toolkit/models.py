@@ -32,6 +32,8 @@ class GroupConfig(GroupBase):
     extractMode: Literal["direct", "draft"] = "direct"
     skillId: str = "welink-experience-extractor"
     uploadBy: str = ""
+    scene: str = ""
+    scene_id: str = ""
     startTime: str = ""
     endTime: str = ""
     quickRange: Literal["all", "7d", "3d", "2d", "today", "custom"] = "7d"
@@ -53,6 +55,10 @@ class GroupConfig(GroupBase):
             return str(normalize_datetime(value) or "")
         except ValueError as exc:
             raise ValueError("时间必须是有效的日期时间") from exc
+
+    @validator("scene", "scene_id")
+    def normalize_group_scene(cls, value: str) -> str:
+        return value.strip()
 
 
 class GroupDelete(BaseModel):
@@ -106,7 +112,13 @@ class ExtractRequest(MessageQuery):
     skillId: str = "welink-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
     uploadBy: str = Field(min_length=1)
+    scene: str = ""
+    scene_id: str = ""
     selection: MessageSelection = Field(default_factory=MessageSelection)
+
+    @validator("scene", "scene_id")
+    def normalize_welink_scene(cls, value: str) -> str:
+        return value.strip()
 
 
 class ExtractCancelRequest(BaseModel):
@@ -119,10 +131,16 @@ class ScheduleSetRequest(BaseModel):
     uploadBy: str = Field(min_length=1)
     skillId: str = "welink-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
+    scene: str = ""
+    scene_id: str = ""
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
     scheduleTime: str = "09:00:00"
     scheduleCron: str = ""
     since: Optional[str] = None
+
+    @validator("scene", "scene_id")
+    def normalize_schedule_scene(cls, value: str) -> str:
+        return value.strip()
 
     @validator("since")
     def normalize_since(cls, value: Optional[str]) -> Optional[str]:
@@ -167,6 +185,8 @@ class EmailConfig(BaseModel):
     skillId: str = "email-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
     uploadBy: str = ""
+    scene: str = ""
+    scene_id: str = ""
     scheduleEnabled: bool = False
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
     scheduleTime: str = "09:00:00"
@@ -181,6 +201,10 @@ class EmailConfig(BaseModel):
     def normalize_folders(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(
             str(item).strip() for item in value if str(item).strip()))
+
+    @validator("scene", "scene_id")
+    def normalize_email_config_scene(cls, value: str) -> str:
+        return value.strip()
 
     @validator("scheduleSince", "scheduleCursor", "scheduleNextRun")
     def normalize_email_datetimes(cls, value: str) -> str:
@@ -225,7 +249,13 @@ class EmailExtractRequest(BaseModel):
     skillId: str = "email-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
     uploadBy: str = Field(min_length=1)
+    scene: str = ""
+    scene_id: str = ""
     selection: EmailSelection = Field(default_factory=EmailSelection)
+
+    @validator("scene", "scene_id")
+    def normalize_email_scene(cls, value: str) -> str:
+        return value.strip()
 
 
 class EmailScheduleSetRequest(BaseModel):
@@ -233,10 +263,16 @@ class EmailScheduleSetRequest(BaseModel):
     uploadBy: str = Field(min_length=1)
     skillId: str = "email-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
+    scene: str = ""
+    scene_id: str = ""
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
     scheduleTime: str = "09:00:00"
     scheduleCron: str = ""
     since: Optional[str] = None
+
+    @validator("scene", "scene_id")
+    def normalize_email_schedule_scene(cls, value: str) -> str:
+        return value.strip()
 
     @validator("since")
     def normalize_email_since(cls, value: Optional[str]) -> Optional[str]:

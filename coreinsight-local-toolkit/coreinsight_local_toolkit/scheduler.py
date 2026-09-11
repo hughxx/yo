@@ -122,6 +122,10 @@ class ScheduleRuntime:
         group.skillId = payload.skillId
         group.uploadBy = payload.uploadBy.strip()
         group.extractMode = payload.extractMode
+        if payload.scene:
+            group.scene = payload.scene
+        if payload.scene_id:
+            group.scene_id = payload.scene_id
         group.scheduleFreq = payload.scheduleFreq
         group.scheduleTime = payload.scheduleTime
         group.scheduleCron = payload.scheduleCron.strip()
@@ -190,6 +194,7 @@ class ScheduleRuntime:
             payload = ExtractRequest(
                 groupId=group.groupId, uploadBy=group.uploadBy,
                 skillId=group.skillId, extractMode=group.extractMode,
+                scene=group.scene, scene_id=group.scene_id,
                 selection={"mode": "all"})
             try:
                 self.extraction.start(

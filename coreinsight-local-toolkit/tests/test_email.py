@@ -303,8 +303,9 @@ class EmailTests(unittest.TestCase):
             notifier = type("Notifier", (), {"notify": lambda self, *args: True})()
             runtime = EmailRuntime(FakeOutlook(), store, processor, notifier)
             runtime.start(EmailExtractRequest(
-                uploadBy="u1", selection={"mode": "explicit",
-                                          "selectedItemIds": ["mail-1"]}), 0, 0)
+                uploadBy="u1", scene="邮件问题定位经验", scene_id="251",
+                selection={"mode": "explicit",
+                           "selectedItemIds": ["mail-1"]}), 0, 0)
             for _ in range(100):
                 if not runtime.status()["running"]:
                     break
@@ -314,6 +315,8 @@ class EmailTests(unittest.TestCase):
             self.assertEqual("email-experience-extractor", skill_id)
             self.assertEqual("u1", user)
             self.assertEqual("email", kwargs["source_type"])
+            self.assertEqual("邮件问题定位经验", kwargs["scene"])
+            self.assertEqual("251", kwargs["scene_id"])
             self.assertIn("![certificate error](https://example.test/image.png)",
                           messages[0]["rawContent"])
 
@@ -328,7 +331,10 @@ class EmailTests(unittest.TestCase):
             now = datetime.now().astimezone()
             scheduler.set(EmailScheduleSetRequest(
                 uploadBy="u1", scheduleTime=(now + timedelta(minutes=1)).strftime("%H:%M:%S"),
-                since=format_datetime(now - timedelta(days=1))), now)
+                since=format_datetime(now - timedelta(days=1)),
+                scene="邮件问题定位经验", scene_id="251"), now)
+            self.assertEqual("邮件问题定位经验", store.get().scene)
+            self.assertEqual("251", store.get().scene_id)
             before = store.get().scheduleCursor
             scheduler._completed(False, int(now.timestamp() * 1000))
             self.assertEqual(before, store.get().scheduleCursor)

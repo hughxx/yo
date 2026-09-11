@@ -209,7 +209,9 @@ class ExtractionRuntime:
             result = self.processor.process(
                 messages, payload.skillId, job.upload_by, job.task_id,
                 progress, job.cancel, group_id=payload.groupId,
-                scheduled=job.scheduled, extract_mode=payload.extractMode)
+                scheduled=job.scheduled, extract_mode=payload.extractMode,
+                source_type="welink", scene=payload.scene,
+                scene_id=payload.scene_id)
             if self.notifier:
                 experiences = result.get('experiences') or []
                 try:

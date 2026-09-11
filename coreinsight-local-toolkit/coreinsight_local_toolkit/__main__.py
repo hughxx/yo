@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import time
+from dataclasses import replace
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -56,6 +57,8 @@ def cleanup_stale_runtime(data_dir: Path, max_age_seconds: int = 86_400) -> int:
 
 def main() -> None:
     settings = load_settings()
+    if "--startup" in sys.argv:
+        settings = replace(settings, welcome_enabled=False)
     log_path = configure_logging(settings.data_dir)
     logging.getLogger(__name__).info("CoreInsight Local Toolkit starting; log=%s", log_path)
     removed = cleanup_stale_runtime(settings.data_dir)

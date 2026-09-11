@@ -56,8 +56,11 @@ class SchedulerTests(unittest.TestCase):
         now = datetime.fromisoformat("2026-08-13T08:00:00+08:00")
         saved = self.runtime.set(ScheduleSetRequest(
             groupId="g1", uploadBy="u1", scheduleFreq="daily",
-            scheduleTime="09:00:00"), now)
+            scheduleTime="09:00:00", scene="WeLink问题定位经验",
+            scene_id="251"), now)
         self.assertEqual("2026-08-13 09:00:00", saved.scheduleNextRun)
+        self.assertEqual("WeLink问题定位经验", saved.scene)
+        self.assertEqual("251", saved.scene_id)
 
         due = datetime.fromisoformat("2026-08-13T09:00:01+08:00")
         self.assertTrue(self.runtime.tick(due))
@@ -65,6 +68,8 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(int(now.timestamp() * 1000), call[1])
         self.assertEqual(int(due.timestamp() * 1000), call[2])
         self.assertTrue(call[3])
+        self.assertEqual("WeLink问题定位经验", call[0].scene)
+        self.assertEqual("251", call[0].scene_id)
         group = self.store.get("g1")
         self.assertEqual("2026-08-13 09:00:01", group.scheduleLastRun)
         self.assertEqual("2026-08-13 09:00:01", group.scheduleCursor)
