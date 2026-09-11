@@ -209,26 +209,29 @@ POST /welink/extract 返回成功只表示任务已受理，不代表提取已�
 使用：不要通过本接口修改 schedule 字段。
 
 21. POST /email/message/list
-时机：刷新邮件、搜索、切换规则筛选或翻页时调用。
+时机：进入邮件页、修改文件夹选择、刷新、搜索或切换规则筛选时调用。翻页时不调用。
 请求：
 {
-  "folders": ["邮箱 - 用户\\收件箱"],
+  "folders": ["邮箱 - 用户\\收件箱", "邮箱 - 用户\\项目"],
   "startTime": "2026-08-10 00:00:00",
   "endTime": "2026-08-17 23:59:59",
   "query": "GaussDB",
-  "matchedOnly": false,
-  "offset": 0,
-  "limit": 100
+  "matchedOnly": false
 }
-响应：items、total、offset、limit、hasMore。
+响应：taskId、running、status、scanned、total、message。接口立即返回，前端继续轮询列表状态。
+
+22. GET /email/message/list/status?taskId=列表任务ID
+时机：POST /email/message/list 成功后轮询。
+进行中返回 running=true、status=loading/filtering、scanned、total 和 message。
+完成后返回 running=false、status=done 和完整 items。前端保存 items 并自行分页，点击下一页不再访问 LocalToolkit。
 items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名单排除。
 
-22. POST /email/message/get
+23. POST /email/message/get
 时机：用户点击邮件预览时调用。
 请求：{"itemId":"Outlook EntryID"}
 使用：只读取正文预览，不上传附件、不执行 OCR。
 
-23. POST /email/extract
+24. POST /email/extract
 时机：用户确认提取选中邮件时调用。
 请求：
 {
@@ -249,17 +252,17 @@ items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名�
 使用：前端只传 EntryID，不传邮件正文和附件。LocalToolkit 重新从 Outlook 读取，生成 Markdown、图片 OCR 和公开链接，再运行 Skill。
 全部条件结果可用 mode=all，并将取消勾选项放入 excludedItemIds。
 
-24. GET /email/extract/status
+25. GET /email/extract/status
 时机：POST /email/extract 成功后每 2 秒轮询。
 停止条件：running=false。status 含 fetching、workspace、skill、pushing、done、failed、cancelled。
 
-25. GET /email/extract/tasks
+26. GET /email/extract/tasks
 时机：页面初始化时恢复最近邮件任务状态。
 
-26. POST /email/extract/cancel
+27. POST /email/extract/cancel
 时机：用户取消正在运行的邮件任务时调用。请求体可为空对象。
 
-27. POST /email/schedule/set
+28. POST /email/schedule/set
 时机：新增或修改邮件定时增量提取时调用。
 请求：
 {
@@ -276,7 +279,7 @@ items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名�
 运行窗口为 (scheduleCursor, 本次触发时间]。成功才推进 scheduleCursor，失败或取消不推进。
 定时任务只处理提取规则命中且未被黑名单排除的邮件。必须至少配置并启用一条包含主题、正文或发件人条件的有效提取规则；否则接口返回 422，不会创建全量增量任务。
 
-28. POST /email/schedule/cancel
+29. POST /email/schedule/cancel
 时机：用户取消邮件定时提取时调用。请求体可为空对象。
 使用：取消后保留 scheduleSince 和 scheduleCursor。
 

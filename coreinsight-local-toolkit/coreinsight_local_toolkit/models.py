@@ -191,23 +191,23 @@ class EmailConfig(BaseModel):
 
 
 class EmailListRequest(BaseModel):
-    folders: list[str] = Field(default_factory=list)
+    folders: list[str] = Field(min_length=1)
     startTime: Optional[str] = None
     endTime: Optional[str] = None
     query: str = ""
     matchedOnly: bool = False
-    offset: int = Field(default=0, ge=0)
-    limit: int = Field(default=100, ge=1, le=500)
+
+    @validator("folders")
+    def normalize_list_folders(cls, value: list[str]) -> list[str]:
+        folders = list(dict.fromkeys(
+            str(item).strip() for item in value if str(item).strip()))
+        if not folders:
+            raise ValueError("folders 不能为空")
+        return folders
 
 
 class EmailDetailRequest(BaseModel):
     itemId: str = Field(min_length=1)
-
-
-class EmailScanRequest(BaseModel):
-    """Start a mailbox summary scan. Empty folders means the default Inbox."""
-    folders: list[str] = Field(default_factory=list)
-    forceFull: bool = False
 
 
 class EmailSelection(BaseModel):

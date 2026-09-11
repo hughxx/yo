@@ -34,7 +34,7 @@
 {
   "status": "ok",
   "service": "coreinsight-local-toolkit",
-  "version": "0.4.0"
+  "version": "0.6.0"
 }
 ```
 
@@ -344,7 +344,8 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 `GET /email/skill/list`，用户刷新文件夹时调用 `GET /email/folder/list`。
 
 - `PUT /email/config`：保存文件夹、规则、黑名单、Skill、入库方式和用户工号。
-- `POST /email/message/list`：按文件夹、时间、搜索词和规则状态分页读取摘要。
+- `POST /email/message/list`：为一个或多个文件夹启动异步摘要列表任务；Outlook 使用 Table API 分批读取并合并结果。
+- `GET /email/message/list/status`：查询列表读取进度，完成后一次返回全部摘要，由前端本地分页。
 - `POST /email/message/get`：读取单封正文用于预览，不上传附件。
 - `POST /email/extract`：只提交 Outlook EntryID 选择条件，启动本地邮件 Skill 提取。
 - `GET /email/extract/status`：轮询手动或定时邮件任务。

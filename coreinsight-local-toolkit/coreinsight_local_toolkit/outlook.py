@@ -21,6 +21,17 @@ from .time_format import format_datetime
 logger = logging.getLogger(__name__)
 INBOX = 6
 MAIL_ITEM_CLASS = 43
+TABLE_BATCH_SIZE = 200
+TABLE_COLUMNS = (
+    "EntryID",
+    "Subject",
+    "SenderName",
+    "SenderEmailAddress",
+    "ReceivedTime",
+    "ConversationTopic",
+    "http://schemas.microsoft.com/mapi/proptag/0x0E1B000B",
+    "MessageClass",
+)
 PR_ATTACH_CONTENT_ID = "http://schemas.microsoft.com/mapi/proptag/0x3712001E"
 BODY_DASL_FIELD = '"urn:schemas:httpmail:textdescription"'
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
@@ -131,6 +142,53 @@ def _summary(item, folder_path: str, resolve_exchange: bool = True) -> dict:
     }
 
 
+def _table_array_rows(values) -> list[list]:
+    """Normalize pywin32's SAFEARRAY into rows.
+
+    Outlook documents GetArray as columns-by-rows, while pywin32 versions can
+    expose the two-dimensional SAFEARRAY in either orientation.
+    """
+    matrix = [list(value) for value in (values or [])]
+    if not matrix:
+        return []
+    column_count = len(TABLE_COLUMNS)
+    if len(matrix) != column_count:
+        return matrix
+    row_dates = sum(
+        1 for row in matrix
+        if len(row) > 4 and hasattr(row[4], "timestamp"))
+    column_dates = sum(
+        1 for value in matrix[4]
+        if hasattr(value, "timestamp"))
+    if column_dates > row_dates:
+        return [list(row) for row in zip(*matrix)]
+    return matrix
+
+
+def _table_summary(values: list, folder_path: str) -> dict | None:
+    values = list(values) + [None] * (len(TABLE_COLUMNS) - len(values))
+    message_class = str(values[7] or "")
+    if message_class and not message_class.startswith("IPM.Note"):
+        return None
+    received = values[4]
+    try:
+        received = received.astimezone() if received else None
+    except Exception:
+        pass
+    timestamp = int(received.timestamp() * 1000) if received else 0
+    return {
+        "id": str(values[0] or ""),
+        "subject": str(values[1] or ""),
+        "senderName": str(values[2] or ""),
+        "senderEmail": str(values[3] or ""),
+        "receivedTime": format_datetime(received) if received else "",
+        "timestamp": timestamp,
+        "conversationTopic": str(values[5] or ""),
+        "folder": folder_path,
+        "hasAttachments": bool(values[6]),
+    }
+
+
 def _fallback_html_to_markdown(content: str) -> str:
     content = re.sub(r"<br\s*/?>", "\n", content, flags=re.I)
     content = re.sub(r"</(?:p|div|li|tr|h[1-6])>", "\n", content, flags=re.I)
@@ -201,7 +259,83 @@ class OutlookClient:
 
     def list_messages(self, paths: list[str], start_ms: int = 0,
                       end_ms: int = 0, maximum: int = 10000,
-                      progress=None) -> list[dict]:
+                      progress=None, cancelled=None) -> list[dict]:
+        """Read lightweight summaries through Outlook's bulk Table API."""
+        try:
+            return self._list_messages_table(
+                paths, start_ms, end_ms, maximum, progress, cancelled)
+        except Exception:
+            logger.warning(
+                "Outlook Table listing unavailable; falling back to Items",
+                exc_info=True)
+            return self._list_messages_items(
+                paths, start_ms, end_ms, maximum, progress, cancelled)
+
+    def _list_messages_table(self, paths: list[str], start_ms: int,
+                             end_ms: int, maximum: int, progress=None,
+                             cancelled=None) -> list[dict]:
+        with self.lock, outlook_session() as namespace:
+            result = []
+            folders = _folders(namespace, paths)
+            folder = table = columns = None
+            total_count = 0
+            inspected_count = 0
+            try:
+                for folder in folders:
+                    if cancelled and cancelled():
+                        break
+                    folder_path = str(
+                        getattr(folder, "FolderPath", "") or "").lstrip("\\")
+                    table = folder.GetTable()
+                    columns = table.Columns
+                    columns.RemoveAll()
+                    for column in TABLE_COLUMNS:
+                        columns.Add(column)
+                    table.Sort("ReceivedTime", True)
+                    try:
+                        total_count += int(table.GetRowCount())
+                    except Exception:
+                        pass
+                    folder_count = 0
+                    reached_start = False
+                    while not table.EndOfTable and not reached_start:
+                        if cancelled and cancelled():
+                            break
+                        batch = _table_array_rows(table.GetArray(TABLE_BATCH_SIZE))
+                        if not batch:
+                            break
+                        inspected_count += len(batch)
+                        for values in batch:
+                            row = _table_summary(values, folder_path)
+                            if row is None or not row["id"]:
+                                continue
+                            timestamp = row["timestamp"]
+                            if end_ms and timestamp > end_ms:
+                                continue
+                            if start_ms and timestamp < start_ms:
+                                reached_start = True
+                                break
+                            result.append(row)
+                            folder_count += 1
+                            if maximum > 0 and folder_count >= maximum:
+                                reached_start = True
+                                break
+                        if progress:
+                            progress(inspected_count,
+                                     max(total_count, inspected_count))
+            finally:
+                columns = None
+                table = None
+                folder = None
+                folders.clear()
+            result.sort(
+                key=lambda value: (value["timestamp"], value["id"]),
+                reverse=True)
+            return result if maximum <= 0 else result[:maximum]
+
+    def _list_messages_items(self, paths: list[str], start_ms: int = 0,
+                             end_ms: int = 0, maximum: int = 10000,
+                             progress=None, cancelled=None) -> list[dict]:
         with self.lock, outlook_session() as namespace:
             result = []
             folders = _folders(namespace, paths)
@@ -209,6 +343,8 @@ class OutlookClient:
             total_count = 0
             try:
                 for folder in folders:
+                    if cancelled and cancelled():
+                        break
                     folder_path = str(getattr(folder, "FolderPath", "") or "").lstrip("\\")
                     try:
                         items = folder.Items
@@ -227,6 +363,8 @@ class OutlookClient:
                         # folder starving all folders that follow it.
                         while item is not None and (maximum <= 0
                                                     or folder_count < maximum):
+                            if cancelled and cancelled():
+                                break
                             try:
                                 if int(getattr(item, "Class", 0)) == MAIL_ITEM_CLASS:
                                     # Listing only needs lightweight metadata;

@@ -20,7 +20,6 @@ from .outlook import OutlookClient
 from .processor import LocalExperienceProcessor
 from .models import (
     EmailConfig, EmailDetailRequest, EmailExtractRequest, EmailListRequest,
-    EmailScanRequest,
     EmailScheduleSetRequest,
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
     ExtractCancelRequest, ExtractRequest, MessageQuery, PreviewMessage,
@@ -247,36 +246,23 @@ def create_app(settings: Settings | None = None,
 
     @app.post("/email/message/list")
     def list_email_messages(payload: EmailListRequest):
-        # An empty selection is an explicit "scan nothing" state.  The UI
-        # selects the account-specific default Inbox by its returned path.
-        if not payload.folders:
-            return {"items": [], "total": 0, "totalExact": True,
-                    "offset": payload.offset, "limit": payload.limit,
-                    "hasMore": False, "scanned": 0, "source": "empty-selection"}
         start_ms = _to_timestamp(payload.startTime, "startTime")
         end_ms = _to_timestamp(payload.endTime, "endTime")
         if start_ms and end_ms and start_ms > end_ms:
             raise HTTPException(status_code=422, detail="startTime 不能晚于 endTime")
         try:
-            return email.list_message_page(
-                payload.folders, start_ms, end_ms,
-                payload.query, payload.matchedOnly,
-                payload.offset, payload.limit)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"读取 Outlook 邮件失败：{exc}") from exc
-
-    @app.post("/email/message/scan")
-    def start_email_scan(payload: EmailScanRequest):
-        try:
-            return email.start_scan(payload.folders, payload.forceFull)
+            return email.start_list(payload, start_ms, end_ms)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @app.get("/email/message/scan/status")
-    def email_scan_status():
-        return email.scan_status(include_items=True)
+    @app.get("/email/message/list/status")
+    def email_list_status(taskId: str = ""):
+        task = email.list_status(taskId.strip())
+        if task is None:
+            raise HTTPException(status_code=404, detail="邮件列表任务不存在")
+        return task
 
     @app.post("/email/message/get")
     def get_email_message(payload: EmailDetailRequest):

@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "latestVersion": "0.5.0",
+  "latestVersion": "0.6.0",
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://replace-with-direct-download/coreinsight-local-toolkit.exe",

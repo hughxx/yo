@@ -16,7 +16,7 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 - Hermes Remote Agent 通过 Skill 处理超长 Markdown，并保留图片超链接；
 - 提供健康检查和能力声明。
 
-邮件能力直接访问用户当前登录的桌面 Outlook，可选择扫描文件夹和时间范围，支持主题、
+邮件能力直接访问用户当前登录的桌面 Outlook，列表按一个或多个文件夹和时间范围读取，支持主题、
 正文、发件人规则以及黑名单。定时增量必须配置至少一条有效提取规则，不允许无规则扫描
 全部增量邮件。正式提取时，邮件 HTML 转为 Markdown，内嵌图片和图片附件
 执行 OCR 并变成 `![OCR结果](公开URL)`，普通附件变成可访问链接。浏览器只传 Outlook
@@ -176,7 +176,7 @@ Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色
 ```json
 {
   "enabled": true,
-  "latestVersion": "0.3.0",
+  "latestVersion": "0.6.0",
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://example.com/coreinsight-local-toolkit.exe",

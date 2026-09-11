@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import re
 import threading
@@ -8,7 +7,10 @@ import uuid
 from datetime import datetime
 
 from .email_store import EmailConfigStore
-from .models import EmailConfig, EmailExtractRequest, EmailRule, EmailScheduleSetRequest
+from .models import (
+    EmailConfig, EmailExtractRequest, EmailListRequest, EmailRule,
+    EmailScheduleSetRequest,
+)
 from .outlook import OutlookClient
 from .processor import ExtractionCancelled, LocalExperienceProcessor
 from .scheduler import _parse_time, next_cron
@@ -17,7 +19,7 @@ from .time_format import format_datetime, parse_datetime
 
 logger = logging.getLogger(__name__)
 DOCUMENT_CHUNK_SIZE = 36_000
-EMAIL_LIST_SCAN_LIMIT = 10_000
+EMAIL_EXTRACT_SCAN_LIMIT = 10_000
 
 
 def _active_filter_rules(config: EmailConfig) -> list[EmailRule]:
@@ -86,10 +88,10 @@ class EmailRuntime:
         self.cancel_event = threading.Event()
         self.task = self._idle()
         self.history: list[dict] = []
-        self.scan_task = self._scan_idle()
-        self.cache_path = self.store.path.with_name("email_cache.json")
+        self.list_task = self._list_idle()
         self._thread = None
-        self._scan_thread = None
+        self._list_thread = None
+        self._list_cancel_event = threading.Event()
 
     @staticmethod
     def _idle() -> dict:
@@ -99,99 +101,74 @@ class EmailRuntime:
                 "itemStatuses": {}}
 
     @staticmethod
-    def _scan_idle() -> dict:
+    def _list_idle() -> dict:
         return {"running": False, "taskId": "", "status": "idle",
-                "scanned": 0, "total": 0, "items": [], "incremental": False,
+                "scanned": 0, "total": 0, "items": [],
                 "message": "", "error": ""}
 
-    def scan_status(self, include_items: bool = False) -> dict:
+    def list_status(self, task_id: str = "") -> dict | None:
         with self.lock:
-            value = dict(self.scan_task)
-        if not include_items:
-            value.pop("items", None)
-        return value
+            if task_id and self.list_task.get("taskId") != task_id:
+                return None
+            return dict(self.list_task)
 
-    def _scan_set(self, **changes):
+    def _list_set(self, task_id: str, **changes) -> bool:
         with self.lock:
-            self.scan_task.update(changes)
+            if self.list_task.get("taskId") != task_id:
+                return False
+            self.list_task.update(changes)
+            return True
 
-    def _read_cache(self) -> dict:
-        try:
-            raw = json.loads(self.cache_path.read_text(encoding="utf-8"))
-            return raw if isinstance(raw, dict) else {}
-        except (OSError, ValueError, TypeError):
-            return {}
-
-    def _write_cache(self, folders: list[str], items: list[dict]):
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.cache_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({
-            "folders": folders, "items": items,
-            "updatedAt": format_datetime(datetime.now().astimezone()),
-        }, ensure_ascii=False), encoding="utf-8")
-        temporary.replace(self.cache_path)
-
-    def start_scan(self, folders: list[str], force_full: bool = False) -> dict:
-        requested = list(dict.fromkeys(str(item).strip() for item in folders
-                                      if str(item).strip()))
+    def start_list(self, payload: EmailListRequest,
+                   start_ms: int, end_ms: int) -> dict:
+        folders = list(payload.folders)
         with self.lock:
-            if self.scan_task.get("running"):
-                raise RuntimeError("邮件列表正在扫描中")
-            cache = self._read_cache()
-            cached_folders = cache.get("folders") or []
-            incremental = bool(cache.get("items")) and not force_full \
-                and cached_folders == requested
+            if self.list_task.get("running"):
+                self._list_cancel_event.set()
             task_id = uuid.uuid4().hex
-            self.scan_task = {**self._scan_idle(), "running": True,
-                              "taskId": task_id, "status": "scanning",
-                              "incremental": incremental,
-                              "message": "正在增量读取邮件" if incremental
-                              else "正在全量读取邮件"}
-            if not requested:
-                self.scan_task.update(
-                    running=False, status="done", scanned=0, total=0,
-                    items=[], message="未选择文件夹")
-                self._write_cache([], [])
-                return self.scan_status()
-        self._scan_thread = threading.Thread(
-            target=self._scan_worker,
-            args=(requested, force_full, cache, incremental), daemon=True)
-        self._scan_thread.start()
-        return self.scan_status()
+            cancel_event = threading.Event()
+            self._list_cancel_event = cancel_event
+            self.list_task = {**self._list_idle(), "running": True,
+                              "taskId": task_id, "status": "loading",
+                              "folders": folders,
+                              "message": "正在读取 Outlook 邮件"}
+        self._list_thread = threading.Thread(
+            target=self._list_worker,
+            args=(task_id, payload, start_ms, end_ms, cancel_event),
+            daemon=True)
+        self._list_thread.start()
+        return self.list_status(task_id) or self._list_idle()
 
-    def _scan_worker(self, folders, force_full, cache, incremental):
+    def _list_worker(self, task_id: str, payload: EmailListRequest,
+                     start_ms: int, end_ms: int,
+                     cancel_event: threading.Event) -> None:
         try:
-            cached_items = cache.get("items") or []
-            start_ms = 0
-            if incremental and cached_items:
-                newest = max(int(item.get("timestamp") or 0)
-                             for item in cached_items)
-                start_ms = max(0, newest - 1000)
             def progress(scanned, total=0):
-                self._scan_set(scanned=scanned, total=max(total, scanned),
-                               message=("正在增量读取邮件" if incremental
-                                        else "正在全量读取邮件") +
-                                       f"：已读取 {scanned} 封")
-            # A background scan is genuinely full-range; the bounded legacy
-            # page endpoint remains separate for compatibility.
+                self._list_set(
+                    task_id, scanned=scanned, total=max(total, scanned),
+                    message=f"正在读取 Outlook 邮件：已读取 {scanned} 封")
+
             rows = self.outlook.list_messages(
-                folders, start_ms, 0, 0,
-                progress=progress)
-            if incremental:
-                merged = {str(item.get("id")): item for item in cached_items}
-                merged.update({str(item.get("id")): item for item in rows})
-                rows = list(merged.values())
-                rows.sort(key=lambda item: (int(item.get("timestamp") or 0),
-                                            str(item.get("id") or "")),
-                          reverse=True)
-            self._write_cache(folders, rows)
-            self._scan_set(status="done", running=False, scanned=len(rows),
-                           total=len(rows), items=rows,
-                           message=("增量读取完成" if incremental else "全量读取完成"))
+                payload.folders, start_ms, end_ms, 0,
+                progress=progress, cancelled=cancel_event.is_set)
+            if cancel_event.is_set():
+                return
+            self._list_set(task_id, status="filtering", scanned=len(rows),
+                           total=len(rows), message="正在应用邮件筛选条件")
+            rows = self._filter_messages(
+                rows, payload.folders, self.store.get(), payload.query,
+                payload.matchedOnly, outlook_body_search=True)
+            if cancel_event.is_set():
+                return
+            self._list_set(task_id, status="done", running=False,
+                           scanned=len(rows), total=len(rows), items=rows,
+                           message=f"已读取 {len(rows)} 封邮件")
         except Exception as exc:
-            logger.exception("email scan failed")
-            self._scan_set(status="failed", running=False, error=str(exc),
-                           message="邮件扫描失败")
+            if cancel_event.is_set():
+                return
+            logger.exception("email list failed")
+            self._list_set(task_id, status="failed", running=False,
+                           error=str(exc), message="邮件列表读取失败")
 
     def status(self) -> dict:
         with self.lock:
@@ -220,70 +197,13 @@ class EmailRuntime:
 
     def list_messages(self, folders: list[str], start_ms: int, end_ms: int,
                       query: str = "", matched_only: bool = False,
-                      maximum: int = EMAIL_LIST_SCAN_LIMIT,
+                      maximum: int = EMAIL_EXTRACT_SCAN_LIMIT,
                       outlook_body_search: bool = True) -> list[dict]:
         config = self.store.get()
         paths = folders or config.folders
         rows = self.outlook.list_messages(paths, start_ms, end_ms, maximum)
         return self._filter_messages(
             rows, paths, config, query, matched_only, outlook_body_search)
-
-    def list_message_page(self, folders: list[str], start_ms: int, end_ms: int,
-                          query: str, matched_only: bool,
-                          offset: int, limit: int) -> dict:
-        """Read only enough Outlook summaries to satisfy the requested page.
-
-        Outlook does not expose a stable cross-folder offset cursor.  Reading the
-        first ``offset + limit + 1`` rows from each sorted folder and globally
-        merging them yields a correct page without materialising the mailbox.
-        Filtered searches grow the scan window until the page is full or the
-        configured safety limit is reached.
-        """
-        target = offset + limit + 1
-        filtered_search = bool(query.strip() or matched_only)
-        scan_limit = min(
-            EMAIL_LIST_SCAN_LIMIT,
-            max(target, 200 if filtered_search else target))
-        paths = folders or self.store.get().folders
-        config = self.store.get()
-
-        # Once the background scan has completed, serve the persisted summary
-        # cache instead of opening Outlook for every page click.
-        cached = self._read_cache()
-        if cached.get("items") and (cached.get("folders") or []) == paths:
-            rows = cached["items"]
-            filtered = self._filter_messages(
-                rows, paths, config, query, matched_only,
-                outlook_body_search=False)
-            page = filtered[offset:offset + limit]
-            return {"items": page, "total": len(filtered),
-                    "totalExact": True, "offset": offset, "limit": limit,
-                    "hasMore": offset + limit < len(filtered),
-                    "scanned": len(rows), "source": "cache"}
-
-        while True:
-            rows = self.outlook.list_messages(paths, start_ms, end_ms, scan_limit)
-            source_exhausted = len(rows) < scan_limit
-            filtered = self._filter_messages(
-                rows, paths, config, query, matched_only,
-                outlook_body_search=False)
-            if (len(filtered) >= target or source_exhausted
-                    or scan_limit >= EMAIL_LIST_SCAN_LIMIT):
-                break
-            scan_limit = min(EMAIL_LIST_SCAN_LIMIT, scan_limit * 2)
-
-        total_exact = source_exhausted
-        has_more = len(filtered) > offset + limit
-        if not has_more and not total_exact and scan_limit >= EMAIL_LIST_SCAN_LIMIT:
-            # The 10k safety cap is not proof that the mailbox has ended.  Keep
-            # hasMore truthful as a lower-bound hint for very large mailboxes.
-            has_more = len(filtered) >= offset + limit
-        page = filtered[offset:offset + limit]
-        total = len(filtered) if total_exact else max(
-            len(filtered), offset + len(page) + (1 if has_more else 0))
-        return {"items": page, "total": total, "totalExact": total_exact,
-                "offset": offset, "limit": limit, "hasMore": has_more,
-                "scanned": len(rows)}
 
     def _filter_messages(self, rows: list[dict], paths: list[str],
                          config: EmailConfig, query: str,
@@ -368,37 +288,22 @@ class EmailRuntime:
 
     def close(self):
         self.cancel_event.set()
+        self._list_cancel_event.set()
         thread = self._thread
         if thread and thread is not threading.current_thread():
             thread.join(timeout=5)
-        scan_thread = self._scan_thread
-        if scan_thread and scan_thread is not threading.current_thread():
-            scan_thread.join(timeout=5)
+        list_thread = self._list_thread
+        if list_thread and list_thread is not threading.current_thread():
+            list_thread.join(timeout=5)
 
     def _run(self, payload, start_ms, end_ms, scheduled, on_complete, upload_by):
         success = False
         result = {}
         current_item_id = ""
         try:
-            rows = None
-            # Manual extraction is launched from the already displayed scan
-            # snapshot.  Do not reopen Outlook and scan the mailbox again.
-            if not scheduled:
-                cached = self._read_cache()
-                cached_folders = cached.get("folders") or []
-                requested_folders = list(payload.folders or [])
-                if cached.get("items") and cached_folders == requested_folders:
-                    rows = self._filter_messages(
-                        list(cached["items"]), requested_folders,
-                        self.store.get(), payload.query,
-                        payload.matchedOnly, outlook_body_search=False)
-                    rows = [row for row in rows
-                            if (not start_ms or int(row.get("timestamp") or 0) >= start_ms)
-                            and (not end_ms or int(row.get("timestamp") or 0) <= end_ms)]
-            if rows is None:
-                rows = self.list_messages(
-                    payload.folders, start_ms, end_ms, payload.query,
-                    payload.matchedOnly)
+            rows = self.list_messages(
+                payload.folders, start_ms, end_ms, payload.query,
+                payload.matchedOnly)
             if scheduled and start_ms:
                 rows = [row for row in rows
                         if int(row.get("timestamp") or 0) > start_ms]

@@ -11,14 +11,17 @@ from coreinsight_local_toolkit.email_runtime import (
     EmailRuntime, EmailScheduleRuntime, _rule_match, _split_markdown)
 from coreinsight_local_toolkit.email_store import EmailConfigStore
 from coreinsight_local_toolkit.models import (
-    EmailConfig, EmailExtractRequest, EmailRule, EmailScheduleSetRequest)
-from coreinsight_local_toolkit.outlook import OutlookClient
+    EmailConfig, EmailExtractRequest, EmailListRequest, EmailRule,
+    EmailScheduleSetRequest)
+from coreinsight_local_toolkit.outlook import (
+    TABLE_COLUMNS, OutlookClient, _table_array_rows)
 from coreinsight_local_toolkit.time_format import format_datetime
 
 
 class FakeOutlook:
     def __init__(self):
         self.maximums = []
+        self.folder_requests = []
         self.rows = [{
             "id": "mail-1", "subject": "GaussDB connection failure",
             "senderName": "Alice", "senderEmail": "alice@example.com",
@@ -26,9 +29,14 @@ class FakeOutlook:
             "conversationTopic": "database", "hasAttachments": True,
         }]
 
-    def list_messages(self, folders, start_ms, end_ms, maximum=10000):
+    def list_messages(self, folders, start_ms, end_ms, maximum=10000,
+                      progress=None, cancelled=None):
         self.maximums.append(maximum)
-        return list(self.rows[:maximum])
+        self.folder_requests.append(list(folders))
+        rows = list(self.rows if maximum <= 0 else self.rows[:maximum])
+        if progress:
+            progress(len(rows), len(rows))
+        return rows
 
     def body_texts(self, item_ids):
         return {item_id: "timeout fixed by ssl configuration" for item_id in item_ids}
@@ -143,7 +151,93 @@ class EmailTests(unittest.TestCase):
             self.assertIn("https://example.test/evidence.png", message["htmlBody"])
             self.assertEqual("截图内容", message["attachments"][0]["ocr"])
 
-    def test_list_page_only_reads_enough_outlook_summaries(self):
+    def test_outlook_table_reads_summaries_in_batches(self):
+        class Columns:
+            def __init__(self):
+                self.names = []
+
+            def RemoveAll(self):
+                self.names.clear()
+
+            def Add(self, name):
+                self.names.append(name)
+
+        now = datetime.now().astimezone()
+        values = [
+            (f"mail-{index}", f"Subject {index}", "Alice",
+             "alice@example.com", now - timedelta(minutes=index),
+             "Topic", False, "IPM.Note")
+            for index in range(201)
+        ]
+
+        class Table:
+            def __init__(self):
+                self.Columns = Columns()
+                self.position = 0
+                self.batch_sizes = []
+
+            @property
+            def EndOfTable(self):
+                return self.position >= len(values)
+
+            def Sort(self, *_args):
+                pass
+
+            def GetRowCount(self):
+                return len(values)
+
+            def GetArray(self, maximum):
+                self.batch_sizes.append(maximum)
+                rows = values[self.position:self.position + maximum]
+                self.position += len(rows)
+                return rows
+
+        table = Table()
+
+        class Folder:
+            FolderPath = "\\Mailbox\\Inbox"
+
+            @staticmethod
+            def GetTable():
+                return table
+
+        class Namespace:
+            @staticmethod
+            def GetDefaultFolder(_kind):
+                return Folder()
+
+        @contextmanager
+        def fake_session():
+            yield Namespace()
+
+        with tempfile.TemporaryDirectory() as directory:
+            client = OutlookClient(Settings(data_dir=Path(directory)))
+            progress = []
+            with patch("coreinsight_local_toolkit.outlook.outlook_session",
+                       fake_session):
+                rows = client.list_messages(
+                    [], maximum=0,
+                    progress=lambda scanned, total: progress.append(
+                        (scanned, total)))
+
+        self.assertEqual(201, len(rows))
+        self.assertEqual(list(TABLE_COLUMNS), table.Columns.names)
+        self.assertEqual([200, 200], table.batch_sizes)
+        self.assertEqual((201, 201), progress[-1])
+
+    def test_column_major_table_array_is_normalized(self):
+        now = datetime.now().astimezone()
+        rows = [
+            ["mail-1", "Subject", "Alice", "alice@example.com", now,
+             "Topic", False, "IPM.Note"],
+            ["mail-2", "Subject 2", "Bob", "bob@example.com", now,
+             "Topic 2", True, "IPM.Note"],
+        ]
+        columns = list(zip(*rows))
+
+        self.assertEqual(rows, _table_array_rows(columns))
+
+    def test_list_task_merges_selected_folders_for_frontend_paging(self):
         with tempfile.TemporaryDirectory() as directory:
             store = EmailConfigStore(Path(directory))
             outlook = FakeOutlook()
@@ -156,27 +250,32 @@ class EmailTests(unittest.TestCase):
             } for index in range(200)]
             runtime = EmailRuntime(outlook, store, FakeProcessor())
 
-            page = runtime.list_message_page([], 0, 0, "", False, 0, 50)
+            started = runtime.start_list(
+                EmailListRequest(folders=[
+                    "Mailbox\\Inbox", "Mailbox\\Project"]), 0, 0)
+            for _ in range(100):
+                current = runtime.list_status(started["taskId"])
+                if current and not current["running"]:
+                    break
+                time.sleep(.01)
 
-            self.assertEqual(50, len(page["items"]))
-            self.assertEqual([51], outlook.maximums)
-            self.assertTrue(page["hasMore"])
-            self.assertFalse(page["totalExact"])
-            self.assertEqual(51, page["scanned"])
+            self.assertEqual("done", current["status"])
+            self.assertEqual(200, len(current["items"]))
+            self.assertEqual([0], outlook.maximums)
+            self.assertEqual([[
+                "Mailbox\\Inbox", "Mailbox\\Project"]],
+                outlook.folder_requests)
+            self.assertEqual(200, current["total"])
+            self.assertEqual(
+                ["Mailbox\\Inbox", "Mailbox\\Project"],
+                current["folders"])
 
-    def test_list_last_page_reports_exact_total(self):
+    def test_list_status_rejects_an_unknown_task(self):
         with tempfile.TemporaryDirectory() as directory:
             store = EmailConfigStore(Path(directory))
-            outlook = FakeOutlook()
-            outlook.rows *= 75
-            runtime = EmailRuntime(outlook, store, FakeProcessor())
+            runtime = EmailRuntime(FakeOutlook(), store, FakeProcessor())
 
-            page = runtime.list_message_page([], 0, 0, "", False, 50, 50)
-
-            self.assertEqual(25, len(page["items"]))
-            self.assertFalse(page["hasMore"])
-            self.assertTrue(page["totalExact"])
-            self.assertEqual(75, page["total"])
+            self.assertIsNone(runtime.list_status("missing"))
 
     def test_rule_matching_and_long_markdown_split(self):
         row = {"subject": "Database timeout", "senderName": "Alice",

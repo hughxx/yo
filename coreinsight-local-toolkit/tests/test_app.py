@@ -1,6 +1,8 @@
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -58,6 +60,38 @@ class AppCorsTests(unittest.TestCase):
         self.assertEqual('email-experience-extractor', skills['data'][0]['id'])
         self.assertEqual(['Mailbox\\Inbox'], saved['data']['folders'])
         self.assertTrue(saved['data']['rules'][0]['id'])
+
+    def test_email_list_is_an_async_task_with_a_status_endpoint(self):
+        row = {
+            "id": "mail-1", "subject": "Failure", "senderName": "Alice",
+            "senderEmail": "alice@example.com",
+            "receivedTime": "2026-09-10 10:00:00", "timestamp": 1,
+            "conversationTopic": "Failure", "hasAttachments": False,
+        }
+        with tempfile.TemporaryDirectory() as directory, patch(
+                "coreinsight_local_toolkit.outlook.OutlookClient.list_messages",
+                return_value=[row]):
+            app = create_app(Settings(
+                data_dir=Path(directory), update_enabled=False))
+            with TestClient(app) as client:
+                started = client.post('/email/message/list', json={
+                    'folders': ['Mailbox\\Inbox', 'Mailbox\\Project'],
+                }).json()['data']
+                for _ in range(100):
+                    response = client.get(
+                        '/email/message/list/status',
+                        params={'taskId': started['taskId']})
+                    current = response.json()['data']
+                    if not current['running']:
+                        break
+                    time.sleep(.01)
+                removed = client.post('/email/message/scan', json={
+                    'folders': ['Mailbox\\Inbox'],
+                })
+
+        self.assertEqual('done', current['status'])
+        self.assertEqual(['mail-1'], [item['id'] for item in current['items']])
+        self.assertEqual(404, removed.status_code)
 
     def test_local_huawei_origin_can_preflight_private_network_request(self):
         with tempfile.TemporaryDirectory() as directory:
