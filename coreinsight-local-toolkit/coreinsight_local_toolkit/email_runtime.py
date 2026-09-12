@@ -222,6 +222,34 @@ class EmailRuntime:
                     keyword_sets.append([query.strip()])
                 matches = self.outlook.search_body_matches(
                     paths, keyword_sets)
+                # Outlook's DASL body index can return an empty result for CJK
+                # terms without raising a COM error.  Verify those apparent
+                # misses against the bodies of the already bounded list rows.
+                # The normal indexed path remains unchanged for ASCII terms
+                # and for CJK searches that produced candidate hits.
+                candidate_ids = {
+                    str(row.get("id") or "") for row in rows
+                    if row.get("id")
+                }
+                verify_indexes = [
+                    index for index, keywords in enumerate(keyword_sets)
+                    if any(not keyword.isascii() for keyword in keywords)
+                    and not (matches[index] & candidate_ids)
+                ]
+                if verify_indexes:
+                    bodies = self.outlook.body_texts(list(candidate_ids))
+                    folded_bodies = {
+                        item_id: body.casefold()
+                        for item_id, body in bodies.items()
+                    }
+                    for index in verify_indexes:
+                        folded_keywords = [
+                            keyword.casefold() for keyword in keyword_sets[index]
+                        ]
+                        matches[index].update(
+                            item_id for item_id, body in folded_bodies.items()
+                            if any(keyword in body for keyword in folded_keywords)
+                        )
                 body_matches = {rule.id or str(id(rule)): values
                                 for rule, values in zip(body_rules, matches[:len(body_rules)])}
                 if query_folded:

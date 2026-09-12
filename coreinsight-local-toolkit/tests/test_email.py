@@ -287,6 +287,28 @@ class EmailTests(unittest.TestCase):
         self.assertGreater(len(chunks), 2)
         self.assertTrue(all(len(chunk) <= 36000 for chunk in chunks))
 
+    def test_chinese_body_rule_falls_back_when_outlook_index_returns_empty(self):
+        class EmptyChineseIndexOutlook(FakeOutlook):
+            def search_body_matches(self, folders, keyword_sets):
+                return [set() for _ in keyword_sets]
+
+            def body_texts(self, item_ids):
+                return {item_id: "邮件正文中明确提到了刘志奇。"
+                        for item_id in item_ids}
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = EmailConfigStore(Path(directory))
+            store.save(EmailConfig(rules=[EmailRule(
+                name="人员邮件", bodyKeywords=["刘志奇"])]))
+            runtime = EmailRuntime(
+                EmptyChineseIndexOutlook(), store, FakeProcessor())
+
+            rows = runtime.list_messages(
+                ["Mailbox\\Inbox"], 0, 0, matched_only=True)
+
+        self.assertEqual(["mail-1"], [row["id"] for row in rows])
+        self.assertEqual("人员邮件", rows[0]["matchedRule"])
+
     def test_store_assigns_rule_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             store = EmailConfigStore(Path(directory))
