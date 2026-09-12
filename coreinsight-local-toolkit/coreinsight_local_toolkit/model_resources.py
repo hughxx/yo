@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import signal
+import shutil
 import subprocess
 import threading
 import time
@@ -70,11 +71,12 @@ class ModelResourceRunner:
         if progress:
             progress("agent", "正在使用 CodeAgent 和 Skill 提取")
         workspace.mkdir(parents=True, exist_ok=True)
-        command = [self.settings.codeagent_command, "--skip-safe-check",
-                   "--print", "--verbose", "--output-format", "stream-json",
-                   "--permission-mode", "bypassPermissions"]
+        arguments = ["--skip-safe-check", "--print", "--verbose",
+                     "--output-format", "stream-json", "--permission-mode",
+                     "bypassPermissions"]
         if self.settings.codeagent_model:
-            command.extend(["--model", self.settings.codeagent_model])
+            arguments.extend(["--model", self.settings.codeagent_model])
+        command = self._resolve_codeagent_command(arguments)
         popen_options = self._process_group_options()
         try:
             process = subprocess.Popen(
@@ -135,6 +137,34 @@ class ModelResourceRunner:
         if not outputs:
             raise RuntimeError("CodeAgent result 事件中没有可用结果")
         return outputs[-1].strip()
+
+    def _resolve_codeagent_command(self, arguments: list[str],
+                                   windows: bool | None = None) -> list[str]:
+        configured = self.settings.codeagent_command.strip().strip('"')
+        configured_path = Path(configured).expanduser()
+        if configured_path.is_file():
+            executable = str(configured_path.resolve())
+        else:
+            executable = shutil.which(configured) or ""
+        if not executable:
+            raise ValueError(
+                "CodeAgent 不可用：未在 PATH 中找到命令 "
+                f"{self.settings.codeagent_command}")
+
+        command = [executable, *arguments]
+        is_windows = os.name == "nt" if windows is None else windows
+        if not is_windows or Path(executable).suffix.lower() not in (".cmd", ".bat"):
+            return command
+
+        command_processor = (
+            os.environ.get("COMSPEC", "").strip()
+            or shutil.which("cmd.exe")
+            or "cmd.exe"
+        )
+        # Keep the task prompt on stdin.  Only the fixed CLI arguments pass
+        # through cmd.exe, which is required for npm's .cmd/.bat wrappers.
+        command_line = subprocess.list2cmdline(command)
+        return [command_processor, "/d", "/s", "/c", f'"{command_line}"']
 
     @staticmethod
     def _read_codeagent_events(process: subprocess.Popen, log_path: Path,

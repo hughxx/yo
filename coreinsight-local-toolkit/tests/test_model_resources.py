@@ -66,15 +66,34 @@ class ModelResourceTests(unittest.TestCase):
             runner = ModelResourceRunner(Settings(data_dir=Path(directory)))
             with patch("coreinsight_local_toolkit.model_resources.subprocess.Popen",
                        return_value=process) as popen, patch(
-                       "coreinsight_local_toolkit.model_resources.subprocess.run"):
+                       "coreinsight_local_toolkit.model_resources.subprocess.run"), patch(
+                       "coreinsight_local_toolkit.model_resources.shutil.which",
+                       return_value="C:\\Tools\\codeagent.exe"):
                 output = runner.generate("skill", "多行\n提取任务", Path(directory))
         self.assertEqual("final", output)
         self.assertEqual("多行\n提取任务", process.stdin.value)
         self.assertTrue(process.stdin.closed)
         command = popen.call_args.args[0]
-        self.assertEqual("codeagent", command[0])
+        self.assertEqual("C:\\Tools\\codeagent.exe", command[0])
         self.assertNotIn("多行\n提取任务", command)
         self.assertIn("stream-json", command)
+
+    def test_windows_npm_command_wrapper_uses_cmd_without_prompt_argument(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = ModelResourceRunner(Settings(data_dir=Path(directory)))
+            with patch(
+                    "coreinsight_local_toolkit.model_resources.shutil.which",
+                    return_value="C:\\Users\\User Name\\npm\\codeagent.cmd"), patch.dict(
+                    "coreinsight_local_toolkit.model_resources.os.environ",
+                    {"COMSPEC": "C:\\Windows\\System32\\cmd.exe"}):
+                command = runner._resolve_codeagent_command(
+                    ["--print", "--output-format", "stream-json"],
+                    windows=True)
+
+        self.assertEqual("C:\\Windows\\System32\\cmd.exe", command[0])
+        self.assertEqual(["/d", "/s", "/c"], command[1:4])
+        self.assertIn('"C:\\Users\\User Name\\npm\\codeagent.cmd"', command[4])
+        self.assertIn("--output-format stream-json", command[4])
 
     def test_instruction_files_keep_manual_edits_and_read_latest_content(self):
         with tempfile.TemporaryDirectory() as directory:
