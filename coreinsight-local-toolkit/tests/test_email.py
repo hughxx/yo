@@ -56,14 +56,14 @@ class FakeProcessor:
     def __init__(self):
         self.calls = []
 
-    def validate(self, upload_by, skill_id, extract_mode):
+    def validate(self, upload_by, resource, extract_mode):
         if not upload_by:
             raise ValueError("missing user")
 
-    def process(self, messages, skill_id, upload_by, task_id, progress,
+    def process(self, messages, upload_by, task_id, progress,
                 cancel_event, **kwargs):
-        self.calls.append((messages, skill_id, upload_by, kwargs))
-        progress("skill", "running")
+        self.calls.append((messages, upload_by, kwargs))
+        progress("model", "running")
         return {"docId": "doc-1", "docIds": ["doc-1"],
                 "title": "GaussDB SSL", "experiences": [
                     {"docId": "doc-1", "title": "GaussDB SSL"}]}
@@ -294,7 +294,7 @@ class EmailTests(unittest.TestCase):
             self.assertTrue(saved.rules[0].id)
             self.assertEqual(saved.rules[0].id, store.get().rules[0].id)
 
-    def test_manual_extraction_uses_email_skill_and_notifies(self):
+    def test_manual_extraction_uses_model_and_notifies(self):
         with tempfile.TemporaryDirectory() as directory:
             store = EmailConfigStore(Path(directory))
             store.save(EmailConfig(rules=[EmailRule(
@@ -304,6 +304,7 @@ class EmailTests(unittest.TestCase):
             runtime = EmailRuntime(FakeOutlook(), store, processor, notifier)
             runtime.start(EmailExtractRequest(
                 uploadBy="u1", scene="邮件问题定位经验", scene_id="251",
+                resource="skill",
                 selection={"mode": "explicit",
                            "selectedItemIds": ["mail-1"]}), 0, 0)
             for _ in range(100):
@@ -311,12 +312,12 @@ class EmailTests(unittest.TestCase):
                     break
                 time.sleep(.01)
             self.assertEqual("done", runtime.status()["status"])
-            messages, skill_id, user, kwargs = processor.calls[0]
-            self.assertEqual("email-experience-extractor", skill_id)
+            messages, user, kwargs = processor.calls[0]
             self.assertEqual("u1", user)
             self.assertEqual("email", kwargs["source_type"])
             self.assertEqual("邮件问题定位经验", kwargs["scene"])
             self.assertEqual("251", kwargs["scene_id"])
+            self.assertEqual("skill", kwargs["resource"])
             self.assertIn("![certificate error](https://example.test/image.png)",
                           messages[0]["rawContent"])
 
@@ -332,9 +333,11 @@ class EmailTests(unittest.TestCase):
             scheduler.set(EmailScheduleSetRequest(
                 uploadBy="u1", scheduleTime=(now + timedelta(minutes=1)).strftime("%H:%M:%S"),
                 since=format_datetime(now - timedelta(days=1)),
-                scene="邮件问题定位经验", scene_id="251"), now)
+                scene="邮件问题定位经验", scene_id="251",
+                resource="skill"), now)
             self.assertEqual("邮件问题定位经验", store.get().scene)
             self.assertEqual("251", store.get().scene_id)
+            self.assertEqual("skill", store.get().resource)
             before = store.get().scheduleCursor
             scheduler._completed(False, int(now.timestamp() * 1000))
             self.assertEqual(before, store.get().scheduleCursor)

@@ -1,7 +1,7 @@
-scene/scene_id 接口变更
+scene/scene_id 与 resource 接口变更
 整理时间：2026-09-11
 
-本文仅包含本次场景参数涉及的 4 个接口。
+本文仅包含本次场景参数及模型资源涉及的 4 个接口。
 
 
 1. POST /email/extract
@@ -19,8 +19,8 @@ scene/scene_id 接口变更
   "endTime": "2026-09-11 23:59:59",
   "query": "",
   "matchedOnly": false,
-  "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "resource": "prompt",
   "uploadBy": "当前登录用户账号",
   "scene": "邮件问题定位经验",
   "scene_id": "251",
@@ -45,8 +45,8 @@ WeLink 手动提取。请求体新增：
   "groupId": "群组ID",
   "startTime": "2026-09-01 00:00:00",
   "endTime": "2026-09-11 23:59:59",
-  "skillId": "welink-experience-extractor",
   "extractMode": "direct",
+  "resource": "prompt",
   "uploadBy": "当前登录用户账号",
   "scene": "WeLink问题定位经验",
   "scene_id": "251",
@@ -70,8 +70,8 @@ WeLink 手动提取。请求体新增：
 {
   "folders": ["邮箱 - 用户\\收件箱"],
   "uploadBy": "当前登录用户账号",
-  "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "resource": "skill",
   "scene": "邮件问题定位经验",
   "scene_id": "251",
   "scheduleFreq": "daily",
@@ -93,8 +93,8 @@ WeLink 定时增量提取。请求体新增：
 {
   "groupId": "群组ID",
   "uploadBy": "当前登录用户账号",
-  "skillId": "welink-experience-extractor",
   "extractMode": "direct",
+  "resource": "skill",
   "scene": "WeLink问题定位经验",
   "scene_id": "251",
   "scheduleFreq": "daily",
@@ -107,8 +107,11 @@ WeLink 定时增量提取。请求体新增：
 统一行为：
 
 - scene 和 scene_id 都是字符串。
-- 前端传入后，LocalToolkit 优先使用前端值，覆盖 Skill 输出中同名字段。
+- 前端传入后，LocalToolkit 优先使用前端值，覆盖模型输出中同名字段。
 - 手动提取时，该值应用于本次产生的所有经验。
 - 设置定时时，该值会持久化；后续每次定时触发都使用已保存的值。
 - 正式入库 direct 和草稿 draft 模式均生效。
-- 未传或传空字符串时，保留原有 Skill/默认场景逻辑。
+- 未传或传空字符串时，保留模型输出/默认场景逻辑。
+- 以上四个接口不再传 skillId，改为直接传 resource。
+- resource 只支持 prompt、skill。prompt 直接调用大模型；skill 使用 CodeAgent 定向读取本地 SKILL.md。
+- prompt.md 和 SKILL.md 位于 D:\CoreInsight\LocalToolkit\instructions，每次任务读取用户最新保存的内容。

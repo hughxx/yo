@@ -18,9 +18,8 @@
 
 1. `GET /health`：确认本地服务已启动。
 2. `GET /welink/cli/status`：确认 WeLink CLI 已安装并可用。
-3. `GET /welink/skill/list`：获取用户可选择的 Skill。
-4. `GET /welink/group/list`：获取本地已绑定群组及配置。
-5. `GET /welink/extract/tasks`：恢复未结束任务及页面任务状态。
+3. `GET /welink/group/list`：获取本地已绑定群组及配置。
+4. `GET /welink/extract/tasks`：恢复未结束任务及页面任务状态。
 
 群组列表来自 LocalToolkit 本地配置，不会自动同步平台上的群组。首次使用必须先调用群组添加接口。
 
@@ -59,11 +58,15 @@ LocalToolkit 会执行一次只查询一条最近会话的 WeLink CLI 探测命�
 - `installed=true, ready=false`：命令存在，但登录状态、权限或执行结果异常。
 - `ready=true`：可以继续预览和提取聊天记录。
 
-## 4. Skill
+## 4. 模型资源
 
-### `GET /welink/skill/list`
+不新增模型配置接口。用户在提取或设置定时时仅选择 `resource`：
 
-返回可用 Skill 数组。保存群组配置、手动提取和设置定时任务时，都应提交所选 Skill 的 `id` 作为 `skillId`。
+- `prompt`：读取本机最新 `prompt.md`，直接调用大模型进行简单提取。
+- `skill`：启动 CodeAgent，定向读取本机最新 `SKILL.md`，由 Agent 自主分批处理超长文件。
+
+邮件、WeLink 的手动与定时接口均使用同一组取值。定时接口会保存本次选择，后续触发时继续使用。
+文件位于 `D:\CoreInsight\LocalToolkit\instructions`，仅在缺失时创建；每次任务启动时重新读取。
 
 ## 5. 群组管理
 
@@ -77,7 +80,7 @@ LocalToolkit 会执行一次只查询一条最近会话的 WeLink CLI 探测命�
 | `name` | 用户设置的显示名称 |
 | `status` | `idle`、`extracting` 或 `scheduled`；排队中的任务也显示为 `extracting` |
 | `extractMode` | `direct` 或 `draft` |
-| `skillId` | 当前选择的 Skill |
+| `resource` | `prompt` 或 `skill` |
 | `startTime` / `endTime` | 手动提取时间范围 |
 | `quickRange` | `all`、`7d`、`3d`、`2d`、`today`、`custom` |
 | `scheduleEnabled` | 是否已启用定时提取 |
@@ -207,8 +210,8 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
   "groupId": "986359484802794599",
   "startTime": "2026-08-10 00:00:00",
   "endTime": "2026-08-17 23:59:59",
-  "skillId": "welink-experience-extractor",
   "extractMode": "direct",
+  "resource": "prompt",
   "uploadBy": "w00899061",
   "scene": "WeLink问题定位经验",
   "scene_id": "251",
@@ -223,7 +226,8 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 - `uploadBy` 必须由正式前端传入当前登录用户账号；Demo 暂时固定为 `w00899061`。
 - `extractMode=direct`：经验直接写入经验中心。
 - `extractMode=draft`：写入待审核草稿。
-- `scene`/`scene_id`：由前端传入，传入后优先覆盖 Skill 输出的场景值。
+- `scene`/`scene_id`：由前端传入，传入后优先覆盖模型输出的场景值。
+- 提交 `resource=prompt|skill`。
 - 已启用定时提取的同一群组，开始手动提取前必须先取消定时任务。
 
 成功返回 HTTP `200`，任务对象位于信封的 `data` 中。前端必须保存其中的 `taskId`。
@@ -250,7 +254,7 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 |---|---|---|
 | `queued` | 已受理，等待本地 worker | 否 |
 | `fetching` | 正在读取和筛选 WeLink 消息 | 否 |
-| 其他处理中状态 | 正在生成 Markdown、上传或执行 Skill | 否 |
+| `workspace` / `model` / `agent` / `pushing` | 生成本地文件、执行大模型/本地 Agent 或入库 | 否 |
 | `done` | 成功完成 | 是 |
 | `failed` | 执行失败，查看 `error` | 是 |
 | `cancelled` | 已取消 | 是 |
@@ -303,8 +307,8 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 {
   "groupId": "986359484802794599",
   "uploadBy": "w00899061",
-  "skillId": "welink-experience-extractor",
   "extractMode": "direct",
+  "resource": "skill",
   "scheduleFreq": "daily",
   "scheduleTime": "09:00:00",
   "scheduleCron": "",
@@ -343,25 +347,27 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 
 ## 11. Outlook 邮件接口
 
-邮件页面初始化依次调用 `GET /email/status`、`GET /email/config`、
-`GET /email/skill/list`，用户刷新文件夹时调用 `GET /email/folder/list`。
+邮件页面初始化依次调用 `GET /email/status` 和 `GET /email/config`，用户刷新文件夹时调用 `GET /email/folder/list`。
 
-- `PUT /email/config`：保存文件夹、规则、黑名单、Skill、入库方式和用户工号。
+- `PUT /email/config`：保存文件夹、规则、黑名单、模型资源、入库方式和用户工号。
 - `POST /email/message/list`：为一个或多个文件夹启动异步摘要列表任务；Outlook 使用 Table API 分批读取并合并结果。
 - `GET /email/message/list/status`：查询列表读取进度，完成后一次返回全部摘要，由前端本地分页。
 - `POST /email/message/get`：读取单封正文用于预览，不上传附件。
-- `POST /email/extract`：提交 Outlook EntryID 选择条件以及前端场景 `scene`/`scene_id`，启动本地邮件 Skill 提取；前端场景值优先于 Skill 输出。
+- `POST /email/extract`：提交 Outlook EntryID 选择条件、`resource` 以及前端场景 `scene`/`scene_id`；前端场景值优先于模型输出。
 - `GET /email/extract/status`：轮询手动或定时邮件任务。
 - `GET /email/extract/tasks`：获取近期邮件任务。
 - `POST /email/extract/cancel`：取消当前邮件任务。
-- `POST /email/schedule/set`：设置邮件定时增量任务，首次或重置时传 `since`。必须先配置并启用至少一条包含主题、正文或发件人条件的有效提取规则，否则返回 `422`，不会扫描全部增量邮件。
+- `POST /email/schedule/set`：设置邮件定时增量任务并保存 `resource`，首次或重置时传 `since`。必须先配置并启用至少一条包含主题、正文或发件人条件的有效提取规则，否则返回 `422`，不会扫描全部增量邮件。
 - 邮件和 WeLink 的 `schedule/set` 均支持 `scene`/`scene_id`，并在后续每次定时提取时优先使用已保存的前端场景值。
 - `POST /email/schedule/cancel`：取消邮件定时任务并保留游标。
 
 邮件正式提取由 EXE 重新读取正文和附件。图片执行 OCR 并写成
 `![OCR结果](公开URL)`，普通附件写成 `[文件名](公开URL)`；生成的 Markdown
-按固定大小分块后进入邮件 Skill。定时窗口为 `(scheduleCursor, 本次触发时间]`，
-只有 Outlook 读取、Skill 和最终入库全部成功才推进游标。
+按固定大小分块后写入本地任务目录。定时窗口为 `(scheduleCursor, 本次触发时间]`，
+只有 Outlook 读取、模型执行和最终入库全部成功才推进游标。
+
+本地任务文件位于 `D:\CoreInsight\LocalToolkit\extraction\<welink|email>\...`；
+`input` 保存 Markdown，`output/experiences.jsonl` 保存已入库经验的最新版本。
 
 完整请求字段和前端调用时机见 `front_api.txt`。
 
@@ -372,9 +378,9 @@ LocalToolkit 会更新用户可编辑配置，不接受前端直接篡改运行�
 | `403` | 网页 Origin 不在白名单中 |
 | `404` | 群组尚未绑定、任务不存在或请求到了旧版本服务 |
 | `409` | 同群组已有未结束任务、定时状态冲突或重复添加群组 |
-| `422` | 请求字段缺失、时间格式错误、Skill/账号配置无效 |
+| `422` | 请求字段缺失、时间格式错误、模型资源/账号配置无效 |
 | `426` | 当前版本被强制停止，必须升级 |
-| `502` | WeLink CLI、Hermes、文件服务或其他下游调用失败 |
+| `502` | WeLink CLI、大模型、本地 Agent 或其他下游调用失败 |
 | `503` | Outlook 未安装、未登录或 COM 访问组件不可用 |
 
 遇到问题时应同时记录：请求 URL、HTTP 方法、请求体、状态码和响应中的 `detail`。仅凭状态码无法区分具体原因。

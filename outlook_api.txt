@@ -48,26 +48,12 @@ data：
   "emailFolderManagement": true,
   "emailPreview": true,
   "emailRuleFiltering": true,
-  "emailSkillExtraction": true,
+  "emailModelExtraction": true,
   "emailScheduling": true
 }
 
 
-3. GET /email/skill/list
-
-时机：邮件页面初始化时调用；填充手动提取和定时增量弹窗中的 Skill 列表。
-
-data：
-[
-  {
-    "id": "email-experience-extractor",
-    "name": "邮件经验提取",
-    "description": "读取 Outlook 邮件、附件链接和图片 OCR，提取并合并技术经验。"
-  }
-]
-
-
-4. GET /email/config
+3. GET /email/config
 
 时机：邮件页面初始化、保存规则后、保存或取消定时任务后调用。
 
@@ -76,8 +62,8 @@ data：
   "folders": ["邮箱 - 用户\\收件箱"],
   "rules": [],
   "blacklist": [],
-  "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "resource": "prompt",
   "uploadBy": "w00899061",
   "scheduleEnabled": false,
   "scheduleFreq": "daily",
@@ -118,7 +104,7 @@ data：
 
 6. PUT /email/config
 
-时机：保存当前文件夹、提取规则、黑名单，或保存 Skill、入库方式、用户工号时调用。
+时机：保存当前文件夹、提取规则、黑名单、入库方式或用户工号时调用。
 
 请求：
 {
@@ -135,12 +121,13 @@ data：
     }
   ],
   "blacklist": [],
-  "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "resource": "prompt",
   "uploadBy": "w00899061"
 }
 
 字段：
+- resource：prompt 或 skill；prompt 直接调用大模型，skill 使用 CodeAgent 和本地 SKILL.md。
 - logic：OR 或 AND。
 - extractMode=direct：提取结果由 LocalToolkit 直接写入经验中心。
 - extractMode=draft：提取结果由 LocalToolkit 内部调用草稿新建/更新接口，写入平台待确认经验。
@@ -224,7 +211,7 @@ data 主要字段：
 
 10. POST /email/extract
 
-时机：用户在“提取选中”弹窗确认 Skill、入库方式和用户工号后调用。
+时机：用户在“提取选中”弹窗确认入库方式和用户工号后调用。
 
 请求：
 {
@@ -233,8 +220,8 @@ data 主要字段：
   "endTime": "2026-08-18 23:59:59",
   "query": "",
   "matchedOnly": false,
-  "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "resource": "prompt",
   "uploadBy": "w00899061",
   "scene": "邮件问题定位经验",
   "scene_id": "251",
@@ -249,8 +236,8 @@ data 主要字段：
 - 前端只传 Outlook EntryID，不传邮件正文或附件。
 - 当前前端固定使用 selection.mode=explicit，避免无意全量提取。
 - folders、时间、query、matchedOnly 应与生成当前选择集合时的筛选条件一致。
-- scene、scene_id 由前端传入；传入后优先覆盖 Skill 输出的场景值，并用于本次所有经验的新建或更新。
-- LocalToolkit 会重新读取邮件，将 HTML 转成 Markdown，处理附件、图片公开链接和 OCR，再运行 Skill。
+- scene、scene_id 由前端传入；传入后优先覆盖模型输出的场景值，并用于本次所有经验的新建或更新。
+- LocalToolkit 会重新读取邮件，将 HTML 转成 Markdown，处理附件、图片公开链接和 OCR，再运行本次 `resource` 指定的资源。
 - extractMode=direct 时由 LocalToolkit 写入正式经验；extractMode=draft 时由 LocalToolkit 创建或更新待确认草稿，前端无需调用其他写入接口。
 
 data：
@@ -280,7 +267,7 @@ status：
 - idle：空闲。
 - fetching：读取 Outlook 邮件。
 - workspace：转换邮件、附件、图片和 Markdown。
-- skill：Skill 执行中。
+- model：大模型执行中；agent：本地 Agent 执行中。
 - pushing：写入经验或草稿。
 - done：成功。
 - failed：失败，读取 error。
@@ -308,8 +295,8 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 {
   "folders": ["邮箱 - 用户\\收件箱"],
   "uploadBy": "w00899061",
-  "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "resource": "skill",
   "scene": "邮件问题定位经验",
   "scene_id": "251",
   "scheduleFreq": "daily",
@@ -322,10 +309,10 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 - scheduleFreq：daily、weekly、monthly、custom。
 - scheduleFreq=custom 时填写 scheduleCron，格式为“分 时 日 月 星期”。
 - 首次创建或主动重置增量起点时传 since。
-- 仅修改执行频率、执行时间、Skill 或入库方式时省略 since，保留现有 scheduleCursor。
+- 仅修改执行频率、执行时间或入库方式时省略 since，保留现有 scheduleCursor。
 - 用户选择“从最早记录开始”时，since 传 1970-01-01 00:00:00。
 - 必须先通过 PUT /email/config 保存至少一条有效且启用的提取规则，否则返回 422。
-- scene、scene_id 会持久化到定时配置，触发提取时优先覆盖 Skill 输出。
+- scene、scene_id 会持久化到定时配置，触发提取时优先覆盖模型输出。
 - 定时任务只处理提取规则命中且未被黑名单排除的邮件，不允许无规则全量增量扫描。
 - 每次窗口为 (scheduleCursor, 本次触发时间]；全部处理成功才推进 scheduleCursor。
 
@@ -368,7 +355,7 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 403：当前网页 Origin 不在 LocalToolkit 白名单中。
 404：取消提取时没有正在运行的任务。
 409：已有邮件提取任务运行中，或运行期间尝试修改定时任务。
-422：请求字段、时间范围、Cron、Skill 配置错误，或设置定时时没有有效提取规则。
+422：请求字段、时间范围、Cron、模型资源配置错误，或设置定时时没有有效提取规则。
 426：当前 LocalToolkit 版本已停止服务，必须升级。
 502：读取 Outlook 数据或下游服务调用失败。
 503：Outlook 未安装、未登录或本机 Outlook 访问组件不可用。
@@ -381,7 +368,7 @@ data：取消请求提交后的当前任务状态。取消是协作式的，前�
 GET /health
 → GET /capabilities
 → /health 成功后立即渲染邮件主页，不显示 Outlook 状态灯
-→ 并行调用 GET /email/skill/list、GET /email/config、GET /email/extract/status
+→ 并行调用 GET /email/config、GET /email/extract/status
 → 根据 GET /email/config 立即判断并显示/隐藏“无有效规则”红色提醒条
 → GET /email/folder/list，先渲染完整文件夹树；无配置时默认勾选 isDefault=true 的节点
 → POST /email/message/list（folders 取当前所有勾选项）

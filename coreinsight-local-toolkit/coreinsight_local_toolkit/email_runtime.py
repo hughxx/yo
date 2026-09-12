@@ -263,7 +263,7 @@ class EmailRuntime:
     def start(self, payload: EmailExtractRequest, start_ms: int, end_ms: int,
               scheduled: bool = False, on_complete=None) -> dict:
         upload_by = payload.uploadBy.strip() or self.default_upload_by
-        self.processor.validate(upload_by, payload.skillId, payload.extractMode)
+        self.processor.validate(upload_by, payload.resource, payload.extractMode)
         with self.lock:
             if self.task.get("running"):
                 raise RuntimeError("已有邮件提取任务正在执行")
@@ -349,11 +349,11 @@ class EmailRuntime:
                 self._set(status=status, message=message)
 
             result = self.processor.process(
-                documents, payload.skillId, upload_by, self.task["taskId"],
+                documents, upload_by, self.task["taskId"],
                 progress, self.cancel_event, group_id="outlook-mailbox",
                 scheduled=scheduled, extract_mode=payload.extractMode,
                 source_type="email", scene=payload.scene,
-                scene_id=payload.scene_id)
+                scene_id=payload.scene_id, resource=payload.resource)
             for row in selected:
                 self._set_item_status(str(row["id"]), "success")
             if self.notifier:
@@ -442,12 +442,12 @@ class EmailScheduleRuntime:
         if not _active_filter_rules(config):
             raise ValueError("定时增量提取必须先配置并启用至少一条有效的提取规则")
         self.runtime.processor.validate(
-            payload.uploadBy, payload.skillId, payload.extractMode)
+            payload.uploadBy, payload.resource, payload.extractMode)
         _parse_time(payload.scheduleTime)
         config.folders = payload.folders or config.folders
         config.uploadBy = payload.uploadBy.strip()
-        config.skillId = payload.skillId
         config.extractMode = payload.extractMode
+        config.resource = payload.resource
         if payload.scene:
             config.scene = payload.scene
         if payload.scene_id:
@@ -489,7 +489,7 @@ class EmailScheduleRuntime:
         start = parse_datetime(config.scheduleCursor or config.scheduleSince)
         payload = EmailExtractRequest(
             folders=config.folders, uploadBy=config.uploadBy,
-            skillId=config.skillId, extractMode=config.extractMode,
+            extractMode=config.extractMode, resource=config.resource,
             scene=config.scene, scene_id=config.scene_id,
             matchedOnly=True,
             selection={"mode": "all"})

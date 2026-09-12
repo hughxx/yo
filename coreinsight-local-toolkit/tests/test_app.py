@@ -34,7 +34,7 @@ class AppCorsTests(unittest.TestCase):
                 data_dir=Path(directory), update_enabled=False))
             with TestClient(app) as client:
                 page = client.get('/demo/')
-                skills = client.get('/email/skill/list').json()
+                capabilities = client.get('/capabilities').json()
                 saved = client.put('/email/config', json={
                     'folders': ['Mailbox\\Inbox'],
                     'rules': [{
@@ -42,7 +42,6 @@ class AppCorsTests(unittest.TestCase):
                         'subjectKeywords': ['failure'],
                     }],
                     'blacklist': [],
-                    'skillId': 'email-experience-extractor',
                     'extractMode': 'direct',
                     'uploadBy': 'u1',
                 }).json()
@@ -57,9 +56,23 @@ class AppCorsTests(unittest.TestCase):
         self.assertIn('id="email-start-menu"', page.text)
         self.assertNotIn('class="outlook-card"', page.text)
         self.assertNotIn('class="email-extract-bar"', page.text)
-        self.assertEqual('email-experience-extractor', skills['data'][0]['id'])
+        self.assertEqual(
+            ['prompt', 'skill'],
+            capabilities['data']['modelResources'])
         self.assertEqual(['Mailbox\\Inbox'], saved['data']['folders'])
         self.assertTrue(saved['data']['rules'][0]['id'])
+
+    def test_model_configuration_endpoints_are_not_exposed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = create_app(Settings(
+                data_dir=Path(directory), update_enabled=False))
+            with TestClient(app) as client:
+                model_config = client.get('/model/config')
+                model_test = client.post('/model/test', json={})
+                removed = client.get('/email/skill/list')
+        self.assertEqual(404, model_config.status_code)
+        self.assertEqual(404, model_test.status_code)
+        self.assertEqual(404, removed.status_code)
 
     def test_email_list_is_an_async_task_with_a_status_endpoint(self):
         row = {

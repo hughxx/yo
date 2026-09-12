@@ -26,6 +26,9 @@ CONFIG_KEY = os.environ.get(
 ).strip()
 # Compatibility with builds that used this key before the unified config.
 LEGACY_CONFIG_KEY = "coreinsight_local_toolkit_runtime"
+MODEL_CONFIG_KEY = os.environ.get(
+    "COREINSIGHT_MODEL_CONFIG_KEY", "coreinsight_miner_release"
+).strip()
 _CIPHER_KEY = hashlib.sha256(
     b"coreinsight-local-toolkit-runtime-v1"
 ).digest()
@@ -64,7 +67,11 @@ def packaged_config() -> dict[str, str]:
     """
     if not CONFIG_URL or not CONFIG_KEY:
         return {}
-    for config_key in dict.fromkeys((CONFIG_KEY, LEGACY_CONFIG_KEY)):
+    merged: dict[str, str] = {}
+    for config_key in dict.fromkeys(
+            (CONFIG_KEY, LEGACY_CONFIG_KEY, MODEL_CONFIG_KEY)):
+      if not config_key:
+        continue
       try:
         response = requests.get(
             CONFIG_URL, params={"key": config_key},
@@ -95,8 +102,6 @@ def packaged_config() -> dict[str, str]:
             return ""
 
         result = {
-            "hermes_url": value(public, "hermes_url", "hermesUrl"),
-            "workspace_file_server_url": value(public, "workspace_file_server_url", "workspaceFileServerUrl"),
             "experience_engine_url": value(public, "experience_engine_url", "experienceEngineUrl"),
             "draft_api_url": value(public, "draft_api_url", "draftApiUrl"),
             "ocr_url": value(public, "ocr_url", "ocrUrl"),
@@ -105,18 +110,23 @@ def packaged_config() -> dict[str, str]:
             "notification_url": value(public, "notification_url", "notificationUrl"),
             "clouddrive_account": value(secrets, "clouddrive_account", "clouddriveAccount"),
             "clouddrive_password": value(secrets, "clouddrive_password", "clouddrivePassword"),
-            "hermes_api_key": value(secrets, "hermes_api_key", "hermesApiKey"),
+            "llm_base_url": value(public, "llm_base_url", "model_gateway_url", "llmBaseUrl"),
+            "llm_model_id": value(public, "llm_model_id", "model_id", "llmModelId"),
+            "codeagent_model": value(public, "codeagent_model", "codeagentModel"),
+            "llm_api_key": value(secrets, "llm_api_key", "model_gateway_api_key", "llmApiKey"),
         }
-        if result.get("hermes_api_key"):
+        for name, item in result.items():
+            if item and not merged.get(name):
+                merged[name] = item
+        if merged.get("llm_api_key"):
             logging.getLogger(__name__).info(
-                "runtime config loaded key=%s hermes_url=%s hermes_key_present=%s hermes_key_len=%d hermes_key_sha256=%s",
-                config_key, result.get("hermes_url"), True,
-                len(result["hermes_api_key"]),
-                hashlib.sha256(result["hermes_api_key"].encode()).hexdigest()[:12],
+                "runtime model config loaded key=%s llm_key_present=%s llm_key_len=%d llm_key_sha256=%s",
+                config_key, True, len(merged["llm_api_key"]),
+                hashlib.sha256(merged["llm_api_key"].encode()).hexdigest()[:12],
             )
-            return result
+            return merged
       except Exception:
         logging.getLogger(__name__).warning(
             "runtime config center unavailable key=%s", config_key,
             exc_info=True)
-    return {}
+    return merged

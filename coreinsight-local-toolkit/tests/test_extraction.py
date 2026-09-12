@@ -31,7 +31,7 @@ class FakeProcessor:
         self.calls = []
         self.keyword_calls = []
 
-    def validate(self, upload_by, skill_id=None, extract_mode="direct"):
+    def validate(self, upload_by, resource="prompt", extract_mode="direct"):
         pass
 
     def process(self, *args, **kwargs):
@@ -97,7 +97,8 @@ class ExtractionRuntimeTests(unittest.TestCase):
             processor = FakeProcessor()
             runtime = ExtractionRuntime(FakeHistory(), groups, processor, 'u1')
             payload = ExtractRequest(
-                groupId='g1', uploadBy='u1', skillId='welink-experience-extractor',
+                groupId='g1', uploadBy='u1',
+                resource='skill',
                 scene='WeLink问题定位经验', scene_id='251',
                 selection={'mode': 'all', 'excludedMessageIds': ['2']})
             runtime.start(payload, 0, 10)
@@ -106,11 +107,12 @@ class ExtractionRuntimeTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertEqual(['3', '1'], [item['id'] for item in processor.calls[0][0]])
-            self.assertEqual(('welink-experience-extractor', 'u1'), processor.calls[0][1:3])
+            self.assertEqual(('u1',), processor.calls[0][1:2])
             self.assertEqual('welink', processor.keyword_calls[0]['source_type'])
             self.assertEqual('WeLink问题定位经验',
                              processor.keyword_calls[0]['scene'])
             self.assertEqual('251', processor.keyword_calls[0]['scene_id'])
+            self.assertEqual('skill', processor.keyword_calls[0]['resource'])
             self.assertEqual('done', runtime.status()['status'])
             self.assertEqual('idle', groups.get('g1').status)
             runtime.close()

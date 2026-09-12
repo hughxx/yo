@@ -30,7 +30,7 @@ class GroupCreate(GroupBase):
 class GroupConfig(GroupBase):
     status: Literal["idle", "extracting", "scheduled"] = "idle"
     extractMode: Literal["direct", "draft"] = "direct"
-    skillId: str = "welink-experience-extractor"
+    resource: Literal["prompt", "skill"] = "prompt"
     uploadBy: str = ""
     scene: str = ""
     scene_id: str = ""
@@ -109,8 +109,8 @@ class MessageSelection(BaseModel):
 
 
 class ExtractRequest(MessageQuery):
-    skillId: str = "welink-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
+    resource: Literal["prompt", "skill"] = "prompt"
     uploadBy: str = Field(min_length=1)
     scene: str = ""
     scene_id: str = ""
@@ -129,8 +129,8 @@ class ExtractCancelRequest(BaseModel):
 class ScheduleSetRequest(BaseModel):
     groupId: str = Field(min_length=1)
     uploadBy: str = Field(min_length=1)
-    skillId: str = "welink-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
+    resource: Literal["prompt", "skill"] = "prompt"
     scene: str = ""
     scene_id: str = ""
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"
@@ -153,7 +153,6 @@ class ScheduleSetRequest(BaseModel):
         if not normalized:
             raise ValueError("since 不能为空")
         return str(normalized)
-
 
 class ScheduleCancelRequest(BaseModel):
     groupId: str = Field(min_length=1)
@@ -182,8 +181,8 @@ class EmailConfig(BaseModel):
     folders: list[str] = Field(default_factory=list)
     rules: list[EmailRule] = Field(default_factory=list)
     blacklist: list[EmailRule] = Field(default_factory=list)
-    skillId: str = "email-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
+    resource: Literal["prompt", "skill"] = "prompt"
     uploadBy: str = ""
     scene: str = ""
     scene_id: str = ""
@@ -246,8 +245,8 @@ class EmailExtractRequest(BaseModel):
     endTime: Optional[str] = None
     query: str = ""
     matchedOnly: bool = False
-    skillId: str = "email-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
+    resource: Literal["prompt", "skill"] = "prompt"
     uploadBy: str = Field(min_length=1)
     scene: str = ""
     scene_id: str = ""
@@ -261,8 +260,8 @@ class EmailExtractRequest(BaseModel):
 class EmailScheduleSetRequest(BaseModel):
     folders: list[str] = Field(default_factory=list)
     uploadBy: str = Field(min_length=1)
-    skillId: str = "email-experience-extractor"
     extractMode: Literal["direct", "draft"] = "direct"
+    resource: Literal["prompt", "skill"] = "prompt"
     scene: str = ""
     scene_id: str = ""
     scheduleFreq: Literal["daily", "weekly", "monthly", "custom"] = "daily"

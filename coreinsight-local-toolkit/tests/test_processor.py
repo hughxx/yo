@@ -16,43 +16,17 @@ RESULT = {"title": "标题", "summary": "摘要", "experience": "## 方案\n内�
 RESULT["operation"] = "create"
 
 
-class FakeWorkspaces:
-    def __init__(self):
-        self.files = {}
-        self.deleted = []
-        self.deleted_paths = []
+class FakeResources:
+    def __init__(self, output=None):
+        self.output = output or json.dumps(RESULT, ensure_ascii=False)
+        self.calls = []
 
-    def create(self, workspace_id):
-        self.workspace_id = workspace_id
+    def validate(self, resource):
+        self.validated = resource
 
-    def write_text(self, workspace_id, path, content):
-        self.files[path] = content
-
-    def upload(self, workspace_id, path, filename, content):
-        self.files[f"{path}/{filename}"] = content
-        return f"{path}/{filename}"
-
-    def read_text(self, workspace_id, path):
-        return self.files[path]
-
-    def delete(self, workspace_id):
-        self.deleted.append(workspace_id)
-
-    def delete_path(self, workspace_id, path):
-        self.deleted_paths.append((workspace_id, path))
-        self.files.pop(path, None)
-
-
-class FakeHermes:
-    def submit(self, workspace_id, session_id, skill_id, input_paths=None, scheduled=False):
-        self.submitted = (workspace_id, session_id, skill_id, input_paths, scheduled)
-        return "run-1"
-
-    def wait(self, run_id, cancel_event=None, progress=None):
-        return json.dumps(RESULT, ensure_ascii=False)
-
-    def stop(self, run_id):
-        pass
+    def generate(self, resource, prompt, workspace, cancel_event=None, progress=None):
+        self.calls.append((resource, prompt, workspace))
+        return self.output
 
 
 class ProcessorTests(unittest.TestCase):
@@ -62,41 +36,59 @@ class ProcessorTests(unittest.TestCase):
         processor = LocalExperienceProcessor(Settings(
             data_dir=Path(data_directory.name), experience_engine_url="http://engine",
             clouddrive_account="account", clouddrive_password="password"))
-        processor.workspaces = FakeWorkspaces()
-        processor.hermes = FakeHermes()
+        processor.resources = FakeResources()
         return processor
 
-    def test_skill_workspace_flow(self):
+    def test_local_workspace_model_flow(self):
         processor = self.processor()
+        processor.instructions.prompt_path.write_text(
+            "用户修改后的 Prompt", encoding="utf-8")
         processor.settings = processor.settings.__class__(
             **{**processor.settings.__dict__, "ocr_url": "http://ocr"})
-        processor.workspaces.files["output/experiences.jsonl"] = json.dumps(RESULT)
         with patch.object(processor, "_push_experience", return_value="server-doc-1") as push:
             result = processor.process(
                 [{"id": "1", "sender": "u", "timestamp": 1, "content": "hello"}],
-                "welink-experience-extractor", "u1", "task-1")
-        self.assertTrue(any(path.startswith("input/000001_")
-                            for path in processor.workspaces.files))
-        self.assertIn("skills/welink-experience-extractor/SKILL.md", processor.workspaces.files)
-        archived = list((processor.settings.data_dir / "markdown").rglob("*.md"))
-        self.assertEqual(1, len(archived))
-        self.assertIn("hello", archived[0].read_text(encoding="utf-8"))
-        self.assertEqual("welink-experience-extractor", result["skillId"])
+                "u1", "task-1")
+        inputs = list((Path(result["workspacePath"]) / "input").glob("*.md"))
+        self.assertEqual(1, len(inputs))
+        self.assertIn("hello", inputs[0].read_text(encoding="utf-8"))
+        self.assertEqual("prompt", result["resource"])
+        self.assertIn("用户修改后的 Prompt", processor.resources.calls[0][1])
         self.assertEqual("server-doc-1", result["docId"])
         push.assert_called_once()
-        self.assertEqual(1, len(processor.workspaces.deleted))
+        self.assertTrue((Path(result["workspacePath"]) / "output" /
+                         "experiences.jsonl").exists())
+        self.assertEqual(json.dumps(RESULT, ensure_ascii=False),
+                         Path(result["modelResponsePath"]).read_text(encoding="utf-8"))
 
-    def test_email_request_scene_overrides_skill_scene(self):
+    def test_skill_flow_injects_exact_local_skill_and_reads_inputs_by_path(self):
         processor = self.processor()
-        processor.hermes.wait = Mock(return_value=json.dumps({
-            **RESULT, "scene": "Skill 场景", "scene_id": "999",
-        }, ensure_ascii=False))
+        processor.instructions.skill_path.write_text(
+            "# 用户修改后的 Skill", encoding="utf-8")
+        with patch.object(processor, "_push_experience", return_value="doc-1"):
+            result = processor.process(
+                [{"id": "1", "sender": "u", "timestamp": 1,
+                  "content": "very long source marker"}],
+                "u1", "task-skill", resource="skill")
+        resource, prompt, workspace = processor.resources.calls[0]
+        self.assertEqual("skill", resource)
+        self.assertIn(str(processor.instructions.skill_path), prompt)
+        self.assertIn("SHA-256", prompt)
+        self.assertIn("input/", prompt)
+        self.assertNotIn("very long source marker", prompt)
+        self.assertEqual(Path(result["workspacePath"]), workspace)
+
+    def test_email_request_scene_overrides_model_scene(self):
+        processor = self.processor()
+        processor.resources.output = json.dumps({
+            **RESULT, "scene": "模型场景", "scene_id": "999",
+        }, ensure_ascii=False)
         with patch.object(processor, "validate"), patch.object(
                 processor, "_push_experience", return_value="doc-1") as push:
             processor.process(
                 [{"id": "1", "sender": "u", "timestamp": 1,
                   "content": "hello"}],
-                "email-experience-extractor", "u1", "task-1",
+                "u1", "task-1",
                 source_type="email", scene="邮件问题定位经验",
                 scene_id="251")
 
@@ -116,14 +108,13 @@ class ProcessorTests(unittest.TestCase):
         self.assertNotIn("消息 ID：2", chunks[0]["content"])
         self.assertIn("消息 ID：2", chunks[1]["content"])
 
-    def test_markdown_archive_uses_safe_group_directory(self):
+    def test_workspace_uses_safe_group_directory(self):
         processor = self.processor()
-        destination = processor._archive_markdown(
-            "../group:1", "welink-manual-task", "input/000001_test.md", "正文")
-        self.assertEqual("正文", destination.read_text(encoding="utf-8"))
-        self.assertEqual("group_1", destination.parent.parent.name)
+        destination = processor._workspace_path(
+            "../group:1", "welink-manual-task", "welink")
+        self.assertEqual("group_1", destination.parent.name)
         self.assertTrue(destination.is_relative_to(
-            processor.settings.data_dir / "markdown"))
+            processor.settings.data_dir / "extraction"))
 
     def test_create_and_update_use_engine_contract(self):
         processor = self.processor()
@@ -155,34 +146,30 @@ class ProcessorTests(unittest.TestCase):
     def test_result_parser_accepts_pretty_json_jsonl_and_array(self):
         processor = self.processor()
         pretty = json.dumps(RESULT, ensure_ascii=False, indent=2)
-        processor.workspaces.files["output/experiences.jsonl"] = pretty
-        records, lines = processor._read_results("w1", "")
+        records, lines = processor._read_results(pretty)
         self.assertEqual([RESULT], records)
         self.assertEqual(1, len(lines))
         self.assertEqual(RESULT, json.loads(lines[0]))
 
         updated = {"operation": "update", "doc_id": "123", "summary": "补充内容"}
-        processor.workspaces.files["output/experiences.jsonl"] = (
-            json.dumps(RESULT, ensure_ascii=False) + "\n" +
-            json.dumps(updated, ensure_ascii=False, indent=2))
-        records, _ = processor._read_results("w1", "")
+        raw = (json.dumps(RESULT, ensure_ascii=False) + "\n" +
+               json.dumps(updated, ensure_ascii=False, indent=2))
+        records, _ = processor._read_results(raw)
         self.assertEqual([RESULT, updated], records)
 
-        processor.workspaces.files["output/experiences.jsonl"] = json.dumps(
-            [RESULT, updated], ensure_ascii=False, indent=2)
-        records, _ = processor._read_results("w1", "")
+        records, _ = processor._read_results(json.dumps(
+            [RESULT, updated], ensure_ascii=False, indent=2))
         self.assertEqual([RESULT, updated], records)
 
-    def test_result_parser_repairs_common_skill_json_mistakes(self):
+    def test_result_parser_repairs_common_model_json_mistakes(self):
         processor = self.processor()
         malformed_quotes = (
             '{"operation":"create","title":"引号问题",'
             '"summary":"正文包含 "quoted value" 文本",'
             '"experience":"第一行\n第二行",'
             '"rag_search_text":"json repair",}')
-        processor.workspaces.files["output/experiences.jsonl"] = (
-            json.dumps(RESULT, ensure_ascii=False) + "\n" + malformed_quotes)
-        records, normalized = processor._read_results("w1", "")
+        raw = json.dumps(RESULT, ensure_ascii=False) + "\n" + malformed_quotes
+        records, normalized = processor._read_results(raw)
         self.assertEqual(2, len(records))
         self.assertEqual('正文包含 "quoted value" 文本', records[1]["summary"])
         self.assertEqual("第一行\n第二行", records[1]["experience"])
@@ -199,27 +186,23 @@ class ProcessorTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "自动修复失败"):
             processor._decode_json_values('{"operation":"create"')
 
-    def test_scheduled_workspace_is_stable_and_is_not_deleted(self):
+    def test_scheduled_workspace_is_stable_and_keeps_local_files(self):
         processor = self.processor()
-        processor.workspaces.files["output/experiences.jsonl"] = ""
-        with tempfile.TemporaryDirectory() as directory:
-            processor._state_path = Path(directory) / "state.json"
+        with patch.object(processor, "_push_experience", return_value="doc-1"):
             result = processor.process(
                 [{"id": "1", "sender": "u", "timestamp": 1, "content": "hello"}],
-                "welink-experience-extractor", "u1", "task-1",
-                group_id="g1", scheduled=True)
+                "u1", "task-1", group_id="g1", scheduled=True)
         expected = processor._workspace_id(
-            "another-task", "g1", "welink-experience-extractor", "u1", True,
-            "direct")
+            "another-task", "g1", "u1", True, "direct")
         self.assertEqual(expected, result["workspaceId"])
-        self.assertEqual([], processor.workspaces.deleted)
-        self.assertEqual(1, len(processor.workspaces.deleted_paths))
+        self.assertEqual(1, len(list(
+            (Path(result["workspacePath"]) / "input").glob("*.md"))))
 
     def test_scheduled_workspaces_are_isolated_by_extract_mode(self):
         direct = LocalExperienceProcessor._workspace_id(
-            "task", "g1", "welink-experience-extractor", "u1", True, "direct")
+            "task", "g1", "u1", True, "direct")
         draft = LocalExperienceProcessor._workspace_id(
-            "task", "g1", "welink-experience-extractor", "u1", True, "draft")
+            "task", "g1", "u1", True, "draft")
         self.assertNotEqual(direct, draft)
 
     def test_compaction_keeps_latest_version_per_doc_id(self):
@@ -236,7 +219,7 @@ class ProcessorTests(unittest.TestCase):
     def test_cancel_is_checked_before_workspace_creation(self):
         event = threading.Event(); event.set()
         with self.assertRaises(ExtractionCancelled):
-            self.processor().process([], "welink-experience-extractor", "u1", "task", cancel_event=event)
+            self.processor().process([], "u1", "task", cancel_event=event)
 
     def test_image_becomes_public_markdown_link(self):
         processor = self.processor()

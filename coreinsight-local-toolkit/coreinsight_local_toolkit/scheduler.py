@@ -117,11 +117,11 @@ class ScheduleRuntime:
         if not group:
             raise ValueError("请先绑定该群组")
         self.extraction.processor.validate(
-            payload.uploadBy.strip(), payload.skillId, payload.extractMode)
+            payload.uploadBy.strip(), payload.resource, payload.extractMode)
         _parse_time(payload.scheduleTime)
-        group.skillId = payload.skillId
         group.uploadBy = payload.uploadBy.strip()
         group.extractMode = payload.extractMode
+        group.resource = payload.resource
         if payload.scene:
             group.scene = payload.scene
         if payload.scene_id:
@@ -193,7 +193,7 @@ class ScheduleRuntime:
             start = parse_datetime(cursor) if cursor else due
             payload = ExtractRequest(
                 groupId=group.groupId, uploadBy=group.uploadBy,
-                skillId=group.skillId, extractMode=group.extractMode,
+                extractMode=group.extractMode, resource=group.resource,
                 scene=group.scene, scene_id=group.scene_id,
                 selection={"mode": "all"})
             try:

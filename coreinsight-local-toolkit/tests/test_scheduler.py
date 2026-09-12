@@ -9,7 +9,7 @@ from coreinsight_local_toolkit.store import GroupStore
 
 
 class FakeProcessor:
-    def validate(self, upload_by, skill_id=None, extract_mode="direct"):
+    def validate(self, upload_by, resource="prompt", extract_mode="direct"):
         if not upload_by:
             raise ValueError("missing uploader")
 
@@ -57,10 +57,11 @@ class SchedulerTests(unittest.TestCase):
         saved = self.runtime.set(ScheduleSetRequest(
             groupId="g1", uploadBy="u1", scheduleFreq="daily",
             scheduleTime="09:00:00", scene="WeLink问题定位经验",
-            scene_id="251"), now)
+            scene_id="251", resource="skill"), now)
         self.assertEqual("2026-08-13 09:00:00", saved.scheduleNextRun)
         self.assertEqual("WeLink问题定位经验", saved.scene)
         self.assertEqual("251", saved.scene_id)
+        self.assertEqual("skill", saved.resource)
 
         due = datetime.fromisoformat("2026-08-13T09:00:01+08:00")
         self.assertTrue(self.runtime.tick(due))
@@ -70,6 +71,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertTrue(call[3])
         self.assertEqual("WeLink问题定位经验", call[0].scene)
         self.assertEqual("251", call[0].scene_id)
+        self.assertEqual("skill", call[0].resource)
         group = self.store.get("g1")
         self.assertEqual("2026-08-13 09:00:01", group.scheduleLastRun)
         self.assertEqual("2026-08-13 09:00:01", group.scheduleCursor)

@@ -12,8 +12,8 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 - 将消息标准化后返回给浏览器预览；
 - 按 `msgId` 应用全选排除或明确选择，原始正文不经浏览器传递；
 - EXE 下载图片、上传到公开图片服务，并生成 `![OCR结果](公开URL)` Markdown；
-- workspace file-server 只传递转换好的 Markdown 和 `SKILL.md`；
-- Hermes Remote Agent 通过 Skill 处理超长 Markdown，并保留图片超链接；
+- Markdown、模型输出和定时历史全部保存在本地目录；
+- 每次提取可选择 `prompt` 或 `skill`；Prompt 与 Skill 文件保存在 D 盘并支持手工修改；
 - 提供健康检查和能力声明。
 - Windows 托盘菜单支持开机自启（默认开启），多份 EXE 共用系统级单实例锁，同一时间只运行一份。
 
@@ -21,11 +21,11 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 正文、发件人规则以及黑名单。定时增量必须配置至少一条有效提取规则，不允许无规则扫描
 全部增量邮件。正式提取时，邮件 HTML 转为 Markdown，内嵌图片和图片附件
 执行 OCR 并变成 `![OCR结果](公开URL)`，普通附件变成可访问链接。浏览器只传 Outlook
-EntryID 选择条件，不传正文或附件。邮件也使用独立 Skill，支持手动选择、草稿/直入库、
+EntryID 选择条件，不传正文或附件。邮件与 WeLink 使用同一组模型资源选项，支持手动选择、草稿/直入库、
 结果通知和成功后才推进游标的定时增量提取。
 
-提取支持直接写入经验引擎和生成平台待审核草稿。Skill 不感知入库模式，统一负责经验的提取、合并和更新；
-Local Toolkit 根据 `extractMode` 与 Skill 返回的 `doc_id` 路由到经验接口或平台草稿接口。定时任务支持每天、每周、每月
+提取支持直接写入经验引擎和生成平台待审核草稿。Prompt 负责约束经验的提取、合并和更新；
+Local Toolkit 根据 `extractMode` 与模型返回的 `doc_id` 路由到经验接口或平台草稿接口。定时任务支持每天、每周、每月
 和五字段 Cron，并在本机持久化。只有提取和入库成功后才推进增量起点，失败会在下次重试。
 
 ## 为什么叫 Local Toolkit
@@ -50,13 +50,12 @@ GET http://127.0.0.1:17831/health
 
 本地配置和运行数据默认写入 `D:\CoreInsight\LocalToolkit`，滚动日志位于
 `D:\CoreInsight\LocalToolkit\logs\toolkit.log`（单文件 5 MB，保留 5 个备份）。日志不记录
-完整聊天正文、密码或 API Key。提取日志包含 taskId、群组、消息计数、Hermes runId、经验
+完整聊天正文、密码或 API Key。提取日志包含 taskId、群组、消息计数、模型资源、经验
 docId、入库结果和异常堆栈。
-转换完成的聊天 Markdown 会长期保存在
-`D:\CoreInsight\LocalToolkit\markdown\<groupId>\<workspaceId>`。文件内容与上传到远端
-workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副本不会随远端 workspace 清理自动删除。
-邮件 Markdown 保存在
-`D:\CoreInsight\LocalToolkit\markdown\email\outlook-mailbox\<workspaceId>`。
+输入 Markdown 和经验历史长期保存在
+`D:\CoreInsight\LocalToolkit\extraction\<welink|email>\<groupId>\<workspaceId>`。
+`input` 存放按消息边界切分的 Markdown，`output/model-response-*.txt` 保存模型原始回答，
+`output/experiences.jsonl` 存放已入库经验的最新版本。
 
 演示前端直接访问 `http://127.0.0.1:17831/demo/`，不需要另外启动 Node 服务。
 
@@ -70,10 +69,12 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 | `COREINSIGHT_ALLOWED_ORIGINS` | 空 | 追加到默认白名单的网页 Origin，多个值用逗号分隔 |
 | `COREINSIGHT_WELINK_CLI` | `welink-cli` | WeLink CLI 可执行文件名或绝对路径 |
 | `COREINSIGHT_UPLOAD_BY` | 空 | 兼容旧调用的默认用户工号；正式调用由前端在请求中传 `uploadBy` |
-| `COREINSIGHT_HERMES_URL` | `http://7.183.107.92:31454` | Hermes Remote Agent 网关 |
-| `COREINSIGHT_HERMES_API_KEY` | 内部开发 Key | Hermes Bearer Token |
-| `COREINSIGHT_WORKSPACE_FILE_SERVER_URL` | `http://7.183.107.92:30864` | 共享 workspace 文件服务 |
-| `COREINSIGHT_HERMES_TIMEOUT_SECONDS` | `1800` | 单次 Skill 最长等待时间 |
+| `COREINSIGHT_LLM_BASE_URL` | Fuyao model gateway `/v1` | 大模型 OpenAI 兼容接口前缀 |
+| `COREINSIGHT_LLM_API_KEY` | 配置中心 | 大模型 Bearer Token |
+| `COREINSIGHT_LLM_MODEL_ID` | 内置模型 ID | 大模型资源 ID |
+| `COREINSIGHT_CODEAGENT_COMMAND` | `codeagent` | 本地 Agent 命令或绝对路径 |
+| `COREINSIGHT_CODEAGENT_MODEL` | 空 | 可选的 CodeAgent `--model` 参数；为空时使用 CLI 默认模型 |
+| `COREINSIGHT_MODEL_TIMEOUT_SECONDS` | `1800` | 单次大模型请求最长等待时间 |
 | `COREINSIGHT_PORTAL_URL` | `https://coreinsight.rnd.huawei.com` | 悬浮图标“云见主页”的地址 |
 | `COREINSIGHT_EXPERIENCE_CREATE_URL` | `https://coreinsight.rnd.huawei.com/experience/create` | 右键菜单“经验提取”的地址 |
 | `COREINSIGHT_IM_NOTIFICATION_URL` | `http://fuyao.rnd.huawei.com/coreinsight-bot/im/message/coreinsight-local-toolkit` | 提取成功后的用户聊天通知接口 |
@@ -84,6 +85,7 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 | `COREINSIGHT_UPDATE_ENABLED` | `1` | 设为 `0` 时关闭自动更新，用于故障排查 |
 | `COREINSIGHT_RUNTIME_CONFIG_KEY` | `coreinsight_local_toolkit_release` | 配置中心统一版本与运行配置 key |
 | `COREINSIGHT_RUNTIME_CONFIG_URL` | 配置中心默认地址 | 运行密钥配置接口地址 |
+| `COREINSIGHT_MODEL_CONFIG_KEY` | `coreinsight_miner_release` | 主配置未提供模型密钥时使用的模型配置 key |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
 | `COREINSIGHT_DRAFT_API_URL` | `https://coreinsight.rnd.huawei.com/chat` | 平台草稿新建/更新接口前缀 |
 | `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |
@@ -113,14 +115,13 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 | GET | `/version` | 当前版本与版本检查配置状态 |
 | POST | `/update/check` | 按 HTTPS 清单检查新版本，不自动下载安装 |
 | GET | `/welink/cli/status` | 探测 `welink-cli` 是否安装且当前登录可正常查询 |
-| GET | `/welink/skill/list` | 用户可选择的提取 Skill |
 | GET | `/welink/group/list` | 群组列表 |
 | POST | `/welink/group/add` | 添加群组 |
 | PUT | `/welink/group/update` | 更新群组配置 |
 | DELETE | `/welink/group/delete` | 删除群组 |
 | POST | `/welink/message/list` | 获取时间范围内的聊天记录 |
 | POST | `/welink/message/page` | 游标分页预览聊天记录（推荐） |
-| POST | `/welink/extract` | 本地读取和 msgId 过滤，提交 workspace Skill 并入库 |
+| POST | `/welink/extract` | 本地读取和 msgId 过滤，调用已选模型资源并入库 |
 | GET | `/welink/extract/status` | 按 `taskId` 或 `groupId` 查询任务状态 |
 | GET | `/welink/extract/tasks` | 查询本进程的提取任务列表 |
 | POST | `/welink/extract/cancel` | 按 `taskId` 或 `groupId` 取消任务 |
@@ -136,28 +137,30 @@ workspace 的输入一致，包含 OCR 结果和永久图片链接；本地副�
 提取任务按群组防重复：同群组已有未结束任务时返回 409，不同群组的任务均可提交。
 LocalToolkit 使用单 worker 按提交顺序执行，尚未执行的任务状态为 `queued`。
 
-提取请求只携带 `skillId`，不再向用户暴露 Prompt 或 CodeAgent。聊天 Markdown 以约
+邮件和 WeLink 的手动、定时请求都可传 `resource=prompt|skill`。`prompt` 直接调用大模型；`skill` 使用 CodeAgent 定向读取本机 `SKILL.md` 并自主处理文件。聊天 Markdown 以约
 40,000 字符为目标自动分片，但只在完整消息边界切分；文件名使用
 `input/000001_<起止时间>.md` 形式保证顺序。单条消息超过目标大小时单独占一个文件。
 
-手动提取每次创建新的临时 workspace，成功或失败后删除；同一个定时任务使用由
-`用户 + 群组 + Skill + 入库模式` 确定的固定 workspace 和 Hermes session，只追加本轮增量输入。
-workspace 里只有一个结果文件 `output/experiences.jsonl`，每行是一条完整经验版本。新经验
+手动提取每次创建新的本地任务目录；同一个定时任务使用由
+`用户 + 群组 + 入库模式` 确定的固定本地目录，只追加本轮增量输入。
+目录里只有一个结果文件 `output/experiences.jsonl`，每行是一条完整经验版本。新经验
 不带 `doc_id`，Local Toolkit 通过 POST 新建并将接口返回的真实 `doc_id` 写回该行；后续聊天
-补充同一经验时，Skill 使用原 `doc_id` 追加合并后的新版本，Local Toolkit 通过 PUT 部分更新。
-每个定时 workspace 的下一个分片序号和已入库行号仅在本机持久化，失败不会越过未成功的
-输入或输出。定时批次成功后会删除本轮输入 Markdown，并把 `experiences.jsonl` 压缩为每个
-`doc_id` 的最新完整版本；失败时保留输入供重试。该清理依赖 file-server 的
-`DELETE /api/workspaces/{workspace_id}/path` 接口。
+补充同一经验时，模型使用原 `doc_id` 返回合并后的完整版本，Local Toolkit 通过 PUT 部分更新。
+每个定时目录按已有文件计算下一个分片序号，并把 `experiences.jsonl` 维持为每个 `doc_id`
+的最新完整版本。输入和输出均保留在本机，便于追溯。
 
-图片在进入 workspace 前已经上传到永久图片服务，Markdown 中是
-`![OCR结果](公开URL)`，Skill 必须在最终经验中原样保留 OCR alt 文本和 URL。删除手动
-workspace 不会删除已经进入经验正文的永久图片。
+图片在写入本地 Markdown 前已经上传到永久图片服务，Prompt 要求模型在最终经验中原样保留
+`![OCR结果](公开URL)` 的 alt 文本和 URL。
 
-取消任务时 EXE 会调用 Hermes stop 接口，并保证不会继续写入经验引擎。
+取消本地 Agent 任务时 EXE 会终止对应进程，并保证不会继续写入经验引擎；大模型 HTTP 请求
+返回后会再次检查取消状态，不会入库。
 
-草稿模式下，新经验使用本地生成的 32 位 UUID 调用草稿新建接口，成功后回写为 Skill 后续可见的
-`doc_id`。已有 `doc_id` 时只调用更新接口，Skill 负责输出合并后的完整内容；更新目标不存在或无权限时
+首次启动时会创建 `D:\CoreInsight\LocalToolkit\instructions\prompt.md` 和
+`D:\CoreInsight\LocalToolkit\instructions\experience-extraction\SKILL.md`。程序之后不会覆盖这两个文件；
+每个任务启动时重新读取，因此手工保存的 UTF-8 内容会从下一次任务开始生效。
+
+草稿模式下，新经验使用本地生成的 32 位 UUID 调用草稿新建接口，成功后回写到本地经验历史的
+`doc_id`。已有 `doc_id` 时只调用更新接口，模型负责输出合并后的完整内容；更新目标不存在或无权限时
 直接失败，不会降级为新建。`rag_search_text` 不发送到草稿接口。
 
 ## 桌面悬浮图标、托盘与版本检查
@@ -169,7 +172,7 @@ Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色
 
 环境选择保存在 `D:\CoreInsight\LocalToolkit\environment.json`。生产环境使用
 `coreinsight.rnd.huawei.com`，测试环境使用 `coreinsight-beta.rnd.huawei.com`；切换仅替换这两个域名，
-不会修改 Hermes、文件服务、经验引擎、OCR、图片、云盘或升级配置中心地址。
+不会修改模型网关、文件服务、经验引擎、OCR、图片、云盘或升级配置中心地址。
 
 启动后会自动检查一次版本。Toolkit 调用配置中心
 `selectConfigByKey?key=coreinsight_local_toolkit_release`，并将返回的 `data.configVal` 解析为：

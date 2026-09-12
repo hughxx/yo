@@ -41,13 +41,23 @@ class Settings:
     allowed_origins: tuple[str, ...] = _origins()
     welink_cli: str = os.getenv("COREINSIGHT_WELINK_CLI", "welink-cli").strip() or "welink-cli"
     upload_by: str = os.getenv("COREINSIGHT_UPLOAD_BY", "").strip()
-    hermes_url: str = os.getenv(
-        "COREINSIGHT_HERMES_URL", _PACKAGED.get("hermes_url", "http://7.183.107.92:31454")
+    llm_base_url: str = os.getenv(
+        "COREINSIGHT_LLM_BASE_URL",
+        _PACKAGED.get("llm_base_url", "https://fuyao.rnd.huawei.com/model_gateway/v1"),
     ).strip().rstrip("/")
-    hermes_api_key: str = _PACKAGED.get("hermes_api_key", "")
-    workspace_file_server_url: str = os.getenv(
-        "COREINSIGHT_WORKSPACE_FILE_SERVER_URL", _PACKAGED.get("workspace_file_server_url", "http://7.183.107.92:30864")
-    ).strip().rstrip("/")
+    llm_api_key: str = os.getenv(
+        "COREINSIGHT_LLM_API_KEY", _PACKAGED.get("llm_api_key", "")
+    ).strip()
+    llm_model_id: str = os.getenv(
+        "COREINSIGHT_LLM_MODEL_ID",
+        _PACKAGED.get("llm_model_id", "a9dc5db2-e625-487c-95a6-69c2be0831ca"),
+    ).strip()
+    codeagent_command: str = os.getenv(
+        "COREINSIGHT_CODEAGENT_COMMAND", "codeagent"
+    ).strip() or "codeagent"
+    codeagent_model: str = os.getenv(
+        "COREINSIGHT_CODEAGENT_MODEL", _PACKAGED.get("codeagent_model", "")
+    ).strip()
     experience_engine_url: str = os.getenv(
         "COREINSIGHT_EXPERIENCE_ENGINE_URL", _PACKAGED.get("experience_engine_url", "https://fuyao.rnd.huawei.com")
     ).strip().rstrip("/")
@@ -65,7 +75,7 @@ class Settings:
     ).strip().rstrip("/")
     clouddrive_account: str = _PACKAGED.get("clouddrive_account", "")
     clouddrive_password: str = _PACKAGED.get("clouddrive_password", "")
-    hermes_timeout_seconds: int = 1800
+    model_timeout_seconds: int = 1800
     portal_url: str = os.getenv(
         "COREINSIGHT_PORTAL_URL", "https://coreinsight.rnd.huawei.com"
     ).strip()
@@ -105,11 +115,11 @@ def load_settings() -> Settings:
         raise RuntimeError("COREINSIGHT_AGENT_PORT 必须是整数") from exc
     if not 1 <= port <= 65535:
         raise RuntimeError("COREINSIGHT_AGENT_PORT 必须在 1-65535 之间")
-    raw_timeout = os.getenv("COREINSIGHT_HERMES_TIMEOUT_SECONDS", "1800")
+    raw_model_timeout = os.getenv("COREINSIGHT_MODEL_TIMEOUT_SECONDS", "1800")
     try:
-        hermes_timeout = int(raw_timeout)
+        model_timeout = int(raw_model_timeout)
     except ValueError as exc:
-        raise RuntimeError("COREINSIGHT_HERMES_TIMEOUT_SECONDS 必须是整数") from exc
-    if hermes_timeout < 30:
-        raise RuntimeError("COREINSIGHT_HERMES_TIMEOUT_SECONDS 不能小于 30")
-    return Settings(port=port, hermes_timeout_seconds=hermes_timeout)
+        raise RuntimeError("COREINSIGHT_MODEL_TIMEOUT_SECONDS 必须是整数") from exc
+    if model_timeout < 30:
+        raise RuntimeError("COREINSIGHT_MODEL_TIMEOUT_SECONDS 不能小于 30")
+    return Settings(port=port, model_timeout_seconds=model_timeout)

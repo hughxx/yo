@@ -16,10 +16,7 @@ Base URL: http://127.0.0.1:17831
 时机：/health 成功后调用，判断 welink-cli 是否安装且可用。
 使用：ready=true 才允许预览消息和启动提取。
 
-3. GET /welink/skill/list
-时机：页面初始化时调用，填充 Skill 选择列表。
-
-4. GET /welink/group/list
+3. GET /welink/group/list
 时机：页面初始化、添加/修改/删除群组、任务状态结束后调用，刷新群组配置和状态。
 定时相关返回字段：
 {
@@ -94,8 +91,8 @@ Base URL: http://127.0.0.1:17831
   "groupId": "群组ID",
   "startTime": "2026-08-10 00:00:00",
   "endTime": "2026-08-17 23:59:59",
-  "skillId": "welink-experience-extractor",
   "extractMode": "direct",
+  "resource": "prompt",
   "uploadBy": "当前登录用户账号",
   "scene": "WeLink问题定位经验",
   "scene_id": "251",
@@ -105,7 +102,8 @@ Base URL: http://127.0.0.1:17831
     "selectedMessageIds": []
   }
 }
-使用：保存响应中的 data.taskId，并立即开始查询该任务状态。scene/scene_id 会优先覆盖 Skill 输出的场景值。
+使用：保存响应中的 data.taskId，并立即开始查询该任务状态。scene/scene_id 会优先覆盖模型输出的场景值。
+使用：resource 传 prompt 或 skill。prompt 为大模型简单提取；skill 为 CodeAgent 加本地 Skill，适合超长内容。
 规则：同群组已有未结束任务时返回 409；其他群组的任务会正常进入 queued 队列。
 规则：该群组已启用定时提取时，应先调用 /welink/schedule/cancel。
 
@@ -146,8 +144,8 @@ selection 用法：
 {
   "groupId": "群组ID",
   "uploadBy": "当前登录用户账号",
-  "skillId": "welink-experience-extractor",
   "extractMode": "direct",
+  "resource": "skill",
   "scene": "WeLink问题定位经验",
   "scene_id": "251",
   "scheduleFreq": "daily",
@@ -175,10 +173,8 @@ selection 用法：
 
 六、统一处理
 
-本次定时改动没有新增或删除接口。
-请求变更：POST /welink/schedule/set 新增 since。
-响应变更：群组对象新增 scheduleSince、scheduleCursor；scheduleLastRun 仅兼容保留。
-未变化：消息预览、手动提取、任务轮询和取消接口路径均不变。
+邮件、WeLink 的手动及定时提取请求都传 resource：prompt 或 skill。
+prompt.md 与 SKILL.md 保存在 D 盘，程序每次任务启动时读取最新内容。
 
 时间格式：YYYY-MM-DD HH:mm:ss。
 POST /welink/extract 返回成功只表示任务已受理，不代表提取已完成。
@@ -187,7 +183,7 @@ POST /welink/extract 返回成功只表示任务已受理，不代表提取已�
 409：同群组任务或定时状态冲突。
 422：请求字段或时间格式错误。
 426：LocalToolkit 必须升级，停止继续调用 WeLink 业务接口。
-502：welink-cli、Hermes、文件服务或下游调用失败。
+502：welink-cli、大模型、本地 Agent 或下游调用失败。
 
 
 七、邮件提取
@@ -196,24 +192,21 @@ POST /welink/extract 返回成功只表示任务已受理，不代表提取已�
 时机：邮件页面初始化时调用，检测本机 Outlook。
 使用：ready=true 才允许读取文件夹、邮件和启动提取。
 
-17. GET /email/skill/list
-时机：邮件页面初始化时调用，填充邮件 Skill 列表。
-
-18. GET /email/folder/list
+17. GET /email/folder/list
 时机：首次进入邮件页面或用户刷新文件夹时调用。
 响应项：path、name、depth。前端保存和提交 path。
 
-19. GET /email/config
+18. GET /email/config
 时机：邮件页面初始化、定时任务结束后调用。
-响应：folders、rules、blacklist、skillId、extractMode、uploadBy，以及 scheduleEnabled、scheduleSince、scheduleCursor、scheduleNextRun。
+响应：folders、rules、blacklist、extractMode、uploadBy，以及 scheduleEnabled、scheduleSince、scheduleCursor、scheduleNextRun。
 
-20. PUT /email/config
-时机：文件夹、规则、黑名单、Skill、入库方式或用户工号变化后调用。
+19. PUT /email/config
+时机：文件夹、规则、黑名单、入库方式或用户工号变化后调用。
 请求：提交 GET /email/config 的完整对象。
 规则字段：id、name、subjectKeywords、bodyKeywords、senders、logic(OR/AND)、enabled。
 使用：不要通过本接口修改 schedule 字段。
 
-21. POST /email/message/list
+20. POST /email/message/list
 时机：进入邮件页、修改文件夹选择、刷新、搜索或切换规则筛选时调用。翻页时不调用。
 请求：
 {
@@ -225,18 +218,18 @@ POST /welink/extract 返回成功只表示任务已受理，不代表提取已�
 }
 响应：taskId、running、status、scanned、total、message。接口立即返回，前端继续轮询列表状态。
 
-22. GET /email/message/list/status?taskId=列表任务ID
+21. GET /email/message/list/status?taskId=列表任务ID
 时机：POST /email/message/list 成功后轮询。
 进行中返回 running=true、status=loading/filtering、scanned、total 和 message。
 完成后返回 running=false、status=done 和完整 items。前端保存 items 并自行分页，点击下一页不再访问 LocalToolkit。
 items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名单排除。
 
-23. POST /email/message/get
+22. POST /email/message/get
 时机：用户点击邮件预览时调用。
 请求：{"itemId":"Outlook EntryID"}
 使用：只读取正文预览，不上传附件、不执行 OCR。
 
-24. POST /email/extract
+23. POST /email/extract
 时机：用户确认提取选中邮件时调用。
 请求：
 {
@@ -245,8 +238,8 @@ items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名�
   "endTime": "2026-08-17 23:59:59",
   "query": "",
   "matchedOnly": false,
-  "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "resource": "prompt",
   "uploadBy": "当前登录用户账号",
   "scene": "邮件问题定位经验",
   "scene_id": "251",
@@ -256,27 +249,27 @@ items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名�
     "excludedItemIds": []
   }
 }
-使用：前端只传 EntryID，不传邮件正文和附件。scene/scene_id 会优先覆盖 Skill 输出中的场景值并写入经验。LocalToolkit 重新从 Outlook 读取，生成 Markdown、图片 OCR 和公开链接，再运行 Skill。
+使用：前端只传 EntryID，不传邮件正文和附件。scene/scene_id 会优先覆盖模型输出中的场景值并写入经验。LocalToolkit 重新从 Outlook 读取，生成本地 Markdown、图片 OCR 和公开链接，再调用本次 resource 指定的资源。
 全部条件结果可用 mode=all，并将取消勾选项放入 excludedItemIds。
 
-25. GET /email/extract/status
+24. GET /email/extract/status
 时机：POST /email/extract 成功后每 2 秒轮询。
-停止条件：running=false。status 含 fetching、workspace、skill、pushing、done、failed、cancelled。
+停止条件：running=false。status 含 fetching、workspace、model、agent、pushing、done、failed、cancelled。
 
-26. GET /email/extract/tasks
+25. GET /email/extract/tasks
 时机：页面初始化时恢复最近邮件任务状态。
 
-27. POST /email/extract/cancel
+26. POST /email/extract/cancel
 时机：用户取消正在运行的邮件任务时调用。请求体可为空对象。
 
-28. POST /email/schedule/set
+27. POST /email/schedule/set
 时机：新增或修改邮件定时增量提取时调用。
 请求：
 {
   "folders": ["邮箱 - 用户\\收件箱"],
   "uploadBy": "当前登录用户账号",
-  "skillId": "email-experience-extractor",
   "extractMode": "direct",
+  "resource": "skill",
   "scene": "邮件问题定位经验",
   "scene_id": "251",
   "scheduleFreq": "daily",
@@ -289,9 +282,14 @@ items 中 matchedRule 表示命中的提取规则；blockedRule 表示被黑名�
 定时配置会保存 scene/scene_id，每次定时提取均优先使用前端设置的场景值。
 定时任务只处理提取规则命中且未被黑名单排除的邮件。必须至少配置并启用一条包含主题、正文或发件人条件的有效提取规则；否则接口返回 422，不会创建全量增量任务。
 
-29. POST /email/schedule/cancel
+28. POST /email/schedule/cancel
 时机：用户取消邮件定时提取时调用。请求体可为空对象。
 使用：取消后保留 scheduleSince 和 scheduleCursor。
 
 邮件时间格式同样统一为 YYYY-MM-DD HH:mm:ss。
 503：Outlook 未安装、未登录或访问组件不可用。
+
+本地文件：
+D:\CoreInsight\LocalToolkit\extraction\welink\<groupId>\<workspaceId>\input 保存聊天 Markdown。
+D:\CoreInsight\LocalToolkit\extraction\email\outlook-mailbox\<workspaceId>\input 保存邮件 Markdown。
+各任务目录的 output\model-response-*.txt 保存模型原始回答，output\experiences.jsonl 保存已入库经验；手动和定时任务文件均保留在本机。

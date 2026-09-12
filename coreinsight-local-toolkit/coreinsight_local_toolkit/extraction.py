@@ -84,7 +84,7 @@ class ExtractionRuntime:
         if not self.groups.get(payload.groupId):
             raise ValueError('请先绑定该群组')
         upload_by = payload.uploadBy.strip() or self.default_upload_by
-        self.processor.validate(upload_by, payload.skillId, payload.extractMode)
+        self.processor.validate(upload_by, payload.resource, payload.extractMode)
         with self._condition:
             if payload.groupId in self._group_tasks:
                 raise RuntimeError('该群组已有提取任务正在执行或排队')
@@ -134,7 +134,7 @@ class ExtractionRuntime:
             for cancel in self._cancels.values():
                 cancel.set()
             self._condition.notify_all()
-        # Give the active worker a short grace period to stop its Hermes run
+        # Give the active worker a short grace period to stop its model run
         # and execute normal workspace cleanup before the process exits.
         if self._worker is not threading.current_thread():
             self._worker.join(timeout=5)
@@ -207,11 +207,11 @@ class ExtractionRuntime:
                 self._set(job.task_id, status=status, message=message)
 
             result = self.processor.process(
-                messages, payload.skillId, job.upload_by, job.task_id,
+                messages, job.upload_by, job.task_id,
                 progress, job.cancel, group_id=payload.groupId,
                 scheduled=job.scheduled, extract_mode=payload.extractMode,
                 source_type="welink", scene=payload.scene,
-                scene_id=payload.scene_id)
+                scene_id=payload.scene_id, resource=payload.resource)
             if self.notifier:
                 experiences = result.get('experiences') or []
                 try:

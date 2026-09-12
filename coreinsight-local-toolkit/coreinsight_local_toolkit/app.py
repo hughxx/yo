@@ -28,7 +28,6 @@ from .models import (
 )
 from .notifications import MessageNotifier
 from .scheduler import ScheduleRuntime
-from .skills import available_skills
 from .store import GroupStore
 from .updates import UpdateManager
 from .welink import WelinkHistory
@@ -157,14 +156,15 @@ def create_app(settings: Settings | None = None,
             "welinkMessagePreview": True,
             "welinkExtraction": True,
             "welinkScheduling": True,
-            "welinkSkillExtraction": True,
+            "welinkModelExtraction": True,
             "welinkCliProbe": True,
             "outlookProbe": True,
             "emailFolderManagement": True,
             "emailPreview": True,
             "emailRuleFiltering": True,
-            "emailSkillExtraction": True,
+            "emailModelExtraction": True,
             "emailScheduling": True,
+            "modelResources": ["prompt", "skill"],
         }
 
     @app.get("/welink/cli/status", response_model=WelinkCliStatus)
@@ -200,16 +200,6 @@ def create_app(settings: Settings | None = None,
         except requests.RequestException as exc:
             raise HTTPException(status_code=502, detail=f"版本检查失败：{exc}") from exc
 
-    @app.get("/welink/skill/list")
-    def list_skills():
-        return [skill for skill in available_skills()
-                if skill["id"].startswith("welink-")]
-
-    @app.get("/email/skill/list")
-    def list_email_skills():
-        return [skill for skill in available_skills()
-                if skill["id"].startswith("email-")]
-
     @app.get("/email/status")
     def email_status():
         return outlook.probe()
@@ -233,8 +223,8 @@ def create_app(settings: Settings | None = None,
         current.folders = payload.folders
         current.rules = payload.rules
         current.blacklist = payload.blacklist
-        current.skillId = payload.skillId
         current.extractMode = payload.extractMode
+        current.resource = payload.resource
         current.uploadBy = payload.uploadBy.strip()
         if current.scheduleEnabled and not any(
                 rule.enabled and (rule.subjectKeywords or rule.bodyKeywords
@@ -341,7 +331,7 @@ def create_app(settings: Settings | None = None,
             current = store.get(payload.groupId)
             if not current:
                 raise KeyError(payload.groupId)
-            for field in ("name", "extractMode", "skillId", "startTime", "endTime",
+            for field in ("name", "extractMode", "resource", "startTime", "endTime",
                           "quickRange", "scheduleFreq", "scheduleTime",
                           "scheduleCron"):
                 setattr(current, field, getattr(payload, field))

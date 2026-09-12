@@ -133,7 +133,7 @@ matchedOnly=false 时，items 仍会返回 matchedRule/blockedRule，前端可�
 }
 
 这两个字段会应用到本次提取产生的所有经验。前端传值后，
-LocalToolkit 优先使用前端的值，覆盖 Skill 输出中的 scene/scene_id。
+LocalToolkit 优先使用前端的值，覆盖模型输出中的 scene/scene_id。
 
 POST /welink/extract 同样新增 scene、scene_id。例如：
 {

@@ -1,0 +1,117 @@
+LocalToolkit 前端调整说明
+整理日期：2026-09-12
+
+一、前端必须调整
+
+1. 提取资源由 skillId 改为 resource
+
+以下请求不再传 skillId，统一改传 resource：
+
+- POST /welink/extract
+- POST /welink/schedule/set
+- POST /email/extract
+- POST /email/schedule/set
+- PUT /email/config
+- WeLink 群组配置保存接口（群组配置对象中使用 resource）
+
+resource 只支持两个值：
+
+- prompt：直接调用大模型，适合简单提取、内容量较小的场景。
+- skill：使用 CodeAgent 加本地 SKILL.md，由 Agent 自主处理，适合超长内容。
+
+默认值为 prompt。建议前端始终显式传值，不要依赖默认值。
+
+请求片段示例：
+
+{
+  "extractMode": "direct",
+  "resource": "prompt",
+  "uploadBy": "当前登录用户账号",
+  "scene": "邮件问题定位经验",
+  "scene_id": "251"
+}
+
+2. 删除 Skill 列表接口调用
+
+以下接口已删除，页面初始化时不要再调用：
+
+- GET /welink/skill/list
+- GET /email/skill/list
+
+前端无需从后端动态获取选项，固定展示 prompt、skill 两项即可。
+
+3. 页面交互
+
+使用单选框，不向用户展示 auto：
+
+- Prompt
+  hover 提示：直接调用大模型进行简单提取，适合内容量较小的任务。
+- Skill
+  hover 提示：使用 CodeAgent 和本地 Skill，可由 Agent 自主处理超长内容。
+
+邮件手动提取、邮件定时提取、WeLink 手动提取、WeLink 定时提取，都应允许用户选择同样的两项。
+
+4. 配置响应字段变化
+
+以下配置对象中原来的 skillId 已删除，新增 resource：
+
+- GET /welink/group/list 返回的群组对象
+- GET /email/config 返回的邮件配置对象
+
+前端回显时读取 resource。旧的 skillId 不需要兼容。
+
+5. 任务状态展示
+
+提取过程不再使用 skill 作为处理中阶段。前端应能展示或兼容这些状态：
+
+- queued：等待执行
+- fetching：读取数据
+- workspace：生成本地任务文件
+- model：大模型处理中
+- agent：CodeAgent 处理中
+- pushing：写入经验中心
+- done：完成
+- failed：失败
+- cancelled：已取消
+
+轮询和结束判断逻辑不变：以 running=false 为停止轮询条件，并结合 done、failed、cancelled 展示最终结果。
+
+二、scene 参数保持不变
+
+以下四个接口继续传 scene 和 scene_id：
+
+- POST /welink/extract
+- POST /welink/schedule/set
+- POST /email/extract
+- POST /email/schedule/set
+
+前端传入后，后端会用这两个值覆盖模型输出中的同名字段。定时接口会保存它们，后续每次定时执行继续使用。
+
+三、前端不需要处理的内容
+
+1. 不新增模型配置接口。
+2. 前端不需要传 Prompt 正文、Skill 正文或本地文件路径。
+3. Prompt 和 Skill 文件由用户在 Windows 本地手工修改：
+   D:\CoreInsight\LocalToolkit\instructions\prompt.md
+   D:\CoreInsight\LocalToolkit\instructions\experience-extraction\SKILL.md
+4. 每次新任务启动时，程序都会读取用户最新保存的文件；正在运行的任务不会因文件中途修改而变化。
+5. CodeAgent 的启动、stdin 输入、JSONL 事件解析、超时和进程清理由后端处理，前端只需继续轮询任务状态。
+
+四、能力接口（如前端有使用）
+
+能力信息更新为：
+
+- welinkModelExtraction: true
+- emailModelExtraction: true
+- modelResources: ["prompt", "skill"]
+
+旧字段 welinkSkillExtraction、emailSkillExtraction 不再返回。
+
+五、最小改造清单
+
+1. 删除两个 /skill/list 初始化请求。
+2. 所有 skillId 字段改为 resource。
+3. 增加 Prompt/Skill 单选框，默认选择 Prompt。
+4. 配置回显改读 resource。
+5. 任务进度文案适配 model、agent、workspace、pushing。
+6. scene、scene_id、extractMode、uploadBy 以及原有轮询方式保持不变。
