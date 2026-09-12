@@ -1,5 +1,7 @@
 import json
 import hashlib
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -90,10 +92,30 @@ class ModelResourceTests(unittest.TestCase):
                     ["--print", "--output-format", "stream-json"],
                     windows=True)
 
-        self.assertEqual("C:\\Windows\\System32\\cmd.exe", command[0])
-        self.assertEqual(["/d", "/s", "/c"], command[1:4])
-        self.assertIn('"C:\\Users\\User Name\\npm\\codeagent.cmd"', command[4])
-        self.assertIn("--output-format stream-json", command[4])
+        self.assertIsInstance(command, str)
+        self.assertTrue(command.startswith("C:\\Windows\\System32\\cmd.exe /d /s /c "))
+        self.assertIn('"C:\\Users\\User Name\\npm\\codeagent.cmd"', command)
+        self.assertIn("--output-format stream-json", command)
+
+    @unittest.skipUnless(os.name == "nt", "Windows cmd wrapper integration test")
+    def test_windows_command_wrapper_really_runs_cmd_file_with_spaces(self):
+        with tempfile.TemporaryDirectory() as directory:
+            npm_dir = Path(directory) / "npm commands"
+            npm_dir.mkdir()
+            wrapper = npm_dir / "codeagent.cmd"
+            wrapper.write_text(
+                '@echo off\necho {"type":"result","result":"ok"}\n',
+                encoding="utf-8")
+            runner = ModelResourceRunner(Settings(
+                data_dir=Path(directory), codeagent_command=str(wrapper)))
+
+            command = runner._resolve_codeagent_command(
+                ["--print", "--output-format", "stream-json"])
+            completed = subprocess.run(
+                command, capture_output=True, text=True, check=False)
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertIn('{"type":"result","result":"ok"}', completed.stdout)
 
     def test_instruction_files_keep_manual_edits_and_read_latest_content(self):
         with tempfile.TemporaryDirectory() as directory:
