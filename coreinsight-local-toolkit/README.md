@@ -191,11 +191,11 @@ Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色
 当前版本低于 `minimumSupportedVersion` 时强制更新；或者 `forceUpdate=true` 且当前版本低于
 `latestVersion` 时强制更新。其余版本差异仅提示普通更新。仅当发现新版本时才要求 HTTPS
 下载地址。由于下载页面可能需要用户浏览器 Cookie，Toolkit 只负责打开 `downloadUrl`，不在本地自动下载、校验或安装。普通更新由用户在“检查更新”中确认；强制更新会暂停 WeLink 业务
-接口并打开下载页面。用户下载后需手动替换 EXE 并重新启动。升级日志写入
-`D:\CoreInsight\LocalToolkit\logs\updater.log`。
+接口并打开下载页面。用户下载后需手动替换 EXE 并重新启动。Toolkit 只在
+`toolkit.log` 中记录版本检查和打开下载页相关信息。
 
 版本接口包括 `POST /update/check`、`GET /update/status` 和 `POST /update/install`。正式发布仍建议对 EXE 添加企业代码签名。
-可直接复制 `release-config.example.json` 到配置中心，发布时只需替换其中的 HTTPS 直链。
+可直接复制 `release-config.example.json` 到配置中心，发布时只需替换其中的 HTTPS 下载页面。
 `downloadUrl` 可以是需要登录/Cookie 的浏览器下载页面，不要求 Toolkit 进程直接访问。
 
 ## 打包

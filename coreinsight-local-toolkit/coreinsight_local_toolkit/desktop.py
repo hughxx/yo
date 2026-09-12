@@ -20,10 +20,7 @@ from . import __version__
 from .app import create_app
 from .config import Settings
 from .environment import EnvironmentManager, PRODUCTION, TESTING
-from .updates import (
-    UpdateManager, UpdateStatus, create_updater_script, download_update,
-    launch_updater,
-)
+from .updates import UpdateManager, UpdateStatus
 
 
 logger = logging.getLogger(__name__)
@@ -335,7 +332,6 @@ def _run_desktop_primary(settings: Settings) -> None:
             _native_notice(f"修改开机自启失败：\n{exc}")
 
     exiting = threading.Event()
-    install_lock = threading.Lock()
 
     def switch_environment(environment: str) -> None:
         previous = environments.current(settings.portal_url)
@@ -349,40 +345,6 @@ def _run_desktop_primary(settings: Settings) -> None:
             tray.notify(f'已切换到{label}', 'CoreInsight Local Toolkit')
         except Exception:
             logger.debug('tray environment refresh unavailable', exc_info=True)
-
-    def begin_install(status: UpdateStatus) -> None:
-        if not install_lock.acquire(blocking=False):
-            tray.notify("升级任务已经在运行", "CoreInsight Local Toolkit")
-            return
-        update_manager.set_runtime("downloading", 0)
-
-        def worker() -> None:
-            try:
-                if not getattr(sys, "frozen", False):
-                    raise RuntimeError("源码运行模式不能自更新，请先打包 EXE 后验证")
-                tray.notify(
-                    f"正在下载 {status.latestVersion}，完成后将自动重启",
-                    "CoreInsight Local Toolkit")
-                package = download_update(
-                    settings, status,
-                    lambda value: update_manager.set_runtime("downloading", value))
-                update_manager.set_runtime("ready", 100, package_path=str(package))
-                script = create_updater_script(settings, package)
-                launch_updater(script)
-                update_manager.set_runtime("installing", 100, package_path=str(package))
-                _native_notice(
-                    f"版本 {status.latestVersion} 已下载并校验完成。\n\n"
-                    "Toolkit 即将退出、替换并自动重启。",
-                    "CoreInsight 正在升级")
-                floating.post(WM_APP_EXIT)
-            except Exception as exc:
-                logger.exception("update installation failed version=%s", status.latestVersion)
-                update_manager.set_runtime("failed", error=str(exc))
-                _native_notice(f"升级失败：\n{exc}\n\n可在日志目录查看详情。")
-            finally:
-                install_lock.release()
-
-        threading.Thread(target=worker, name="update-install", daemon=True).start()
 
     def check_update(manual: bool = False) -> None:
         def worker() -> None:

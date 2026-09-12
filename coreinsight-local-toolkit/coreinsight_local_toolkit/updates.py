@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import re
 import json
-import hashlib
 import logging
-import os
-import subprocess
-import sys
+import re
 import threading
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
 
@@ -19,7 +14,6 @@ from . import __version__
 from .config import Settings
 
 
-_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +30,6 @@ class UpdateStatus:
     latestVersion: str = ""
     updateAvailable: bool = False
     downloadUrl: str = ""
-    sha256: str = ""
     releaseNotes: tuple[str, ...] = ()
     minimumSupportedVersion: str = ""
     forceUpdate: bool = False
@@ -51,7 +44,6 @@ class UpdateRuntimeStatus:
     phase: str = "idle"
     progress: int = 0
     error: str = ""
-    packagePath: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -89,12 +81,12 @@ class UpdateManager:
         installer(status)
         return self.snapshot()
 
-    def set_runtime(self, phase: str, progress: int = 0, error: str = "",
-                    package_path: str = "") -> None:
+    def set_runtime(self, phase: str, progress: int = 0,
+                    error: str = "") -> None:
         with self._lock:
             self._runtime = UpdateRuntimeStatus(
                 phase=phase, progress=max(0, min(100, progress)),
-                error=error, packagePath=package_path)
+                error=error)
 
     @property
     def forced(self) -> bool:
@@ -136,7 +128,6 @@ def check_for_update(settings: Settings) -> UpdateStatus:
     latest = str(manifest.get("latestVersion") or "").strip()
     minimum = str(manifest.get("minimumSupportedVersion") or "").strip()
     download_url = str(manifest.get("downloadUrl") or "").strip()
-    sha256 = str(manifest.get("sha256") or "").strip().lower()
     notes_value = manifest.get("releaseNotes") or []
     if isinstance(notes_value, str):
         notes = (notes_value,)
@@ -159,124 +150,6 @@ def check_for_update(settings: Settings) -> UpdateStatus:
     return UpdateStatus(
         currentVersion=__version__, latestVersion=latest,
         updateAvailable=available, downloadUrl=download_url if available else "",
-        sha256=sha256 if available else "", releaseNotes=notes,
+        releaseNotes=notes,
         minimumSupportedVersion=minimum, forceUpdate=force_update,
         configured=True)
-
-
-def download_update(settings: Settings, status: UpdateStatus,
-                    progress: Callable[[int], None] | None = None,
-                    session: requests.Session | None = None) -> Path:
-    if not status.updateAvailable or not status.downloadUrl:
-        raise ValueError("没有可下载的新版本")
-    update_dir = settings.data_dir / "updates"
-    update_dir.mkdir(parents=True, exist_ok=True)
-    (settings.data_dir / "logs").mkdir(parents=True, exist_ok=True)
-    final_path = update_dir / f"coreinsight-local-toolkit-{status.latestVersion}.exe"
-    partial_path = final_path.with_suffix(".exe.part")
-    digest = hashlib.sha256()
-    downloaded = 0
-    own_session = session is None
-    session = session or requests.Session()
-    if own_session:
-        session.trust_env = False
-    try:
-        with session.get(status.downloadUrl, stream=True, timeout=(10, 300),
-                         verify=False) as response:
-            response.raise_for_status()
-            total = int(response.headers.get("Content-Length") or 0)
-            with partial_path.open("wb") as target:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if not chunk:
-                        continue
-                    target.write(chunk)
-                    digest.update(chunk)
-                    downloaded += len(chunk)
-                    if progress and total:
-                        progress(min(99, downloaded * 100 // total))
-        if downloaded < 2:
-            raise ValueError("更新包为空")
-        actual = digest.hexdigest().lower()
-        if actual != status.sha256.lower():
-            raise ValueError(f"更新包 SHA-256 校验失败：期望 {status.sha256}，实际 {actual}")
-        with partial_path.open("rb") as package_file:
-            signature = package_file.read(2)
-        if signature != b"MZ":
-            raise ValueError("更新包不是有效的 Windows EXE")
-        os.replace(partial_path, final_path)
-        if progress:
-            progress(100)
-        logger.info("update downloaded version=%s path=%s sha256=%s",
-                    status.latestVersion, final_path, actual)
-        return final_path
-    except Exception:
-        try:
-            partial_path.unlink(missing_ok=True)
-        except OSError:
-            logger.warning("partial update cleanup failed path=%s", partial_path, exc_info=True)
-        raise
-    finally:
-        if own_session:
-            session.close()
-
-
-def create_updater_script(settings: Settings, package_path: Path,
-                          executable_path: Path | None = None,
-                          process_ids: tuple[int, ...] | None = None) -> Path:
-    executable = executable_path or Path(sys.executable).resolve()
-    pids = process_ids or tuple(dict.fromkeys((os.getpid(), os.getppid())))
-    update_dir = settings.data_dir / "updates"
-    update_dir.mkdir(parents=True, exist_ok=True)
-    (settings.data_dir / "logs").mkdir(parents=True, exist_ok=True)
-    script_path = update_dir / "apply-update.cmd"
-
-    def batch_value(value: Path) -> str:
-        return str(value).replace("%", "%%").replace('"', '""')
-
-    checks = "\n".join(
-        f'tasklist /fi "PID eq {pid}" /nh 2>nul | findstr /r /c:"[ ]{pid}[ ]" >nul && set "RUNNING=1"'
-        for pid in pids if pid > 0)
-    script = f"""@echo off
-setlocal
-set "SOURCE={batch_value(package_path.resolve())}"
-set "TARGET={batch_value(executable)}"
-set "LOG={batch_value((settings.data_dir / 'logs' / 'updater.log').resolve())}"
-echo [%date% %time%] updater started>>"%LOG%"
-set /a ATTEMPTS=0
-:wait_process
-set "RUNNING="
-{checks}
-if not defined RUNNING goto replace
-set /a ATTEMPTS+=1
-if %ATTEMPTS% GEQ 120 goto wait_failed
-timeout /t 1 /nobreak >nul
-goto wait_process
-:replace
-copy /b /y "%SOURCE%" "%TARGET%" >>"%LOG%" 2>&1
-if errorlevel 1 goto replace_failed
-del /q "%SOURCE%" >nul 2>&1
-echo [%date% %time%] update applied>>"%LOG%"
-start "" "%TARGET%"
-del /q "%~f0" >nul 2>&1
-exit /b 0
-:wait_failed
-echo [%date% %time%] timed out waiting for old process>>"%LOG%"
-exit /b 2
-:replace_failed
-echo [%date% %time%] failed to replace executable>>"%LOG%"
-exit /b 3
-"""
-    # Path.write_text(newline=...) is only available in newer Python versions;
-    # use open() so the packaged Python 3.12/3.13 runtimes behave consistently.
-    with script_path.open("w", encoding="utf-8-sig", newline="\r\n") as script_file:
-        script_file.write(script)
-    return script_path
-
-
-def launch_updater(script_path: Path) -> None:
-    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    subprocess.Popen(
-        ["cmd.exe", "/d", "/c", str(script_path)],
-        cwd=str(script_path.parent), close_fds=True,
-        creationflags=creation_flags)
-    logger.info("external updater launched script=%s", script_path)
