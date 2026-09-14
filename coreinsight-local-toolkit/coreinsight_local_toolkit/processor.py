@@ -19,6 +19,7 @@ from .model_resources import ModelResourceRunner
 
 _UM_RE = re.compile(r"/:um_begin\{([^}]+)\}/:um_end")
 _CHUNK_SIZE = 40_000
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
 logger = logging.getLogger(__name__)
 
 
@@ -291,6 +292,7 @@ class LocalExperienceProcessor:
         if len(parts) < 6:
             return "[无法解析的附件]"
         filename = Path(parts[3] or "attachment.bin").name
+        is_image = Path(filename).suffix.lower() in _IMAGE_EXTENSIONS
         if not self.settings.clouddrive_account or not self.settings.clouddrive_password:
             return f"[附件未下载：缺少 CloudDrive 配置] {filename}"
         try:
@@ -305,7 +307,7 @@ class LocalExperienceProcessor:
                 f"{self.settings.rag_pic_public_base}/rag_pic/"
                 f"{file_id}/{quote(filename)}")
             ocr_text = ""
-            if self.settings.ocr_url:
+            if is_image and self.settings.ocr_url:
                 try:
                     response = requests.post(
                         self.settings.ocr_url, files={"file": (filename, content)},
@@ -321,7 +323,9 @@ class LocalExperienceProcessor:
                                    exc_info=True)
             alt_text = ocr_text.strip().replace("\r", " ").replace("\n", " ")
             alt_text = alt_text.replace("[", "\\[").replace("]", "\\]")
-            return f"![{alt_text}]({public_url})"
+            if is_image:
+                return f"![{alt_text or filename}]({public_url})"
+            return f"[{filename}]({public_url})"
         except Exception as exc:
             logger.warning("attachment upload failed name=%s", filename,
                            exc_info=True)

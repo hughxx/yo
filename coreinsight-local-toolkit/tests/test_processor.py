@@ -257,6 +257,23 @@ class ProcessorTests(unittest.TestCase):
         self.assertIn("%20", markdown)
         self.assertNotIn("/workspace/", markdown)
 
+    def test_non_image_attachment_is_not_sent_to_ocr(self):
+        processor = self.processor()
+        processor.settings = processor.settings.__class__(
+            **{**processor.settings.__dict__, "ocr_url": "http://ocr"})
+        content = "/:um_begin{download|File|123|results.csv|0|1;2;code}/:um_end"
+        upload_response = Mock(); upload_response.raise_for_status.return_value = None
+        with patch.object(processor, "_download", return_value=b"a,b\n1,2"), \
+                patch("coreinsight_local_toolkit.processor.requests.post",
+                      return_value=upload_response) as post:
+            markdown = processor._to_markdown([
+                {"id": "1", "sender": "u", "timestamp": 1, "rawContent": content}])
+
+        self.assertEqual(1, post.call_count)
+        self.assertIn("[results.csv](https://fuyao-data-server.rnd.huawei.com/rag_pic/",
+                      markdown)
+        self.assertNotIn("![", markdown)
+
 
 if __name__ == "__main__":
     unittest.main()
