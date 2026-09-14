@@ -147,7 +147,12 @@ def create_app(settings: Settings | None = None,
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "service": "coreinsight-local-toolkit", "version": __version__}
+        return {
+            "status": "ok",
+            "service": "coreinsight-local-toolkit",
+            "version": __version__,
+            "codeagentAvailable": processor.resources.codeagent_available(),
+        }
 
     @app.get("/capabilities")
     def capabilities():

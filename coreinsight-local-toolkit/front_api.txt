@@ -10,6 +10,14 @@ Base URL: http://127.0.0.1:17831
 一、页面初始化
 
 1. GET /health
+响应 data 新增：
+{
+  "status": "ok",
+  "service": "coreinsight-local-toolkit",
+  "version": "0.6.0",
+  "codeagentAvailable": true
+}
+codeagentAvailable=true 表示本机配置路径或 PATH 中能找到 CodeAgent。该检查不会启动 CodeAgent，也不会执行版本命令；前端可据此优先展示或选择 CodeAgent 资源。
 时机：页面打开时首先调用，判断 LocalToolkit 是否启动。
 
 2. GET /welink/cli/status

@@ -161,6 +161,27 @@ class ProcessorTests(unittest.TestCase):
             [RESULT, updated], ensure_ascii=False, indent=2))
         self.assertEqual([RESULT, updated], records)
 
+    def test_result_parser_accepts_explanation_before_trailing_json(self):
+        processor = self.processor()
+        raw = (
+            "SHA-256 hash verified. Analysis [not JSON]: no reusable content.\n\n"
+            "[]"
+        )
+        records, normalized = processor._read_results(raw)
+        self.assertEqual([], records)
+        self.assertEqual([], normalized)
+
+        raw = "Analysis [not JSON] follows.\n" + json.dumps(
+            [RESULT], ensure_ascii=False)
+        records, normalized = processor._read_results(raw)
+        self.assertEqual([RESULT], records)
+        self.assertEqual(RESULT, json.loads(normalized[0]))
+
+    def test_result_parser_does_not_treat_prose_brackets_as_json(self):
+        processor = self.processor()
+        with self.assertRaises(RuntimeError):
+            processor._read_results("Analysis contains [ordinary brackets].")
+
     def test_result_parser_repairs_common_model_json_mistakes(self):
         processor = self.processor()
         malformed_quotes = (

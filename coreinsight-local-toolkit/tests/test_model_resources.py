@@ -39,6 +39,23 @@ class FakeProcess:
 
 
 class ModelResourceTests(unittest.TestCase):
+    def test_codeagent_availability_only_checks_path(self):
+        runner = ModelResourceRunner(Settings(codeagent_command="codeagent"))
+        with patch(
+                "coreinsight_local_toolkit.model_resources.shutil.which",
+                return_value="C:\\Tools\\codeagent.cmd") as which, patch(
+                "coreinsight_local_toolkit.model_resources.subprocess.Popen") as popen:
+            self.assertTrue(runner.codeagent_available())
+        which.assert_called_once_with("codeagent")
+        popen.assert_not_called()
+
+    def test_codeagent_availability_is_false_when_command_is_missing(self):
+        runner = ModelResourceRunner(Settings(codeagent_command="missing-codeagent"))
+        with patch(
+                "coreinsight_local_toolkit.model_resources.shutil.which",
+                return_value=None):
+            self.assertFalse(runner.codeagent_available())
+
     def test_prompt_resource_calls_chat_completions(self):
         response = Mock()
         response.raise_for_status.return_value = None

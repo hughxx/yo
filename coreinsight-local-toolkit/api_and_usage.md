@@ -33,9 +33,12 @@
 {
   "status": "ok",
   "service": "coreinsight-local-toolkit",
-  "version": "0.6.0"
+  "version": "0.6.0",
+  "codeagentAvailable": true
 }
 ```
+
+`codeagentAvailable` 只检查配置路径或 `PATH` 中能否找到 CodeAgent，不会启动或调用 CodeAgent。
 
 ### `GET /capabilities`
 

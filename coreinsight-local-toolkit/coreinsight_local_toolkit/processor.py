@@ -355,7 +355,14 @@ class LocalExperienceProcessor:
             return [], []
         fenced = re.search(r"```(?:json|jsonl)?\s*([\s\S]*?)\s*```", raw)
         raw = fenced.group(1).strip() if fenced else raw
-        values = self._decode_json_values(raw)
+        try:
+            values = self._decode_json_values(raw)
+        except RuntimeError as original_error:
+            values = self._decode_trailing_json_values(raw)
+            if values is None:
+                raise original_error
+            logger.warning(
+                "ignored explanatory text before trailing model JSON")
         records: list[dict] = []
         for value in values:
             if isinstance(value, list):
@@ -391,6 +398,29 @@ class LocalExperienceProcessor:
             normalized_lines.append(json.dumps(
                 result, ensure_ascii=False, separators=(",", ":")))
         return records, normalized_lines
+
+    @staticmethod
+    def _decode_trailing_json_values(raw: str) -> list | None:
+        """Decode a JSON array/object placed after explanatory model text.
+
+        Agent runtimes occasionally prepend reasoning even when instructed to
+        return JSON only. Limit the fallback to a structured value that reaches
+        the end of the response, so brackets in ordinary prose are not treated
+        as extraction results.
+        """
+        stripped = raw.rstrip()
+        if not stripped or stripped[-1] not in ("}", "]"):
+            return None
+        opening = "{" if stripped[-1] == "}" else "["
+        for position in range(len(stripped) - 1, -1, -1):
+            if stripped[position] != opening:
+                continue
+            try:
+                return LocalExperienceProcessor._decode_json_values(
+                    stripped[position:])
+            except RuntimeError:
+                continue
+        return None
 
     @staticmethod
     def _decode_json_values(raw: str) -> list:

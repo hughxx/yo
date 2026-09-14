@@ -110,7 +110,7 @@ docId、入库结果和异常堆栈。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/health` | 存活状态 |
+| GET | `/health` | 存活状态及本机 CodeAgent 是否可用（仅检查路径，不执行命令） |
 | GET | `/capabilities` | 当前可用能力 |
 | GET | `/version` | 当前版本与版本检查配置状态 |
 | POST | `/update/check` | 按 HTTPS 清单检查新版本，不自动下载安装 |

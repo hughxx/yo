@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from coreinsight_local_toolkit.app import create_app
 from coreinsight_local_toolkit.config import Settings
@@ -48,11 +49,15 @@ class EnvelopeTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_health_uses_success_envelope(self):
-        status, body = asyncio.run(request(self.app, 'GET', '/health'))
+        with patch(
+                'coreinsight_local_toolkit.model_resources.shutil.which',
+                return_value='C:\\Tools\\codeagent.cmd'):
+            status, body = asyncio.run(request(self.app, 'GET', '/health'))
         self.assertEqual(200, status)
         self.assertEqual(200, body['code'])
         self.assertEqual('ok', body['msg'])
         self.assertEqual('coreinsight-local-toolkit', body['data']['service'])
+        self.assertTrue(body['data']['codeagentAvailable'])
 
     def test_validation_error_uses_error_envelope(self):
         status, body = asyncio.run(request(

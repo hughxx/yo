@@ -22,6 +22,14 @@ class ModelResourceRunner:
     def __init__(self, settings: Settings):
         self.settings = settings
 
+    def codeagent_available(self) -> bool:
+        """Return whether the configured CodeAgent command can be resolved.
+
+        This is intentionally a filesystem/PATH probe only. It does not start
+        CodeAgent or run a version command.
+        """
+        return bool(self._find_codeagent_executable())
+
     def validate(self, resource: str) -> None:
         if resource == "prompt":
             missing = []
@@ -143,12 +151,7 @@ class ModelResourceRunner:
 
     def _resolve_codeagent_command(self, arguments: list[str],
                                    windows: bool | None = None) -> list[str] | str:
-        configured = self.settings.codeagent_command.strip().strip('"')
-        configured_path = Path(configured).expanduser()
-        if configured_path.is_file():
-            executable = str(configured_path.resolve())
-        else:
-            executable = shutil.which(configured) or ""
+        executable = self._find_codeagent_executable()
         if not executable:
             raise ValueError(
                 "CodeAgent 不可用：未在 PATH 中找到命令 "
@@ -173,6 +176,13 @@ class ModelResourceRunner:
         # quoted /c payload as a list item makes Python escape its quotes with
         # backslashes; cmd.exe then treats the literal \"path\" as the command.
         return f'{prefix} "{command_line}"'
+
+    def _find_codeagent_executable(self) -> str:
+        configured = self.settings.codeagent_command.strip().strip('"')
+        configured_path = Path(configured).expanduser()
+        if configured_path.is_file():
+            return str(configured_path.resolve())
+        return shutil.which(configured) or ""
 
     @staticmethod
     def _read_codeagent_events(process: subprocess.Popen, log_path: Path,
