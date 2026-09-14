@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from coreinsight_local_toolkit.environment import (
     EnvironmentManager, PRODUCTION, TESTING,
@@ -43,6 +44,31 @@ class EnvironmentManagerTests(unittest.TestCase):
             'https://coreinsight.rnd.huawei.com/chat',
             manager.resolve_url(
                 'https://coreinsight-beta.rnd.huawei.com/chat'))
+
+    def test_apply_globally_replaces_coreinsight_string_settings_only(self):
+        manager = self.manager()
+        settings = SimpleNamespace(
+            portal_url='https://coreinsight.rnd.huawei.com',
+            draft_api_url='https://coreinsight.rnd.huawei.com/chat',
+            unrelated_url='https://fuyao.rnd.huawei.com/service',
+            secret='unchanged',
+        )
+        manager.set(TESTING)
+        manager.apply(settings)
+        self.assertEqual(
+            'https://coreinsight-beta.rnd.huawei.com', settings.portal_url)
+        self.assertEqual(
+            'https://coreinsight-beta.rnd.huawei.com/chat',
+            settings.draft_api_url)
+        self.assertEqual(
+            'https://fuyao.rnd.huawei.com/service', settings.unrelated_url)
+        self.assertEqual('unchanged', settings.secret)
+
+        manager.set(PRODUCTION)
+        manager.apply(settings)
+        self.assertEqual(
+            'https://coreinsight.rnd.huawei.com/chat',
+            settings.draft_api_url)
 
     def test_invalid_environment_is_rejected(self):
         manager = self.manager()

@@ -294,14 +294,11 @@ def _run_desktop_primary(settings: Settings) -> None:
     def open_url(url: str) -> None:
         webbrowser.open(url)
 
-    def environment_url(url: str) -> str:
-        return environments.resolve_url(url)
-
     def open_portal() -> None:
-        open_url(environment_url(settings.portal_url))
+        open_url(settings.portal_url)
 
     def open_experience_create() -> None:
-        open_url(environment_url(settings.experience_create_url))
+        open_url(settings.experience_create_url)
 
     def show_about(*_args) -> None:
         _native_notice(
@@ -336,6 +333,7 @@ def _run_desktop_primary(settings: Settings) -> None:
     def switch_environment(environment: str) -> None:
         previous = environments.current(settings.portal_url)
         environments.set(environment)
+        environments.apply(settings)
         if previous == environment:
             return
         label = environments.label(settings.portal_url)

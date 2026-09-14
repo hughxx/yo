@@ -46,6 +46,15 @@ class EnvironmentManager:
             temporary.replace(self.path)
         logger.info('environment switched environment=%s', environment)
 
+    def apply(self, settings) -> None:
+        """Replace the CoreInsight domain in every string setting in place."""
+        environment = self.current(getattr(settings, 'portal_url', ''))
+        source = PRODUCTION_HOST if environment == TESTING else TESTING_HOST
+        target = TESTING_HOST if environment == TESTING else PRODUCTION_HOST
+        for name, value in vars(settings).items():
+            if isinstance(value, str) and source in value:
+                setattr(settings, name, value.replace(source, target))
+
     def resolve_url(self, url: str) -> str:
         if not url:
             return url

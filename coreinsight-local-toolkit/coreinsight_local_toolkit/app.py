@@ -16,6 +16,7 @@ from .config import Settings, load_settings
 from .extraction import ExtractionRuntime
 from .email_runtime import EmailRuntime, EmailScheduleRuntime
 from .email_store import EmailConfigStore
+from .environment import EnvironmentManager
 from .outlook import OutlookClient
 from .processor import LocalExperienceProcessor
 from .models import (
@@ -69,6 +70,7 @@ def _envelope(status_code: int, payload) -> tuple[int, dict]:
 def create_app(settings: Settings | None = None,
                update_manager: UpdateManager | None = None) -> FastAPI:
     settings = settings or load_settings()
+    EnvironmentManager(settings.data_dir).apply(settings)
     update_manager = update_manager or UpdateManager(settings)
     store = GroupStore(settings.data_dir)
     history = WelinkHistory(settings.welink_cli)
@@ -182,6 +184,10 @@ def create_app(settings: Settings | None = None,
                 "updateConfigured": bool(settings.update_enabled and settings.update_config_url
                                          and settings.update_config_key),
                 "updateConfigKey": settings.update_config_key}
+
+    @app.get("/portal", include_in_schema=False)
+    def portal():
+        return RedirectResponse(settings.portal_url)
 
     @app.post("/update/check")
     def update_check():

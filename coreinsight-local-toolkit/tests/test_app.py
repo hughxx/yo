@@ -18,15 +18,19 @@ class AppCorsTests(unittest.TestCase):
             with TestClient(app) as client:
                 page = client.get('/welcome/')
                 icon = client.get('/welcome/icon.svg')
+                portal = client.get('/portal', follow_redirects=False)
         self.assertEqual(200, page.status_code)
         self.assertIn('Local Toolkit 已启动', page.text)
         self.assertIn('本地服务器已就绪，Toolkit将持续在后台运行', page.text)
         self.assertIn('<strong>桌面悬浮入口</strong>', page.text)
         self.assertIn('<strong>后台持续运行</strong>', page.text)
         self.assertIn('<strong>任务栏托盘</strong>', page.text)
-        self.assertIn('href="https://coreinsight.rnd.huawei.com"', page.text)
+        self.assertIn('href="/portal"', page.text)
         self.assertEqual(200, icon.status_code)
         self.assertIn('image/svg+xml', icon.headers['content-type'])
+        self.assertEqual(307, portal.status_code)
+        self.assertEqual(
+            'https://coreinsight.rnd.huawei.com', portal.headers['location'])
 
     def test_email_demo_and_configuration_endpoints_are_available(self):
         with tempfile.TemporaryDirectory() as directory:

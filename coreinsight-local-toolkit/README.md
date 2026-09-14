@@ -172,7 +172,7 @@ Windows 用户双击 EXE 后，桌面右侧会显示旧版 CoreInsight 蓝紫色
 
 环境选择保存在 `D:\CoreInsight\LocalToolkit\environment.json`。生产环境使用
 `coreinsight.rnd.huawei.com`，测试环境使用 `coreinsight-beta.rnd.huawei.com`；切换仅替换这两个域名，
-不会修改模型网关、文件服务、经验引擎、OCR、图片、云盘或升级配置中心地址。
+Toolkit 会一次性替换全部字符串配置中的该域名，其他域名和接口完全不变。
 
 启动后会自动检查一次版本。Toolkit 调用配置中心
 `selectConfigByKey?key=coreinsight_local_toolkit_release`，并将返回的 `data.configVal` 解析为：

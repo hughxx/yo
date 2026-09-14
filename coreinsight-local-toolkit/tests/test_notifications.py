@@ -21,7 +21,9 @@ class MessageNotifierTests(unittest.TestCase):
 
     def test_direct_notification_uses_multipart_and_environment_links(self):
         settings = self.settings()
-        EnvironmentManager(settings.data_dir).set(TESTING)
+        environments = EnvironmentManager(settings.data_dir)
+        environments.set(TESTING)
+        environments.apply(settings)
         session = Mock()
         response = Mock()
         session.post.return_value = response

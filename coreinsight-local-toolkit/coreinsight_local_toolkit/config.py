@@ -33,7 +33,7 @@ def _origins() -> tuple[str, ...]:
         value.strip().rstrip("/") for value in values if value.strip()))
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     host: str = "127.0.0.1"
     port: int = 17831
