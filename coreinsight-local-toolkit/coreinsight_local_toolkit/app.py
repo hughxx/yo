@@ -274,6 +274,15 @@ def create_app(settings: Settings | None = None,
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"读取邮件正文失败：{exc}") from exc
 
+    @app.post("/email/message/get-attachments")
+    def get_email_message_attachments(payload: EmailDetailRequest):
+        try:
+            return outlook.get_message_with_attachments(payload.itemId)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     @app.post("/email/extract", status_code=202)
     def start_email_extract(payload: EmailExtractRequest):
         start_ms = _to_timestamp(payload.startTime, "startTime")

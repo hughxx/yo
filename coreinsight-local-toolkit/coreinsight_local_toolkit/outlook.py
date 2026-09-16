@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import html
+import json
 import logging
 import os
 import re
@@ -223,6 +225,31 @@ class OutlookClient:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.lock = threading.Lock()
+        self.preview_cache_dir = settings.data_dir / "email-preview-cache"
+
+    def get_message_with_attachments(self, item_id: str) -> dict:
+        """Return attachment-enriched HTML, reusing the local preview cache."""
+        cache_path = self.preview_cache_dir / (
+            hashlib.sha256(item_id.encode("utf-8")).hexdigest() + ".json")
+        native = self.get_message(item_id, process_attachments=False)
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            if cached.get("sourceHtml") == native.get("htmlBody"):
+                return cached["message"]
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+        enriched = self.get_message(item_id, process_attachments=True)
+        try:
+            self.preview_cache_dir.mkdir(parents=True, exist_ok=True)
+            temporary = cache_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps({
+                "sourceHtml": native.get("htmlBody", ""), "message": enriched,
+            }, ensure_ascii=False), encoding="utf-8")
+            temporary.replace(cache_path)
+        except (OSError, TypeError, ValueError):
+            logger.warning("email preview cache write failed item_id=%s", item_id,
+                           exc_info=True)
+        return enriched
 
     def probe(self) -> dict:
         """Compatibility status; never start Outlook or open a MAPI session."""
