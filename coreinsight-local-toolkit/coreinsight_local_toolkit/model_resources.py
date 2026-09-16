@@ -56,14 +56,33 @@ class ModelResourceRunner:
             raise RuntimeError("任务已取消")
         if progress:
             progress("model", "正在使用 Prompt 调用大模型")
-        response = requests.post(
-            self.settings.llm_base_url.rstrip("/") + "/chat/completions",
-            headers={"Authorization": f"Bearer {self.settings.llm_api_key}",
-                     "Content-Type": "application/json"},
-            json={"model": self.settings.llm_model_id,
-                  "messages": [{"role": "user", "content": prompt}],
-                  "temperature": 0.2, "stream": False},
-            timeout=self.settings.model_timeout_seconds, verify=False)
+        result: dict[str, object] = {}
+        finished = threading.Event()
+
+        def request() -> None:
+            try:
+                result["response"] = requests.post(
+                    self.settings.llm_base_url.rstrip("/") + "/chat/completions",
+                    headers={"Authorization": f"Bearer {self.settings.llm_api_key}",
+                             "Content-Type": "application/json"},
+                    json={"model": self.settings.llm_model_id,
+                          "messages": [{"role": "user", "content": prompt}],
+                          "temperature": 0.2, "stream": False},
+                    timeout=self.settings.model_timeout_seconds, verify=False)
+            except Exception as exc:
+                result["error"] = exc
+            finally:
+                finished.set()
+
+        threading.Thread(target=request, name="llm-request", daemon=True).start()
+        while not finished.wait(0.1):
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("任务已取消")
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("任务已取消")
+        if "error" in result:
+            raise result["error"]  # type: ignore[misc]
+        response = result["response"]
         response.raise_for_status()
         if cancel_event is not None and cancel_event.is_set():
             raise RuntimeError("任务已取消")
@@ -122,7 +141,7 @@ class ModelResourceRunner:
                 if cancel_event is not None and cancel_event.is_set():
                     raise RuntimeError("任务已取消")
                 if terminal.is_set():
-                    reader_finished.wait(1.0)
+                    reader_finished.wait(0.2)
                     break
                 if process.poll() is not None:
                     break
@@ -136,7 +155,7 @@ class ModelResourceRunner:
         finally:
             if terminal.is_set() and process.poll() is None:
                 self._kill_process_tree(process)
-            reader.join(timeout=2)
+            reader.join(timeout=0.5)
 
         code = process.poll()
         if not terminal.is_set():
@@ -267,7 +286,7 @@ class ModelResourceRunner:
                 subprocess.run(
                     ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    check=False, timeout=10,
+                    check=False, timeout=2,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             else:
                 os.killpg(os.getpgid(process.pid), signal.SIGTERM)
