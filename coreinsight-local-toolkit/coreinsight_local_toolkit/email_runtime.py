@@ -411,12 +411,20 @@ class EmailRuntime:
             def progress(status, message):
                 self._set(status=status, message=message)
 
-            result = self.processor.process(
-                documents, upload_by, self.task["taskId"],
-                progress, self.cancel_event, group_id="outlook-mailbox",
-                scheduled=scheduled, extract_mode=payload.extractMode,
-                source_type="email", scene=payload.scene,
-                scene_id=payload.scene_id, resource=payload.resource)
+            batches = self._prompt_day_batches(documents, payload.resource)
+            batch_results = []
+            for index, batch in enumerate(batches, 1):
+                if self.cancel_event.is_set():
+                    raise ExtractionCancelled("任务已取消")
+                batch_task_id = self.task["taskId"] if len(batches) == 1 else \
+                    f"{self.task['taskId']}-day-{index:03d}"
+                batch_results.append(self.processor.process(
+                    batch, upload_by, batch_task_id,
+                    progress, self.cancel_event, group_id="outlook-mailbox",
+                    scheduled=scheduled, extract_mode=payload.extractMode,
+                    source_type="email", scene=payload.scene,
+                    scene_id=payload.scene_id, resource=payload.resource))
+            result = self._merge_batch_results(batch_results)
             for row in selected:
                 self._set_item_status(str(row["id"]), "success")
             if self.notifier:
@@ -453,6 +461,33 @@ class EmailRuntime:
                     on_complete(success, end_ms, result)
                 except Exception:
                     logger.exception("email schedule completion callback failed")
+
+    @staticmethod
+    def _prompt_day_batches(documents: list[dict], resource: str) -> list[list[dict]]:
+        if resource != "prompt" or len(documents) < 2:
+            return [documents]
+        batches: dict[str, list[dict]] = {}
+        for document in documents:
+            timestamp = int(document.get("timestamp") or 0)
+            day = datetime.fromtimestamp(timestamp / 1000).date().isoformat() \
+                if timestamp else "unknown"
+            batches.setdefault(day, []).append(document)
+        return list(batches.values())
+
+    @staticmethod
+    def _merge_batch_results(results: list[dict]) -> dict:
+        if not results:
+            return {}
+        experiences = [item for result in results
+                       for item in (result.get("experiences") or [])]
+        doc_ids = [item for result in results for item in (result.get("docIds") or [])]
+        merged = dict(results[-1])
+        merged["experiences"] = experiences
+        merged["docIds"] = doc_ids
+        merged["experienceCount"] = len(experiences)
+        merged["docId"] = doc_ids[0] if doc_ids else ""
+        merged["title"] = experiences[0].get("title", "") if experiences else ""
+        return merged
 
     def _finish(self, status: str, message: str, values: dict):
         with self.lock:

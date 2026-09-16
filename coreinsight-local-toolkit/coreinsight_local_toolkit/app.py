@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
+import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -24,6 +27,7 @@ from .models import (
     EmailScheduleSetRequest,
     GroupConfig, GroupCreate, GroupDelete, MessagePage, MessagePageQuery,
     ExtractCancelRequest, ExtractRequest, MessageQuery, PreviewMessage,
+    ModelTestRequest,
     ScheduleCancelRequest,
     ScheduleSetRequest, WelinkCliStatus,
 )
@@ -173,6 +177,25 @@ def create_app(settings: Settings | None = None,
             "emailScheduling": True,
             "modelResources": ["prompt", "skill"],
         }
+
+    @app.post("/model/test")
+    def model_test(payload: ModelTestRequest):
+        resource = "prompt" if payload.resource == "prompt" else "skill"
+        workspace = settings.data_dir / "model-tests" / uuid.uuid4().hex
+        started = time.monotonic()
+        try:
+            result = processor.resources.generate(
+                resource, payload.prompt.strip() or "请只回复 OK，不要调用工具。",
+                workspace)
+            return {"ok": True, "resource": payload.resource,
+                    "elapsedMs": int((time.monotonic() - started) * 1000),
+                    "result": result[-4000:]}
+        except Exception as exc:
+            return {"ok": False, "resource": payload.resource,
+                    "elapsedMs": int((time.monotonic() - started) * 1000),
+                    "error": str(exc)}
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
 
     @app.get("/welink/cli/status", response_model=WelinkCliStatus)
     def welink_cli_status():
@@ -467,6 +490,10 @@ def create_app(settings: Settings | None = None,
         return RedirectResponse("/demo/")
 
     web_dir = Path(__file__).with_name("web")
+    @app.get("/model-test", include_in_schema=False)
+    def model_test_page():
+        return FileResponse(web_dir / "model-test.html")
+
     @app.get("/welcome/icon.svg", include_in_schema=False)
     def welcome_icon():
         return FileResponse(

@@ -233,6 +233,11 @@ class EmailDetailRequest(BaseModel):
     itemId: str = Field(min_length=1)
 
 
+class ModelTestRequest(BaseModel):
+    resource: Literal["prompt", "codeagent", "skill"]
+    prompt: str = "请只回复 OK，不要调用工具。"
+
+
 class EmailSelection(BaseModel):
     mode: Literal["all", "explicit"] = "explicit"
     excludedItemIds: list[str] = Field(default_factory=list)

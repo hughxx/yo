@@ -66,7 +66,7 @@ class AppCorsTests(unittest.TestCase):
         self.assertEqual(['Mailbox\\Inbox'], saved['data']['folders'])
         self.assertTrue(saved['data']['rules'][0]['id'])
 
-    def test_model_configuration_endpoints_are_not_exposed(self):
+    def test_model_configuration_endpoint_validates_request(self):
         with tempfile.TemporaryDirectory() as directory:
             app = create_app(Settings(
                 data_dir=Path(directory), update_enabled=False))
@@ -75,8 +75,14 @@ class AppCorsTests(unittest.TestCase):
                 model_test = client.post('/model/test', json={})
                 removed = client.get('/email/skill/list')
         self.assertEqual(404, model_config.status_code)
-        self.assertEqual(404, model_test.status_code)
+        self.assertEqual(422, model_test.status_code)
         self.assertEqual(404, removed.status_code)
+
+    def test_model_test_page_is_served(self):
+        with TestClient(create_app(Settings(data_dir=Path(tempfile.mkdtemp())))) as client:
+            page = client.get('/model-test')
+        self.assertEqual(200, page.status_code)
+        self.assertIn('AI 连通性测试', page.text)
 
     def test_email_list_is_an_async_task_with_a_status_endpoint(self):
         row = {
