@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
@@ -86,12 +87,41 @@ class EmailRuntime:
         self.default_upload_by = default_upload_by
         self.lock = threading.RLock()
         self.cancel_event = threading.Event()
+        self._state_path = store.path.with_name("email_runtime.json")
         self.task = self._idle()
         self.history: list[dict] = []
         self.list_task = self._list_idle()
+        self._load_state()
         self._thread = None
         self._list_thread = None
         self._list_cancel_event = threading.Event()
+
+    def _load_state(self) -> None:
+        try:
+            state = json.loads(self._state_path.read_text(encoding="utf-8"))
+            if isinstance(state.get("task"), dict):
+                self.task = {**self._idle(), **state["task"]}
+            if isinstance(state.get("listTask"), dict):
+                self.list_task = {**self._list_idle(), **state["listTask"]}
+            if isinstance(state.get("history"), list):
+                self.history = [x for x in state["history"] if isinstance(x, dict)][-100:]
+            for task in (self.task, self.list_task):
+                if task.get("running"):
+                    task.update(running=False, status="interrupted", message="程序退出，任务未完成")
+            self._persist()
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+
+    def _persist(self) -> None:
+        with self.lock:
+            try:
+                self._state_path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = self._state_path.with_suffix(".tmp")
+                temporary.write_text(json.dumps({"task": self.task, "listTask": self.list_task,
+                    "history": self.history[-100:]}, ensure_ascii=False), encoding="utf-8")
+                temporary.replace(self._state_path)
+            except (OSError, TypeError, ValueError):
+                logger.warning("email runtime state persistence failed", exc_info=True)
 
     @staticmethod
     def _idle() -> dict:
@@ -117,6 +147,7 @@ class EmailRuntime:
             if self.list_task.get("taskId") != task_id:
                 return False
             self.list_task.update(changes)
+            self._persist()
             return True
 
     def start_list(self, payload: EmailListRequest,
@@ -132,6 +163,7 @@ class EmailRuntime:
                               "taskId": task_id, "status": "loading",
                               "folders": folders,
                               "message": "正在读取 Outlook 邮件"}
+        self._persist()
         self._list_thread = threading.Thread(
             target=self._list_worker,
             args=(task_id, payload, start_ms, end_ms, cancel_event),
@@ -185,6 +217,7 @@ class EmailRuntime:
     def _set(self, **changes):
         with self.lock:
             self.task.update(changes)
+            self._persist()
 
     def _set_item_status(self, item_id: str, status: str, error: str = ""):
         with self.lock:
@@ -194,6 +227,7 @@ class EmailRuntime:
                 value["error"] = error
             statuses[str(item_id)] = value
             self.task["itemStatuses"] = statuses
+            self._persist()
 
     def list_messages(self, folders: list[str], start_ms: int, end_ms: int,
                       query: str = "", matched_only: bool = False,
@@ -300,6 +334,7 @@ class EmailRuntime:
                          "status": "fetching", "scheduled": scheduled,
                          "message": "正在读取 Outlook 邮件"}
             self.cancel_event.clear()
+            self._persist()
         self._thread = threading.Thread(
             target=self._run,
             args=(payload, start_ms, end_ms, scheduled, on_complete, upload_by),
@@ -425,6 +460,7 @@ class EmailRuntime:
             if self.task.get("taskId"):
                 self.history.append(dict(self.task))
                 self.history = self.history[-100:]
+            self._persist()
 
 
 def _next_run(config: EmailConfig, after: datetime) -> datetime:
