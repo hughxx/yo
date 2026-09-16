@@ -50,6 +50,7 @@ class EnvironmentManagerTests(unittest.TestCase):
         settings = SimpleNamespace(
             portal_url='https://coreinsight.rnd.huawei.com',
             draft_api_url='https://coreinsight.rnd.huawei.com/chat',
+            experience_engine_url='https://fuyao.rnd.huawei.com',
             unrelated_url='https://fuyao.rnd.huawei.com/service',
             secret='unchanged',
         )
@@ -61,6 +62,9 @@ class EnvironmentManagerTests(unittest.TestCase):
             'https://coreinsight-beta.rnd.huawei.com/chat',
             settings.draft_api_url)
         self.assertEqual(
+            'https://coremlops-beta.rnd.huawei.com',
+            settings.experience_engine_url)
+        self.assertEqual(
             'https://fuyao.rnd.huawei.com/service', settings.unrelated_url)
         self.assertEqual('unchanged', settings.secret)
 
@@ -69,6 +73,9 @@ class EnvironmentManagerTests(unittest.TestCase):
         self.assertEqual(
             'https://coreinsight.rnd.huawei.com/chat',
             settings.draft_api_url)
+        self.assertEqual(
+            'https://fuyao.rnd.huawei.com',
+            settings.experience_engine_url)
 
     def test_invalid_environment_is_rejected(self):
         manager = self.manager()

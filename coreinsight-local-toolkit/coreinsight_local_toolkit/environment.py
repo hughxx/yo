@@ -12,6 +12,8 @@ PRODUCTION = 'production'
 TESTING = 'testing'
 PRODUCTION_HOST = 'coreinsight.rnd.huawei.com'
 TESTING_HOST = 'coreinsight-beta.rnd.huawei.com'
+PRODUCTION_ENGINE_HOST = 'fuyao.rnd.huawei.com'
+TESTING_ENGINE_HOST = 'coremlops-beta.rnd.huawei.com'
 ENVIRONMENTS = (PRODUCTION, TESTING)
 
 
@@ -47,13 +49,21 @@ class EnvironmentManager:
         logger.info('environment switched environment=%s', environment)
 
     def apply(self, settings) -> None:
-        """Replace the CoreInsight domain in every string setting in place."""
+        """Apply the selected environment to all known service URL settings."""
         environment = self.current(getattr(settings, 'portal_url', ''))
-        source = PRODUCTION_HOST if environment == TESTING else TESTING_HOST
-        target = TESTING_HOST if environment == TESTING else PRODUCTION_HOST
+        coreinsight_source = PRODUCTION_HOST if environment == TESTING else TESTING_HOST
+        coreinsight_target = TESTING_HOST if environment == TESTING else PRODUCTION_HOST
+        engine_source = (PRODUCTION_ENGINE_HOST if environment == TESTING
+                         else TESTING_ENGINE_HOST)
+        engine_target = (TESTING_ENGINE_HOST if environment == TESTING
+                         else PRODUCTION_ENGINE_HOST)
         for name, value in vars(settings).items():
-            if isinstance(value, str) and source in value:
-                setattr(settings, name, value.replace(source, target))
+            if not isinstance(value, str):
+                continue
+            value = value.replace(coreinsight_source, coreinsight_target)
+            if name == 'experience_engine_url':
+                value = value.replace(engine_source, engine_target)
+            setattr(settings, name, value)
 
     def resolve_url(self, url: str) -> str:
         if not url:
