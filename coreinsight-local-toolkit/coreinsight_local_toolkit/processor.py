@@ -300,12 +300,16 @@ class LocalExperienceProcessor:
             content = self._download(parts[0], codes[2] if len(codes) > 2 else "")
             file_id = uuid.uuid4().hex
             response = requests.post(
-                f"{self.settings.image_file_server_url}/rag_pic/{file_id}",
+                self.settings.image_file_server_url,
                 files={"file": (filename, content)}, timeout=60, verify=False)
             response.raise_for_status()
-            public_url = (
-                f"{self.settings.rag_pic_public_base}/rag_pic/"
-                f"{file_id}/{quote(filename)}")
+            try:
+                body = response.json()
+                public_url = str(body.get("url") or "") if isinstance(body, dict) else ""
+            except ValueError:
+                public_url = ""
+            if not public_url:
+                raise RuntimeError("image upload response did not contain url")
             ocr_text = ""
             if is_image and self.settings.ocr_url:
                 try:

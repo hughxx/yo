@@ -61,7 +61,7 @@ class EnvironmentManager:
             if not isinstance(value, str):
                 continue
             value = value.replace(coreinsight_source, coreinsight_target)
-            if name == 'experience_engine_url':
+            if name in {'experience_engine_url', 'ocr_url', 'image_file_server_url'}:
                 value = value.replace(engine_source, engine_target)
             setattr(settings, name, value)
 

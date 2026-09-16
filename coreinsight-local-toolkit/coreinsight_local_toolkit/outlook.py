@@ -574,12 +574,18 @@ class OutlookClient:
         return f'{prefix} alt="{escaped}"{match.group(2)}'
 
     def _upload(self, filename: str, content: bytes) -> str:
-        file_id = uuid.uuid4().hex
         response = requests.post(
-            f"{self.settings.image_file_server_url}/rag_pic/{file_id}",
+            self.settings.image_file_server_url,
             files={"file": (filename, content)}, timeout=60, verify=False)
         response.raise_for_status()
-        return f"{self.settings.rag_pic_public_base}/rag_pic/{file_id}/{quote(filename)}"
+        try:
+            body = response.json()
+            url = body.get("url") if isinstance(body, dict) else ""
+        except ValueError as exc:
+            raise RuntimeError("image upload response is not JSON") from exc
+        if not url:
+            raise RuntimeError("image upload response did not contain url")
+        return str(url)
 
     def _ocr(self, filename: str, content: bytes) -> str:
         if not self.settings.ocr_url:

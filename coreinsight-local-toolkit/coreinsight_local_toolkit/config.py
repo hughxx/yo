@@ -65,10 +65,13 @@ class Settings:
         'COREINSIGHT_DRAFT_API_URL', _PACKAGED.get("draft_api_url", 'https://coreinsight.rnd.huawei.com/chat')
     ).strip().rstrip('/')
     ocr_url: str = os.getenv(
-        "COREINSIGHT_OCR_URL", _PACKAGED.get("ocr_url", "http://10.90.113.228:5678/ocr")
+        "COREINSIGHT_OCR_URL", _PACKAGED.get(
+            "ocr_url", "http://fuyao.rnd.huawei.com/rag/v1/corecode/image/ocr")
     ).strip()
     image_file_server_url: str = os.getenv(
-        "COREINSIGHT_FILE_SERVER_URL", _PACKAGED.get("image_file_server_url", "http://7.224.100.105:32169")
+        "COREINSIGHT_FILE_SERVER_URL", _PACKAGED.get(
+            "image_file_server_url",
+            "http://fuyao.rnd.huawei.com/rag/v1/corecode/image/upload")
     ).strip().rstrip("/")
     rag_pic_public_base: str = os.getenv(
         "COREINSIGHT_RAG_PIC_PUBLIC_BASE", _PACKAGED.get("rag_pic_public_base", "https://fuyao-data-server.rnd.huawei.com")

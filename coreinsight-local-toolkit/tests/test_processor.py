@@ -246,6 +246,9 @@ class ProcessorTests(unittest.TestCase):
         processor = self.processor()
         content = "/:um_begin{download|File|123|问题 截图.png|0|1;2;code}/:um_end"
         upload_response = Mock(); upload_response.raise_for_status.return_value = None
+        upload_response.json.return_value = {
+            "url": "https://fuyao-data-server.rnd.huawei.com/rag_pic/uploaded/问题%20截图.png"
+        }
         ocr_response = Mock(); ocr_response.raise_for_status.return_value = None
         ocr_response.json.return_value = {"result": "错误码 500\n连接失败"}
         with patch.object(processor, "_download", return_value=b"image"), \
@@ -263,6 +266,9 @@ class ProcessorTests(unittest.TestCase):
             **{**processor.settings.__dict__, "ocr_url": "http://ocr"})
         content = "/:um_begin{download|File|123|results.csv|0|1;2;code}/:um_end"
         upload_response = Mock(); upload_response.raise_for_status.return_value = None
+        upload_response.json.return_value = {
+            "url": "https://fuyao-data-server.rnd.huawei.com/rag_pic/uploaded/results.csv"
+        }
         with patch.object(processor, "_download", return_value=b"a,b\n1,2"), \
                 patch("coreinsight_local_toolkit.processor.requests.post",
                       return_value=upload_response) as post:
