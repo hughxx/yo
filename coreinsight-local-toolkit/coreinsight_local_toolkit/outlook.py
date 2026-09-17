@@ -17,6 +17,7 @@ from urllib.parse import quote
 import requests
 
 from .config import Settings
+from .image_upload import upload as upload_image
 from .time_format import format_datetime
 
 
@@ -562,13 +563,14 @@ class OutlookClient:
             try:
                 if attachment.get("readError"):
                     raise RuntimeError(attachment["readError"])
-                url = self._upload(filename, content)
+                url, uploaded_filename, uploaded_content = upload_image(
+                    self.settings.image_file_server_url, filename, content)
                 # Upload and OCR are independent. Keep the public URL even when
                 # the OCR service is unavailable or returns an invalid response.
                 ocr = ""
                 if suffix in IMAGE_EXTENSIONS:
                     try:
-                        ocr = self._ocr(filename, content)
+                        ocr = self._ocr(uploaded_filename, uploaded_content)
                     except Exception:
                         logger.warning("email attachment OCR failed name=%s", filename,
                                        exc_info=True)
@@ -601,18 +603,8 @@ class OutlookClient:
         return f'{prefix} alt="{escaped}"{match.group(2)}'
 
     def _upload(self, filename: str, content: bytes) -> str:
-        response = requests.post(
-            self.settings.image_file_server_url,
-            files={"file": (filename, content)}, timeout=60, verify=False)
-        response.raise_for_status()
-        try:
-            body = response.json()
-            url = body.get("url") if isinstance(body, dict) else ""
-        except ValueError as exc:
-            raise RuntimeError("image upload response is not JSON") from exc
-        if not url:
-            raise RuntimeError("image upload response did not contain url")
-        return str(url)
+        url, _, _ = upload_image(self.settings.image_file_server_url, filename, content)
+        return url
 
     def _ocr(self, filename: str, content: bytes) -> str:
         if not self.settings.ocr_url:

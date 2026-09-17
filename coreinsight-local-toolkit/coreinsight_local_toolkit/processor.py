@@ -12,6 +12,7 @@ from urllib.parse import quote
 import requests
 
 from .config import Settings
+from .image_upload import upload as upload_image
 from .drafts import DraftClient
 from .instruction_files import InstructionFiles
 from .model_resources import ModelResourceRunner
@@ -299,22 +300,13 @@ class LocalExperienceProcessor:
             codes = parts[5].split(";")
             content = self._download(parts[0], codes[2] if len(codes) > 2 else "")
             file_id = uuid.uuid4().hex
-            response = requests.post(
-                self.settings.image_file_server_url,
-                files={"file": (filename, content)}, timeout=60, verify=False)
-            response.raise_for_status()
-            try:
-                body = response.json()
-                public_url = str(body.get("url") or "") if isinstance(body, dict) else ""
-            except ValueError:
-                public_url = ""
-            if not public_url:
-                raise RuntimeError("image upload response did not contain url")
+            public_url, uploaded_filename, uploaded_content = upload_image(
+                self.settings.image_file_server_url, filename, content)
             ocr_text = ""
             if is_image and self.settings.ocr_url:
                 try:
                     response = requests.post(
-                        self.settings.ocr_url, files={"file": (filename, content)},
+                        self.settings.ocr_url, files={"file": (uploaded_filename, uploaded_content)},
                         timeout=300, verify=False)
                     response.raise_for_status()
                     data = response.json()
