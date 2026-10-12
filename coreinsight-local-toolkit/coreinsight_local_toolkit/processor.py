@@ -4,7 +4,6 @@ import json
 import hashlib
 import logging
 import re
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -12,6 +11,7 @@ from urllib.parse import quote
 import requests
 
 from .config import Settings
+from .clouddrive import CloudDriveDownloader, CloudDriveRateLimited
 from .image_upload import upload as upload_image
 from .drafts import DraftClient
 from .instruction_files import InstructionFiles
@@ -34,6 +34,7 @@ class LocalExperienceProcessor:
         self.instructions = InstructionFiles(settings.data_dir)
         self.resources = ModelResourceRunner(settings)
         self.drafts = DraftClient(settings)
+        self.attachments = CloudDriveDownloader(settings)
 
     def validate(self, upload_by: str, resource: str = "prompt",
                  extract_mode: str = "direct") -> None:
@@ -101,7 +102,11 @@ class LocalExperienceProcessor:
         self._check_cancel(cancel_event)
         response_path = workspace / "output" / f"model-response-{first_sequence:06d}.txt"
         self._write_text(response_path, final_answer)
-        records, _ = self._read_results(final_answer)
+        try:
+            records, _ = self._read_results(final_answer)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"{exc}；模型原始回答已保存：{response_path}") from exc
         if progress:
             progress("pushing", "模型已完成，正在写入提取结果")
         pushed = []
@@ -298,8 +303,8 @@ class LocalExperienceProcessor:
             return f"[附件未下载：缺少 CloudDrive 配置] {filename}"
         try:
             codes = parts[5].split(";")
-            content = self._download(parts[0], codes[2] if len(codes) > 2 else "")
-            file_id = uuid.uuid4().hex
+            content = self._download(
+                parts[0], codes[2] if len(codes) > 2 else "", cancel_event)
             public_url, uploaded_filename, uploaded_content = upload_image(
                 self.settings.image_file_server_url, filename, content)
             ocr_text = ""
@@ -322,37 +327,27 @@ class LocalExperienceProcessor:
             if is_image:
                 return f"![{alt_text or filename}]({public_url})"
             return f"[{filename}]({public_url})"
+        except CloudDriveRateLimited as exc:
+            self._check_cancel(cancel_event)
+            logger.warning("attachment download deferred name=%s reason=%s", filename, exc)
+            return f"[附件未下载：{exc}] {filename}"
         except Exception as exc:
+            self._check_cancel(cancel_event)
             logger.warning("attachment upload failed name=%s", filename,
                            exc_info=True)
-            return f"![OCR结果](无法显示图片：{filename})"
+            return f"[附件处理失败] {filename}"
 
-    def _download(self, download_url: str, extraction_code: str) -> bytes:
-        token_response = requests.post(
-            "https://clouddrive.huawei.com/api/v2/token",
-            json={"appId": "espace", "domain": "huawei",
-                  "loginName": self.settings.clouddrive_account,
-                  "password": self.settings.clouddrive_password},
-            headers={"Content-Type": "application/json",
-                     "x-device-sn": "coreinsight-local-toolkit", "x-device-type": "web",
-                     "x-device-os": "win10", "x-device-name": "coreinsight",
-                     "x-client-version": "10"}, timeout=60, verify=False)
-        token_response.raise_for_status()
-        token = token_response.json().get("token", "")
-        authorization = (
-            f"/:um_begin{{{download_url}|File|123|attachment|0|;;{extraction_code}"
-            "|isOriginalImg:0}}/:um_end")
-        response = requests.post(
-            "https://clouddrive.huawei.com/imchat/api/v3/links/imdownload",
-            headers={"Authorization": token, "Content-Type": "application/json"},
-            json={"imAuthorization": authorization}, timeout=300, verify=False)
-        response.raise_for_status()
-        return response.content
+    def _download(self, download_url: str, extraction_code: str,
+                  cancel_event=None) -> bytes:
+        return self.attachments.download(download_url, extraction_code, cancel_event)
 
     def _read_results(self, raw: str) -> tuple[list[dict], list[str]]:
-        raw = raw.strip()
+        raw = raw.lstrip("\ufeff").strip()
         if not raw:
             return [], []
+        raw = re.sub(r"^<think>[\s\S]*?</think>\s*", "", raw, count=1)
+        if not raw:
+            raise RuntimeError("模型仅返回思考内容，未返回经验 JSON")
         fenced = re.search(r"```(?:json|jsonl)?\s*([\s\S]*?)\s*```", raw)
         raw = fenced.group(1).strip() if fenced else raw
         try:

@@ -57,6 +57,12 @@ docId、入库结果和异常堆栈。
 `input` 存放按消息边界切分的 Markdown，`output/model-response-*.txt` 保存模型原始回答，
 `output/experiences.jsonl` 存放已入库经验的最新版本。
 
+0.6.1 增加 CloudDrive 登录令牌复用和下载间隔；遇到 429 按 `Retry-After` 退避重试，
+持续限流时进入冷却，后续附件保留未下载提示，避免连续请求。限流等待支持取消。
+图片上传遇到 413 时压缩后重传，普通大附件会明确提示大小限制。
+大模型请求固定发送 `chat_template_kwargs.enable_thinking=false`；HTTP 失败显示网关错误摘要。
+CodeAgent 的错误事件会直接报错，JSON 解析失败会提示已保存的原始回答路径，便于排查。
+
 演示前端直接访问 `http://127.0.0.1:17831/demo/`，不需要另外启动 Node 服务。
 
 可通过环境变量配置：
@@ -88,8 +94,8 @@ docId、入库结果和异常堆栈。
 | `COREINSIGHT_MODEL_CONFIG_KEY` | `coreinsight_miner_release` | 主配置未提供模型密钥时使用的模型配置 key |
 | `COREINSIGHT_EXPERIENCE_ENGINE_URL` | `https://fuyao.rnd.huawei.com` | 经验引擎基址，或以 `/memory/experience/doc` 结尾的新建接口地址 |
 | `COREINSIGHT_DRAFT_API_URL` | `https://coreinsight.rnd.huawei.com/chat` | 平台草稿新建/更新接口前缀 |
-| `COREINSIGHT_OCR_URL` | `http://10.90.113.228:5678/ocr` | OCR 接口完整地址 |
-| `COREINSIGHT_FILE_SERVER_URL` | `http://7.224.100.105:32169` | 永久图片上传服务 |
+| `COREINSIGHT_OCR_URL` | `http://fuyao.rnd.huawei.com/rag/v1/corecode/image/ocr` | OCR 接口完整地址 |
+| `COREINSIGHT_FILE_SERVER_URL` | `http://fuyao.rnd.huawei.com/rag/v1/corecode/image/upload` | 上传接口完整地址，返回 JSON 中的 `url`；不追加 `/rag_pic` |
 | `COREINSIGHT_RAG_PIC_PUBLIC_BASE` | `https://fuyao-data-server.rnd.huawei.com` | Markdown 图片公开地址 |
 | `COREINSIGHT_CLOUDDRIVE_ACCOUNT` | 空 | WeLink 附件下载账号 |
 | `COREINSIGHT_CLOUDDRIVE_PASSWORD` | 空 | WeLink 附件下载密码 |
@@ -180,7 +186,7 @@ Toolkit 会一次性替换全部字符串配置中的该域名，其他域名和
 ```json
 {
   "enabled": true,
-  "latestVersion": "0.6.0",
+  "latestVersion": "0.6.1",
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://example.com/coreinsight-local-toolkit.exe",

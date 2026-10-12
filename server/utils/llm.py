@@ -25,6 +25,7 @@ async def chat_with_tools(
         "tools":        tools,
         "tool_choice":  "auto",
         "stream":       False,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
@@ -65,6 +66,7 @@ async def chat(
         "messages": messages,
         "temperature": temperature,
         "stream": stream,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",

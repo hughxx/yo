@@ -182,6 +182,41 @@ class ProcessorTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             processor._read_results("Analysis contains [ordinary brackets].")
 
+    def test_result_parser_removes_thinking_prefix_but_preserves_json_content(self):
+        processor = self.processor()
+        record = {**RESULT, "experience": "example <think>keep this</think>"}
+        raw = '\ufeff<think>reasoning</think>\n' + json.dumps([record])
+        records, _ = processor._read_results(raw)
+        self.assertEqual([record], records)
+        with self.assertRaisesRegex(RuntimeError, "未返回经验 JSON"):
+            processor._read_results('<think>reasoning only</think>')
+
+    def test_invalid_model_output_is_saved_and_reported_without_pushing(self):
+        processor = self.processor()
+        processor.resources.output = "I could not read the input files."
+        with patch.object(processor, "_push_experience") as push:
+            with self.assertRaisesRegex(RuntimeError, "model-response-000001.txt"):
+                processor.process(
+                    [{"id": "1", "content": "hello"}], "u1", "invalid-output", resource="skill")
+        push.assert_not_called()
+        paths = list(processor.settings.data_dir.rglob('model-response-000001.txt'))
+        self.assertEqual(1, len(paths))
+        self.assertEqual(processor.resources.output, paths[0].read_text(encoding='utf-8'))
+
+    def test_cancellation_during_attachment_download_is_not_swallowed(self):
+        processor = self.processor()
+        cancel = threading.Event()
+
+        def download(*args):
+            cancel.set()
+            raise RuntimeError('任务已取消')
+
+        with patch.object(processor, '_download', side_effect=download):
+            with self.assertRaises(ExtractionCancelled):
+                processor._to_markdown([{
+                    'id': '1', 'content': '/:um_begin{url|File|1|image.png|0|;;code}/:um_end',
+                }], cancel)
+
     def test_result_parser_repairs_common_model_json_mistakes(self):
         processor = self.processor()
         malformed_quotes = (

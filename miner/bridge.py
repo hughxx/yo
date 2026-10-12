@@ -176,7 +176,10 @@ class MinerApi:
                 raise ValueError("Markdown 文件不存在")
             text = path.read_text(encoding="utf-8")
             self._event("正在调用大模型提取经验")
-            payload = {"model": config.LLM_MODEL_ID, "messages": [{"role": "user", "content": config.PROMPT + text}], "temperature": 0.2, "stream": False}
+            payload = {"model": config.LLM_MODEL_ID,
+                       "messages": [{"role": "user", "content": config.PROMPT + text}],
+                       "temperature": 0.2, "stream": False,
+                       "chat_template_kwargs": {"enable_thinking": False}}
             response = requests.post(config.LLM_BASE_URL.rstrip("/") + "/chat/completions", headers={"Authorization": f"Bearer {config.LLM_API_KEY}", "Content-Type": "application/json"}, json=payload, timeout=999, verify=False)
             response.raise_for_status()
             experience = response.json()["choices"][0]["message"]["content"].strip()
@@ -273,7 +276,8 @@ class MinerApi:
                 raise ValueError("公共模型配置未就绪，请检查配置中心")
             payload = {"model": config.LLM_MODEL_ID,
                        "messages": [{"role": "user", "content": text}],
-                       "temperature": 0.2, "stream": False}
+                       "temperature": 0.2, "stream": False,
+                       "chat_template_kwargs": {"enable_thinking": False}}
             response = requests.post(config.LLM_BASE_URL.rstrip("/") + "/chat/completions",
                                      headers={"Authorization": f"Bearer {config.LLM_API_KEY}", "Content-Type": "application/json"},
                                      json=payload, timeout=120, verify=False)

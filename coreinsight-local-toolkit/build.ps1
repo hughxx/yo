@@ -10,10 +10,13 @@ Push-Location $ProjectDir
 try {
     if (-not (Test-Path -LiteralPath $Python)) {
         python -m venv $BuildVenv
+        if ($LASTEXITCODE -ne 0) { throw "Failed to create build environment" }
     }
 
     & $Python -m pip install --disable-pip-version-check -r (Join-Path $ProjectDir "requirements-build.txt")
+    if ($LASTEXITCODE -ne 0) { throw "Failed to install build dependencies" }
     & $Python -m PyInstaller --noconfirm --clean (Join-Path $ProjectDir "coreinsight-local-toolkit.spec")
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 
     $Exe = Join-Path $ProjectDir "dist\coreinsight-local-toolkit.exe"
     if (-not (Test-Path -LiteralPath $Exe)) {

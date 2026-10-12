@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import requests
+
 from coreinsight_local_toolkit.config import Settings
 from coreinsight_local_toolkit.instruction_files import InstructionFiles
 from coreinsight_local_toolkit.model_resources import ModelResourceRunner
@@ -73,6 +75,50 @@ class ModelResourceTests(unittest.TestCase):
         self.assertEqual("https://model.test/v1/chat/completions",
                          post.call_args.args[0])
         self.assertEqual("提取", post.call_args.kwargs["json"]["messages"][0]["content"])
+        self.assertIs(False, post.call_args.kwargs["json"]["chat_template_kwargs"]["enable_thinking"])
+
+    def test_model_http_error_includes_gateway_reason_and_redacts_credentials(self):
+        response = requests.Response()
+        response.status_code = 400
+        response._content = json.dumps({"error": {
+            "message": "invalid model, credential secret-key"}}).encode()
+        runner = ModelResourceRunner(Settings(
+            llm_base_url="https://model.test/v1", llm_api_key="secret-key", llm_model_id="model"))
+        with patch("coreinsight_local_toolkit.model_resources.requests.post", return_value=response):
+            with self.assertRaises(RuntimeError) as error:
+                runner._llm("private input")
+        self.assertIn("HTTP 400", str(error.exception))
+        self.assertIn("invalid model", str(error.exception))
+        self.assertNotIn("secret-key", str(error.exception))
+
+    def test_model_non_json_http_error_is_reported(self):
+        response = requests.Response()
+        response.status_code = 502
+        response._content = b"gateway unavailable"
+        runner = ModelResourceRunner(Settings())
+        with patch("coreinsight_local_toolkit.model_resources.requests.post", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 502.*gateway unavailable"):
+                runner._llm("input")
+
+    def test_codeagent_error_events_are_not_treated_as_experience_output(self):
+        events = [
+            {"type": "result", "is_error": True, "result": "API unavailable"},
+            {"type": "result", "subtype": "error_max_turns", "errors": ["turn limit"]},
+            {"type": "result", "subtype": "success"},
+        ]
+        for result_event in events:
+            with self.subTest(result_event=result_event), tempfile.TemporaryDirectory() as directory:
+                process = FakeProcess([
+                    json.dumps({"type": "assistant", "message": {
+                        "content": [{"type": "text", "text": "intermediate explanation"}]}}) + "\n",
+                    json.dumps(result_event) + "\n",
+                ])
+                runner = ModelResourceRunner(Settings(data_dir=Path(directory)))
+                with patch("coreinsight_local_toolkit.model_resources.subprocess.Popen", return_value=process), \
+                        patch.object(runner, "_resolve_codeagent_command", return_value=["agent"]), \
+                        patch.object(runner, "_kill_process_tree"):
+                    with self.assertRaisesRegex(RuntimeError, "CodeAgent.*详细日志"):
+                        runner._codeagent("input", Path(directory))
 
     def test_skill_resource_uses_stdin_and_result_event(self):
         process = FakeProcess([

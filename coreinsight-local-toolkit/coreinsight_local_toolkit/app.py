@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import logging
 import shutil
 import time
@@ -94,6 +95,11 @@ def create_app(settings: Settings | None = None,
         f"http://localhost:{settings.port}",
     }
     app = FastAPI(title="CoreInsight Local Toolkit", version=__version__)
+    cors_options = {}
+    # New Starlette versions reject PNA preflights unless explicitly enabled.
+    # Older versions use the response header in local_browser_guard below.
+    if "allow_private_network" in inspect.signature(CORSMiddleware.__init__).parameters:
+        cors_options["allow_private_network"] = True
     app.add_middleware(
         CORSMiddleware,
         allow_origins=sorted(browser_origins),
@@ -101,6 +107,7 @@ def create_app(settings: Settings | None = None,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "X-CoreInsight-Protocol"],
         max_age=600,
+        **cors_options,
     )
 
     @app.middleware("http")

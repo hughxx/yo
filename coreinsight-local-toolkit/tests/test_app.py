@@ -137,6 +137,18 @@ class AppCorsTests(unittest.TestCase):
         self.assertEqual(
             "true", response.headers["access-control-allow-private-network"])
 
+    def test_private_network_preflight_rejects_untrusted_origin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = create_app(Settings(data_dir=Path(directory), update_enabled=False))
+            with TestClient(app) as client:
+                response = client.options('/welink/message/list', headers={
+                    'Origin': 'https://untrusted.example',
+                    'Access-Control-Request-Method': 'POST',
+                    'Access-Control-Request-Private-Network': 'true',
+                })
+        self.assertEqual(403, response.status_code)
+        self.assertNotIn('access-control-allow-private-network', response.headers)
+
 
 if __name__ == "__main__":
     unittest.main()

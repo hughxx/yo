@@ -67,7 +67,8 @@ class ModelResourceRunner:
                              "Content-Type": "application/json"},
                     json={"model": self.settings.llm_model_id,
                           "messages": [{"role": "user", "content": prompt}],
-                          "temperature": 0.2, "stream": False},
+                          "temperature": 0.2, "stream": False,
+                          "chat_template_kwargs": {"enable_thinking": False}},
                     timeout=self.settings.model_timeout_seconds, verify=False)
             except Exception as exc:
                 result["error"] = exc
@@ -83,9 +84,24 @@ class ModelResourceRunner:
         if "error" in result:
             raise result["error"]  # type: ignore[misc]
         response = result["response"]
-        response.raise_for_status()
-        if cancel_event is not None and cancel_event.is_set():
-            raise RuntimeError("任务已取消")
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            try:
+                body = response.json()
+                error = body.get("error", body) if isinstance(body, dict) else body
+                if isinstance(error, dict):
+                    detail = (error.get("message") or error.get("msg")
+                              or error.get("detail") or error.get("code"))
+                else:
+                    detail = error
+            except ValueError:
+                detail = response.text
+            detail = self._diagnostic_text(str(detail or "网关未返回错误详情"), prompt)
+            logger.error("model request rejected status=%s model=%s prompt_chars=%d detail=%s",
+                         response.status_code, self.settings.llm_model_id, len(prompt), detail)
+            raise RuntimeError(
+                f"大模型接口返回 HTTP {response.status_code}：{detail}") from exc
         try:
             return str(response.json()["choices"][0]["message"]["content"]).strip()
         except (KeyError, IndexError, TypeError, ValueError) as exc:
@@ -115,7 +131,7 @@ class ModelResourceRunner:
             raise ValueError(
                 f"CodeAgent 不可用，请检查命令：{self.settings.codeagent_command}") from exc
 
-        outputs: list[str] = []
+        results: list[dict] = []
         diagnostics: list[str] = []
         terminal = threading.Event()
         reader_finished = threading.Event()
@@ -124,7 +140,7 @@ class ModelResourceRunner:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         reader = threading.Thread(
             target=self._read_codeagent_events,
-            args=(process, log_path, outputs, diagnostics, session_ids, terminal,
+            args=(process, log_path, results, diagnostics, session_ids, terminal,
                   reader_finished), daemon=True)
         reader.start()
         try:
@@ -162,11 +178,27 @@ class ModelResourceRunner:
             detail = f"：{diagnostics[-1]}" if diagnostics else ""
             raise RuntimeError(
                 f"CodeAgent 未返回 result 终止事件，退出码 {code}{detail}")
+        result = results[-1] if results else {}
+        subtype = str(result.get("subtype") or "")
+        if result.get("is_error") or subtype.startswith("error"):
+            detail = result.get("errors") or result.get("result") or subtype or "未知错误"
+            if isinstance(detail, list):
+                detail = "; ".join(str(value) for value in detail)
+            raise RuntimeError(
+                f"CodeAgent 执行失败：{self._diagnostic_text(str(detail), prompt)}；"
+                f"详细日志：{log_path}")
+        output = result.get("result")
+        if not isinstance(output, str) or not output.strip():
+            raise RuntimeError(f"CodeAgent result 事件中没有最终回答；详细日志：{log_path}")
         if session_ids:
             logger.info("codeagent completed session_id=%s", session_ids[-1])
-        if not outputs:
-            raise RuntimeError("CodeAgent result 事件中没有可用结果")
-        return outputs[-1].strip()
+        return output.strip()
+
+    def _diagnostic_text(self, value: str, prompt: str = "") -> str:
+        for secret in (self.settings.llm_api_key, self.settings.clouddrive_password, prompt):
+            if secret:
+                value = value.replace(secret, "[已隐藏]")
+        return " ".join(value.split())[:1000]
 
     def _resolve_codeagent_command(self, arguments: list[str],
                                    windows: bool | None = None) -> list[str] | str:
@@ -205,7 +237,7 @@ class ModelResourceRunner:
 
     @staticmethod
     def _read_codeagent_events(process: subprocess.Popen, log_path: Path,
-                               outputs: list[str], diagnostics: list[str],
+                               results: list[dict], diagnostics: list[str],
                                session_ids: list[str],
                                terminal: threading.Event,
                                finished: threading.Event) -> None:
@@ -222,35 +254,18 @@ class ModelResourceRunner:
                             diagnostics.append(value[-1000:])
                             del diagnostics[:-20]
                         continue
+                    if not isinstance(item, dict):
+                        continue
                     session_id = ModelResourceRunner._find_string(
                         item, "session_id")
                     if session_id:
                         session_ids.append(session_id)
                     event_type = str(item.get("type") or "").lower()
-                    if event_type == "assistant":
-                        outputs.extend(
-                            ModelResourceRunner._assistant_texts(item))
                     if event_type == "result":
-                        result = item.get("result")
-                        if isinstance(result, str) and result.strip():
-                            outputs.append(result)
+                        results.append(item)
                         terminal.set()
         finally:
             finished.set()
-
-    @staticmethod
-    def _assistant_texts(item: object) -> list[str]:
-        texts: list[str] = []
-        if isinstance(item, dict):
-            for key, value in item.items():
-                if key == "text" and isinstance(value, str) and value.strip():
-                    texts.append(value)
-                elif key in ("message", "content"):
-                    texts.extend(ModelResourceRunner._assistant_texts(value))
-        elif isinstance(item, list):
-            for value in item:
-                texts.extend(ModelResourceRunner._assistant_texts(value))
-        return texts
 
     @staticmethod
     def _find_string(item: object, key: str) -> str:

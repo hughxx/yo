@@ -69,6 +69,10 @@ def upload(url: str, filename: str, content: bytes,
             original_name, original_size, len(content), len(content) * 100 / max(original_size, 1))
         response = requests.post(url, files={"file": (filename, content)},
                                  timeout=timeout, verify=False)
+    if response.status_code == 413:
+        raise RuntimeError(f"附件超过上传服务大小限制：{filename}（{len(content)} 字节）")
+    if response.status_code == 404:
+        raise RuntimeError(f"附件上传接口不存在（HTTP 404），请检查文件服务配置：{url}")
     response.raise_for_status()
     try:
         body = response.json()

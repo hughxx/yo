@@ -10,6 +10,7 @@ from pathlib import Path
 import uvicorn
 
 from .app import create_app
+from . import __version__
 from .config import load_settings
 
 
@@ -60,7 +61,8 @@ def main() -> None:
     if "--startup" in sys.argv:
         settings = replace(settings, welcome_enabled=False)
     log_path = configure_logging(settings.data_dir)
-    logging.getLogger(__name__).info("CoreInsight Local Toolkit starting; log=%s", log_path)
+    logging.getLogger(__name__).info(
+        "CoreInsight Local Toolkit starting version=%s; log=%s", __version__, log_path)
     removed = cleanup_stale_runtime(settings.data_dir)
     if removed:
         logging.getLogger(__name__).info("removed stale runtime directories count=%d", removed)

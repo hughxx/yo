@@ -27,6 +27,7 @@ async def main():
         "temperature": 0.3,
         "tools":       [TOOL],
         "tool_choice": "auto",
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",

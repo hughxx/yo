@@ -1,13 +1,14 @@
 {
   "enabled": true,
-  "latestVersion": "0.6.0",
+  "latestVersion": "0.6.1",
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://replace-with-authenticated-download-page",
   "releaseNotes": [
-    "新增 Outlook 邮件、文件夹、正文预览和规则/黑名单管理",
-    "邮件附件转 Markdown，图片保留 OCR 结果和公开链接",
-    "邮件和 WeLink 支持大模型/本地 Agent 提取、草稿/直接入库和定时增量"
+    "修正附件上传接口，图片超过限制时压缩重传",
+    "CloudDrive 下载复用登录令牌，增加限流退避和冷却",
+    "大模型调用关闭 thinking，展示网关错误详情",
+    "识别 CodeAgent 失败事件，解析失败时提示原始回答路径"
   ],
-  "publishedAt": "2026-08-17T22:00:00+08:00"
+  "publishedAt": "2026-10-12T00:00:00+08:00"
 }

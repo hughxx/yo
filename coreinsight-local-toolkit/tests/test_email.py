@@ -133,18 +133,18 @@ class EmailTests(unittest.TestCase):
             client = OutlookClient(Settings(data_dir=Path(directory)))
             lock_states = []
 
-            def upload(_filename, _content):
+            def upload(_url, filename, content):
                 lock_states.append(client.lock.locked())
-                return "https://example.test/evidence.png"
+                return "https://example.test/evidence.png", filename, content
 
             def ocr(_filename, _content):
                 lock_states.append(client.lock.locked())
                 return "截图内容"
 
-            client._upload = upload
             client._ocr = ocr
             with patch("coreinsight_local_toolkit.outlook.outlook_session",
-                       fake_session):
+                       fake_session), patch(
+                       "coreinsight_local_toolkit.outlook.upload_image", side_effect=upload):
                 message = client.get_message("mail-1")
 
             self.assertEqual([False, False], lock_states)
