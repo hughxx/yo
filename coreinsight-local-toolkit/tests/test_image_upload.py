@@ -34,12 +34,13 @@ class ImageUploadTests(unittest.TestCase):
         self.assertTrue(all(item.args[0] == 'https://gateway.test/image/upload'
                             for item in post.call_args_list))
 
-    def test_oversized_archive_is_not_retried_as_an_image(self):
-        with patch('coreinsight_local_toolkit.image_upload.requests.post',
-                   return_value=response(413)) as post:
-            with self.assertRaisesRegex(RuntimeError, '超过上传服务大小限制'):
-                upload('https://gateway.test/image/upload', 'logs.zip', b'archive')
-        post.assert_called_once()
+    def test_non_images_never_reach_upload_endpoint(self):
+        for name in ('logs.zip', 'release.tar.gz', 'manual.pdf', 'report.csv', 'file'):
+            with self.subTest(name=name), patch(
+                    'coreinsight_local_toolkit.image_upload.requests.post') as post:
+                with self.assertRaisesRegex(ValueError, '仅支持上传图片'):
+                    upload('https://gateway.test/image/upload', name, b'file')
+            post.assert_not_called()
 
     def test_missing_upload_route_has_actionable_error(self):
         with patch('coreinsight_local_toolkit.image_upload.requests.post',

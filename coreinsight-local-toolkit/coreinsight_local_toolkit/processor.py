@@ -12,7 +12,7 @@ import requests
 
 from .config import Settings
 from .clouddrive import CloudDriveDownloader, CloudDriveRateLimited
-from .image_upload import upload as upload_image
+from .image_upload import IMAGE_EXTENSIONS, upload as upload_image
 from .drafts import DraftClient
 from .instruction_files import InstructionFiles
 from .model_resources import ModelResourceRunner
@@ -20,7 +20,6 @@ from .model_resources import ModelResourceRunner
 
 _UM_RE = re.compile(r"/:um_begin\{([^}]+)\}/:um_end")
 _CHUNK_SIZE = 40_000
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
 logger = logging.getLogger(__name__)
 
 
@@ -298,7 +297,13 @@ class LocalExperienceProcessor:
         if len(parts) < 6:
             return "[无法解析的附件]"
         filename = Path(parts[3] or "attachment.bin").name
-        is_image = Path(filename).suffix.lower() in _IMAGE_EXTENSIONS
+        attachment_type = parts[1].strip()
+        # UM can use File for an image sent as a file. Check the filename as
+        # well, and reject archives/documents before any download or login.
+        if Path(filename).suffix.lower() not in IMAGE_EXTENSIONS:
+            logger.info("skipped non-image attachment type=%s name=%s",
+                        attachment_type, filename)
+            return f"[非图片附件已跳过：{filename}]"
         if not self.settings.clouddrive_account or not self.settings.clouddrive_password:
             return f"[附件未下载：缺少 CloudDrive 配置] {filename}"
         try:
@@ -308,7 +313,7 @@ class LocalExperienceProcessor:
             public_url, uploaded_filename, uploaded_content = upload_image(
                 self.settings.image_file_server_url, filename, content)
             ocr_text = ""
-            if is_image and self.settings.ocr_url:
+            if self.settings.ocr_url:
                 try:
                     response = requests.post(
                         self.settings.ocr_url, files={"file": (uploaded_filename, uploaded_content)},
@@ -324,9 +329,7 @@ class LocalExperienceProcessor:
                                    exc_info=True)
             alt_text = ocr_text.strip().replace("\r", " ").replace("\n", " ")
             alt_text = alt_text.replace("[", "\\[").replace("]", "\\]")
-            if is_image:
-                return f"![{alt_text or filename}]({public_url})"
-            return f"[{filename}]({public_url})"
+            return f"![{alt_text or filename}]({public_url})"
         except CloudDriveRateLimited as exc:
             self._check_cancel(cancel_event)
             logger.warning("attachment download deferred name=%s reason=%s", filename, exc)
@@ -348,16 +351,24 @@ class LocalExperienceProcessor:
         raw = re.sub(r"^<think>[\s\S]*?</think>\s*", "", raw, count=1)
         if not raw:
             raise RuntimeError("模型仅返回思考内容，未返回经验 JSON")
-        fenced = re.search(r"```(?:json|jsonl)?\s*([\s\S]*?)\s*```", raw)
-        raw = fenced.group(1).strip() if fenced else raw
         try:
+            # Parse JSON first: Markdown fences inside a JSON string are data.
             values = self._decode_json_values(raw)
         except RuntimeError as original_error:
-            values = self._decode_trailing_json_values(raw)
-            if values is None:
-                raise original_error
-            logger.warning(
-                "ignored explanatory text before trailing model JSON")
+            # Only standalone lines delimit the outer Markdown code block.
+            # An experience field may contain escaped ```bash / ``` snippets.
+            fenced = re.search(
+                r"^[ \t]*```(?:json|jsonl)?[ \t]*\r?\n"
+                r"([\s\S]*?)^[ \t]*```[ \t]*\r?$",
+                raw, flags=re.MULTILINE | re.IGNORECASE)
+            if fenced:
+                values = self._decode_json_values(fenced.group(1).strip())
+            else:
+                values = self._decode_trailing_json_values(raw)
+                if values is None:
+                    raise original_error
+                logger.warning(
+                    "ignored explanatory text before trailing model JSON")
         records: list[dict] = []
         for value in values:
             if isinstance(value, list):

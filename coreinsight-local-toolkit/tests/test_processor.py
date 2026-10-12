@@ -177,6 +177,43 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual([RESULT], records)
         self.assertEqual(RESULT, json.loads(normalized[0]))
 
+    def test_result_parser_keeps_embedded_code_fences_in_fenced_json(self):
+        processor = self.processor()
+        record = {**RESULT, 'experience': (
+            '## 排查方法\n\n```bash\nprintf "hello"\n```\n\n'
+            '## 处理方法\n```bash\nservice restart\n```\n')}
+        expected = json.dumps(record, ensure_ascii=False)
+        raw = '基于\n\n基于输入文件，以下是提取结果：\n\n```json\n' + expected + '\n```\n'
+        records, normalized = processor._read_results(raw)
+        self.assertEqual([record], records)
+        self.assertEqual(record, json.loads(normalized[0]))
+
+    def test_result_parser_prefers_raw_json_over_fences_in_its_strings(self):
+        processor = self.processor()
+        record = {**RESULT, 'experience': '```json\n{"key": "value"}\n```'}
+        records, _ = processor._read_results(json.dumps(record))
+        self.assertEqual([record], records)
+
+    def test_result_parser_keeps_all_records_in_fenced_jsonl(self):
+        processor = self.processor()
+        record = {**RESULT, 'experience': '```bash\necho test\n```'}
+        update = {'operation': 'update', 'doc_id': '123', 'summary': '补充'}
+        raw = ('说明\r\n```JSONL\r\n' + json.dumps(record)
+               + '\r\n' + json.dumps(update) + '\r\n```\r\n')
+        records, _ = processor._read_results(raw)
+        self.assertEqual([record, update], records)
+
+    def test_result_parser_keeps_inner_json_code_example_in_pretty_json(self):
+        processor = self.processor()
+        record = {**RESULT, 'experience': '```json\n{"nested": true}\n```'}
+        raw = '```json\n' + json.dumps([record], indent=2) + '\n```'
+        records, _ = processor._read_results(raw)
+        self.assertEqual([record], records)
+
+    def test_result_parser_still_rejects_invalid_fenced_json(self):
+        with self.assertRaises(RuntimeError):
+            self.processor()._read_results('说明\n```json\n{"operation":"create"\n```')
+
     def test_result_parser_does_not_treat_prose_brackets_as_json(self):
         processor = self.processor()
         with self.assertRaises(RuntimeError):
@@ -295,25 +332,38 @@ class ProcessorTests(unittest.TestCase):
         self.assertIn("%20", markdown)
         self.assertNotIn("/workspace/", markdown)
 
-    def test_non_image_attachment_is_not_sent_to_ocr(self):
+    def test_non_image_attachment_is_skipped_before_download_and_upload(self):
         processor = self.processor()
-        processor.settings = processor.settings.__class__(
-            **{**processor.settings.__dict__, "ocr_url": "http://ocr"})
-        content = "/:um_begin{download|File|123|results.csv|0|1;2;code}/:um_end"
-        upload_response = Mock(); upload_response.raise_for_status.return_value = None
-        upload_response.json.return_value = {
-            "url": "https://fuyao-data-server.rnd.huawei.com/rag_pic/uploaded/results.csv"
-        }
-        with patch.object(processor, "_download", return_value=b"a,b\n1,2"), \
-                patch("coreinsight_local_toolkit.processor.requests.post",
-                      return_value=upload_response) as post:
-            markdown = processor._to_markdown([
-                {"id": "1", "sender": "u", "timestamp": 1, "rawContent": content}])
+        names = ('cloud-codeagent-release.zip', 'CoreGeek-0.2.16.tar.gz',
+                 'results.csv', 'manual.pdf', 'document.docx', 'unnamed')
+        for name in names:
+            with self.subTest(name=name), patch.object(processor, '_download') as download, \
+                    patch('coreinsight_local_toolkit.processor.upload_image') as upload, \
+                    patch('coreinsight_local_toolkit.processor.requests.post') as post:
+                content = f'/:um_begin{{download|File|123|{name}|0|;;code}}/:um_end'
+                markdown = processor._to_markdown([{'id': '1', 'rawContent': content}])
+            download.assert_not_called()
+            upload.assert_not_called()
+            post.assert_not_called()
+            self.assertIn(name, markdown)
+            self.assertIn('非图片附件已跳过', markdown)
 
-        self.assertEqual(1, post.call_count)
-        self.assertIn("[results.csv](https://fuyao-data-server.rnd.huawei.com/rag_pic/",
-                      markdown)
-        self.assertNotIn("![", markdown)
+    def test_um_images_are_processed_when_sent_as_img_or_file(self):
+        processor = self.processor()
+        processor.settings.ocr_url = 'https://ocr.test'
+        for kind in ('Img', 'File'):
+            with self.subTest(kind=kind), patch.object(
+                    processor, '_download', return_value=b'image') as download, \
+                    patch('coreinsight_local_toolkit.processor.upload_image',
+                          return_value=('https://images.test/screenshot.PNG', 'screenshot.PNG', b'image')) as upload, \
+                    patch('coreinsight_local_toolkit.processor.requests.post') as post:
+                post.return_value.json.return_value = {'result': 'image text'}
+                content = f'/:um_begin{{download|{kind}|166425|screenshot.PNG|0|1133;422;code}}/:um_end'
+                markdown = processor._to_markdown([{'id': '1', 'rawContent': content}])
+            download.assert_called_once_with('download', 'code', None)
+            upload.assert_called_once()
+            post.assert_called_once()
+            self.assertIn('![image text](https://images.test/screenshot.PNG)', markdown)
 
 
 if __name__ == "__main__":

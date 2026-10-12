@@ -57,6 +57,8 @@ def _compress(filename: str, content: bytes) -> tuple[str, bytes]:
 
 def upload(url: str, filename: str, content: bytes,
            timeout: int = 60) -> tuple[str, str, bytes]:
+    if Path(filename).suffix.lower() not in IMAGE_EXTENSIONS:
+        raise ValueError(f"仅支持上传图片，已跳过非图片附件：{filename}")
     logger.info("image upload start name=%s size=%d bytes", filename, len(content))
     response = requests.post(url, files={"file": (filename, content)},
                              timeout=timeout, verify=False)

@@ -17,7 +17,7 @@ from urllib.parse import quote
 import requests
 
 from .config import Settings
-from .image_upload import upload as upload_image
+from .image_upload import IMAGE_EXTENSIONS, upload as upload_image
 from .time_format import format_datetime
 
 
@@ -37,7 +37,6 @@ TABLE_COLUMNS = (
 )
 PR_ATTACH_CONTENT_ID = "http://schemas.microsoft.com/mapi/proptag/0x3712001E"
 BODY_DASL_FIELD = '"urn:schemas:httpmail:textdescription"'
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
 
 
 def _imports():
@@ -509,7 +508,7 @@ class OutlookClient:
 
     @staticmethod
     def _read_attachments(item, html_body: str) -> list[dict]:
-        """Copy attachment bytes while MAPI is alive; perform no network I/O."""
+        """Copy image bytes while MAPI is alive; retain only names for other files."""
         copied = []
         referenced = set(re.findall(r"cid:([^\"'> ]+)", html_body, flags=re.I))
         attachment = None
@@ -519,6 +518,12 @@ class OutlookClient:
                     filename = Path(str(
                         attachment.FileName or "attachment.bin")).name
                     suffix = Path(filename).suffix.lower()
+                    if suffix not in IMAGE_EXTENSIONS:
+                        copied.append({
+                            "filename": filename, "suffix": suffix, "cid": "",
+                            "content": b"", "inline": False,
+                        })
+                        continue
                     cid = ""
                     try:
                         cid = str(attachment.PropertyAccessor.GetProperty(
@@ -556,7 +561,13 @@ class OutlookClient:
         rows = []
         for attachment in attachments:
             filename = attachment["filename"]
-            suffix = attachment["suffix"]
+            suffix = Path(filename).suffix.lower()
+            if suffix not in IMAGE_EXTENSIONS:
+                logger.info("skipped non-image email attachment name=%s", filename)
+                markdown.append(f"[非图片附件已跳过：{filename}]")
+                rows.append({"name": filename, "url": "", "ocr": "",
+                             "inline": False, "skipped": True})
+                continue
             cid = attachment["cid"]
             content = attachment["content"]
             inline = attachment["inline"]
@@ -568,16 +579,15 @@ class OutlookClient:
                 # Upload and OCR are independent. Keep the public URL even when
                 # the OCR service is unavailable or returns an invalid response.
                 ocr = ""
-                if suffix in IMAGE_EXTENSIONS:
-                    try:
-                        ocr = self._ocr(uploaded_filename, uploaded_content)
-                    except Exception:
-                        logger.warning("email attachment OCR failed name=%s", filename,
-                                       exc_info=True)
+                try:
+                    ocr = self._ocr(uploaded_filename, uploaded_content)
+                except Exception:
+                    logger.warning("email attachment OCR failed name=%s", filename,
+                                   exc_info=True)
                 alt = ocr.strip().replace("\r", " ").replace("\n", " ")
                 alt = alt.replace("[", "\\[").replace("]", "\\]")
                 label = alt or filename
-                value = f"![{label}]({url})" if suffix in IMAGE_EXTENSIONS else f"[{filename}]({url})"
+                value = f"![{label}]({url})"
                 if inline:
                     html_body = re.sub(
                         rf"cid:{re.escape(cid)}", url, html_body, flags=re.I)

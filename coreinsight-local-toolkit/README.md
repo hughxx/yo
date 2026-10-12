@@ -20,7 +20,7 @@ Python exe，不部署本项目自己的云端 Server，也不做完整桌面 UI
 邮件能力直接访问用户当前登录的桌面 Outlook，列表按一个或多个文件夹和时间范围读取，支持主题、
 正文、发件人规则以及黑名单。定时增量必须配置至少一条有效提取规则，不允许无规则扫描
 全部增量邮件。正式提取时，邮件 HTML 转为 Markdown，内嵌图片和图片附件
-执行 OCR 并变成 `![OCR结果](公开URL)`，普通附件变成可访问链接。浏览器只传 Outlook
+执行 OCR 并变成 `![OCR结果](公开URL)`，普通附件仅保留文件名和跳过提示。浏览器只传 Outlook
 EntryID 选择条件，不传正文或附件。邮件与 WeLink 使用同一组模型资源选项，支持手动选择、草稿/直入库、
 结果通知和成功后才推进游标的定时增量提取。
 
@@ -59,9 +59,15 @@ docId、入库结果和异常堆栈。
 
 0.6.1 增加 CloudDrive 登录令牌复用和下载间隔；遇到 429 按 `Retry-After` 退避重试，
 持续限流时进入冷却，后续附件保留未下载提示，避免连续请求。限流等待支持取消。
-图片上传遇到 413 时压缩后重传，普通大附件会明确提示大小限制。
+图片上传遇到 413 时压缩后重传。
 大模型请求固定发送 `chat_template_kwargs.enable_thinking=false`；HTTP 失败显示网关错误摘要。
 CodeAgent 的错误事件会直接报错，JSON 解析失败会提示已保存的原始回答路径，便于排查。
+
+0.6.2 仅处理 PNG、JPG/JPEG、GIF、WEBP、BMP、TIF/TIFF 图片，文件后缀不区分大小写。
+WeLink 从 UM 标记中的文件名识别图片，兼容 `Img` 和作为 `File` 发送的图片；ZIP、
+TAR.GZ、文档等非图片附件在下载前跳过，Outlook 同样跳过非图片附件的读取和上传。
+模型结果先按完整 JSON 解析；外层 Markdown 代码块只按独占一行的围栏识别，
+避免 `experience` 正文中的代码示例截断合法 JSON。
 
 演示前端直接访问 `http://127.0.0.1:17831/demo/`，不需要另外启动 Node 服务。
 
@@ -186,7 +192,7 @@ Toolkit 会一次性替换全部字符串配置中的该域名，其他域名和
 ```json
 {
   "enabled": true,
-  "latestVersion": "0.6.1",
+  "latestVersion": "0.6.2",
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://example.com/coreinsight-local-toolkit.exe",

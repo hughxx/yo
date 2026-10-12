@@ -1,14 +1,13 @@
 {
   "enabled": true,
-  "latestVersion": "0.6.1",
+  "latestVersion": "0.6.2",
   "minimumSupportedVersion": "0.2.0",
   "forceUpdate": false,
   "downloadUrl": "https://replace-with-authenticated-download-page",
   "releaseNotes": [
-    "修正附件上传接口，图片超过限制时压缩重传",
-    "CloudDrive 下载复用登录令牌，增加限流退避和冷却",
-    "大模型调用关闭 thinking，展示网关错误详情",
-    "识别 CodeAgent 失败事件，解析失败时提示原始回答路径"
+    "仅下载和上传图片，ZIP、TAR.GZ、文档等非图片附件直接跳过",
+    "修复经验正文中包含 Markdown 代码块时，合法模型 JSON 被截断的问题",
+    "保留 0.6.1 的限流处理、图片压缩和模型错误诊断"
   ],
   "publishedAt": "2026-10-12T00:00:00+08:00"
 }

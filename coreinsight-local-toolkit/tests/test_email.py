@@ -4,7 +4,7 @@ import unittest
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from coreinsight_local_toolkit.config import Settings
 from coreinsight_local_toolkit.email_runtime import (
@@ -85,6 +85,37 @@ class EmailTests(unittest.TestCase):
             self.assertEqual("LocalToolkit 已就绪", current["message"])
             with client.lock:
                 self.assertTrue(client.probe()["busy"])
+
+    def test_non_image_email_attachments_are_not_copied_or_uploaded(self):
+        for filename in ('release.zip', 'release.tar.gz', 'report.pdf', 'report.csv'):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as directory:
+                attachment = Mock()
+                attachment.FileName = filename
+                item = Mock()
+                item.Attachments = [attachment]
+                client = OutlookClient(Settings(data_dir=Path(directory)))
+                with patch('coreinsight_local_toolkit.outlook.upload_image') as upload, \
+                        patch.object(client, '_ocr') as ocr:
+                    copied = client._read_attachments(item, '<p>body</p>')
+                    body, markdown, rows = client._process_attachments(copied, '<p>body</p>')
+                attachment.SaveAsFile.assert_not_called()
+                upload.assert_not_called()
+                ocr.assert_not_called()
+                self.assertEqual('<p>body</p>', body)
+                self.assertIn(filename, markdown[0])
+                self.assertTrue(rows[0]['skipped'])
+                self.assertEqual('', rows[0]['url'])
+
+    def test_failed_image_copy_keeps_its_error_instead_of_being_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client = OutlookClient(Settings(data_dir=Path(directory)))
+            attachment = {'filename': 'screenshot.png', 'suffix': '', 'cid': '',
+                          'content': b'', 'inline': False, 'readError': 'MAPI read failed'}
+            with patch('coreinsight_local_toolkit.outlook.upload_image') as upload:
+                _, _, rows = client._process_attachments([attachment], '')
+        upload.assert_not_called()
+        self.assertEqual('MAPI read failed', rows[0]['error'])
+        self.assertNotIn('skipped', rows[0])
 
     def test_attachment_network_work_runs_outside_outlook_lock(self):
         class PropertyAccessor:
