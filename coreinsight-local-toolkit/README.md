@@ -207,7 +207,7 @@ Toolkit 会一次性替换全部字符串配置中的该域名，其他域名和
 `toolkit.log` 中记录版本检查和打开下载页相关信息。
 
 版本接口包括 `POST /update/check`、`GET /update/status` 和 `POST /update/install`。正式发布仍建议对 EXE 添加企业代码签名。
-可直接复制 `release-config.example.json` 到配置中心，发布时只需替换其中的 HTTPS 下载页面。
+`release-config.example.json` 提供初始配置参考；已有配置发布时，根据打包生成的 KV 文件更新对应字段，保留现有接口、密钥和升级策略。
 `downloadUrl` 可以是需要登录/Cookie 的浏览器下载页面，不要求 Toolkit 进程直接访问。
 
 ## 打包
@@ -224,3 +224,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 `dist\coreinsight-local-toolkit.exe`。这是无控制台、带桌面悬浮图标和托盘的单文件 exe；
 运行时解压目录固定
 为 `D:\CoreInsight\LocalToolkit\runtime`，不会使用用户 C 盘 `%TEMP%`。
+
+每次成功打包后，还会在 `dist` 生成 `release-config-年月日-时分秒-毫秒.txt`，采用 UTF-8 编码，每行一个 `key=value`：
+
+```text
+latestVersion=0.6.2
+sha256=<本次 coreinsight-local-toolkit.exe 的 SHA256>
+releaseNotes=["更新说明第一条","更新说明第二条"]
+publishedAt=2026-10-14T15:30:00+08:00
+```
+
+版本号自动读取程序的 `__version__`，更新说明读取 `release-config.example.json` 的 `releaseNotes`，
+时间为本次打包完成时间。发布前维护更新说明，并按实际发布时间调整 `publishedAt`。
+将这些值更新到配置中心对应字段，其中 `releaseNotes` 是 JSON 数组；文件是变更记录，不是完整 JSON 配置。
+`downloadUrl` 沿用现有下载页面，先替换页面上的安装包，再更新版本配置；最低支持版本和强制更新策略保持原值。
+记录的 SHA256 对应 EXE；如果后续另外压缩为 ZIP 并以 ZIP 发布，需使用最终 ZIP 的 SHA256。

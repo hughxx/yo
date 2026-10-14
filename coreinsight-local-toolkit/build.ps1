@@ -22,8 +22,25 @@ try {
     if (-not (Test-Path -LiteralPath $Exe)) {
         throw "Build completed without expected executable: $Exe"
     }
+
+    $Version = & $Python -c "from coreinsight_local_toolkit import __version__; print(__version__)"
+    if ($LASTEXITCODE -ne 0) { throw "Failed to read application version" }
+    $ReleaseConfig = Get-Content -LiteralPath (Join-Path $ProjectDir "release-config.example.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    $ReleaseNotes = ConvertTo-Json -InputObject @($ReleaseConfig.releaseNotes) -Compress -Depth 10
+    $BuiltAt = [DateTimeOffset]::Now
+    $ConfigChanges = [ordered]@{
+        latestVersion = $Version.Trim()
+        sha256 = (Get-FileHash -LiteralPath $Exe -Algorithm SHA256).Hash.ToLowerInvariant()
+        releaseNotes = $ReleaseNotes
+        publishedAt = $BuiltAt.ToString("yyyy-MM-dd'T'HH:mm:sszzz", [Globalization.CultureInfo]::InvariantCulture)
+    }
+    $Timestamp = $BuiltAt.ToString("yyyyMMdd-HHmmss-fff", [Globalization.CultureInfo]::InvariantCulture)
+    $ConfigChangesFile = Join-Path $ProjectDir "dist\release-config-$Timestamp.txt"
+    $ConfigLines = @($ConfigChanges.GetEnumerator() | ForEach-Object { "{0}={1}" -f $_.Key, $_.Value })
+    [IO.File]::WriteAllLines($ConfigChangesFile, $ConfigLines, [Text.UTF8Encoding]::new($false))
 } finally {
     Pop-Location
 }
 
 Write-Host "Built: $Exe"
+Write-Host "Release config changes (EXE SHA256): $ConfigChangesFile"
